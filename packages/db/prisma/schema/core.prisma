@@ -1,0 +1,517 @@
+// ─── CaratFlow Core Schema ─────────────────────────────────────
+// This is the anchor schema containing shared entities.
+// All IDs are UUID v4 strings (VARCHAR 36).
+// All tables are tenant-scoped (except Currency and Country).
+// Money fields stored as integers in smallest unit (paise/cents).
+// Weight fields stored as integers in milligrams.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["prismaSchemaFolder"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Tenant ────────────────────────────────────────────────────
+
+model Tenant {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  name            String   @db.VarChar(255)
+  slug            String   @unique @db.VarChar(100)
+  plan            String   @default("free") @db.VarChar(50)
+  settings        Json?    @map("settings")
+  country         String   @db.VarChar(2)
+  defaultCurrency String   @map("default_currency") @db.VarChar(3)
+  defaultTimezone String   @map("default_timezone") @db.VarChar(50)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdBy       String?  @map("created_by") @db.VarChar(36)
+  updatedBy       String?  @map("updated_by") @db.VarChar(36)
+
+  users      User[]
+  roles      Role[]
+  customers  Customer[]
+  suppliers  Supplier[]
+  products   Product[]
+  categories Category[]
+  locations  Location[]
+  accounts   Account[]
+  auditLogs  AuditLog[]
+
+  @@map("tenants")
+}
+
+// ─── User ──────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid()) @db.VarChar(36)
+  tenantId     String    @map("tenant_id") @db.VarChar(36)
+  email        String    @db.VarChar(255)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  firstName    String    @map("first_name") @db.VarChar(100)
+  lastName     String    @map("last_name") @db.VarChar(100)
+  roleId       String?   @map("role_id") @db.VarChar(36)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  preferences  Json?     @map("preferences")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  createdBy    String?   @map("created_by") @db.VarChar(36)
+  updatedBy    String?   @map("updated_by") @db.VarChar(36)
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  role         Role?      @relation(fields: [roleId], references: [id])
+  auditLogs    AuditLog[]
+  refreshTokens RefreshToken[]
+
+  // Retail relations
+  sales Sale[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+// ─── Refresh Token ─────────────────────────────────────────────
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  userId    String   @map("user_id") @db.VarChar(36)
+  token     String   @unique @db.VarChar(500)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+// ─── Role ──────────────────────────────────────────────────────
+
+model Role {
+  id          String  @id @default(uuid()) @db.VarChar(36)
+  tenantId    String  @map("tenant_id") @db.VarChar(36)
+  name        String  @db.VarChar(100)
+  description String? @db.VarChar(500)
+  permissions Json    @map("permissions")
+  isSystem    Boolean @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdBy   String?  @map("created_by") @db.VarChar(36)
+  updatedBy   String?  @map("updated_by") @db.VarChar(36)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  users  User[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+// ─── Customer ──────────────────────────────────────────────────
+
+enum CustomerType {
+  RETAIL
+  WHOLESALE
+  CORPORATE
+}
+
+model Customer {
+  id             String       @id @default(uuid()) @db.VarChar(36)
+  tenantId       String       @map("tenant_id") @db.VarChar(36)
+  firstName      String       @map("first_name") @db.VarChar(100)
+  lastName       String       @map("last_name") @db.VarChar(100)
+  email          String?      @db.VarChar(255)
+  phone          String?      @db.VarChar(20)
+  alternatePhone String?      @map("alternate_phone") @db.VarChar(20)
+  address        String?      @db.VarChar(500)
+  city           String?      @db.VarChar(100)
+  state          String?      @db.VarChar(100)
+  country        String?      @db.VarChar(2)
+  postalCode     String?      @map("postal_code") @db.VarChar(20)
+  customerType   CustomerType @default(RETAIL) @map("customer_type")
+  loyaltyPoints  Int          @default(0) @map("loyalty_points")
+  loyaltyTier    String?      @map("loyalty_tier") @db.VarChar(50)
+  panNumber      String?      @map("pan_number") @db.VarChar(10)
+  aadhaarNumber  String?      @map("aadhaar_number") @db.VarChar(12)
+  gstinNumber    String?      @map("gstin_number") @db.VarChar(15)
+  dateOfBirth    DateTime?    @map("date_of_birth") @db.Date
+  anniversary    DateTime?    @map("anniversary") @db.Date
+  preferences    Json?        @map("preferences")
+  notes          String?      @db.Text
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  createdBy      String?      @map("created_by") @db.VarChar(36)
+  updatedBy      String?      @map("updated_by") @db.VarChar(36)
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  invoices  Invoice[]
+  payments  Payment[]
+  jobOrders JobOrder[] @relation("JobOrderCustomer")
+
+  // Retail relations
+  retailSales      Sale[]
+  saleReturns      SaleReturn[]
+  repairOrders     RepairOrder[]
+  customOrders     CustomOrder[]
+  layaways         Layaway[]
+  oldGoldPurchases OldGoldPurchase[]
+  appraisals       Appraisal[]
+  giftCards        GiftCard[]
+
+  // CRM relations
+  loyaltyTransactions  LoyaltyTransaction[]
+  occasions            CustomerOccasion[]
+  interactions         CustomerInteraction[]
+  notificationLogs     NotificationLog[]
+  leads                Lead[]
+  feedbacks            Feedback[]
+  digitalPassbooks     DigitalPassbook[]
+
+  // Wholesale relations
+  consignmentsOut ConsignmentOut[] @relation("CustomerConsignmentsOut")
+
+  // E-Commerce relations
+  onlineOrders OnlineOrder[]
+
+  // Export relations
+  exportOrders   ExportOrder[]   @relation("ExportOrderBuyer")
+  exportInvoices ExportInvoice[] @relation("ExportInvoiceBuyer")
+
+  // India-specific relations
+  girviLoans             GirviLoan[]
+  kittyMemberships       KittyMember[]
+  goldSavingsMemberships GoldSavingsMember[]
+  kycVerifications       KycVerification[]
+
+  @@index([tenantId])
+  @@index([tenantId, phone])
+  @@index([tenantId, email])
+  @@map("customers")
+}
+
+// ─── Supplier ──────────────────────────────────────────────────
+
+model Supplier {
+  id            String   @id @default(uuid()) @db.VarChar(36)
+  tenantId      String   @map("tenant_id") @db.VarChar(36)
+  name          String   @db.VarChar(255)
+  contactPerson String?  @map("contact_person") @db.VarChar(200)
+  email         String?  @db.VarChar(255)
+  phone         String?  @db.VarChar(20)
+  address       String?  @db.VarChar(500)
+  city          String?  @db.VarChar(100)
+  state         String?  @db.VarChar(100)
+  country       String?  @db.VarChar(2)
+  postalCode    String?  @map("postal_code") @db.VarChar(20)
+  gstinNumber   String?  @map("gstin_number") @db.VarChar(15)
+  panNumber     String?  @map("pan_number") @db.VarChar(10)
+  supplierType  String?  @map("supplier_type") @db.VarChar(50)
+  rating        Int?     @default(0)
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  createdBy     String?  @map("created_by") @db.VarChar(36)
+  updatedBy     String?  @map("updated_by") @db.VarChar(36)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  invoices Invoice[]
+  payments Payment[]
+
+  // Wholesale relations
+  purchaseOrders   PurchaseOrder[]      @relation("SupplierPurchaseOrders")
+  consignmentsIn   ConsignmentIn[]      @relation("SupplierConsignmentsIn")
+  rateContracts    RateContract[] @relation("SupplierRateContracts")
+
+  // Compliance relations
+  complianceDocuments ComplianceDocument[]
+
+  @@index([tenantId])
+  @@map("suppliers")
+}
+
+// ─── Category ──────────────────────────────────────────────────
+
+model Category {
+  id          String     @id @default(uuid()) @db.VarChar(36)
+  tenantId    String     @map("tenant_id") @db.VarChar(36)
+  name        String     @db.VarChar(100)
+  parentId    String?    @map("parent_id") @db.VarChar(36)
+  description String?    @db.VarChar(500)
+  sortOrder   Int        @default(0) @map("sort_order")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  createdBy   String?    @map("created_by") @db.VarChar(36)
+  updatedBy   String?    @map("updated_by") @db.VarChar(36)
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id])
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  products Product[]  @relation("CategoryProducts")
+  subProducts Product[] @relation("SubCategoryProducts")
+
+  @@index([tenantId])
+  @@index([parentId])
+  @@map("categories")
+}
+
+// ─── Product ───────────────────────────────────────────────────
+
+enum ProductType {
+  GOLD
+  SILVER
+  PLATINUM
+  DIAMOND
+  GEMSTONE
+  KUNDAN
+  OTHER
+}
+
+model Product {
+  id               String      @id @default(uuid()) @db.VarChar(36)
+  tenantId         String      @map("tenant_id") @db.VarChar(36)
+  sku              String      @db.VarChar(50)
+  name             String      @db.VarChar(255)
+  description      String?     @db.Text
+  categoryId       String?     @map("category_id") @db.VarChar(36)
+  subCategoryId    String?     @map("sub_category_id") @db.VarChar(36)
+  productType      ProductType @map("product_type")
+  metalPurity      Int?        @map("metal_purity")
+  metalWeightMg    BigInt?     @map("metal_weight_mg")
+  grossWeightMg    BigInt?     @map("gross_weight_mg")
+  netWeightMg      BigInt?     @map("net_weight_mg")
+  stoneWeightCt    Int?        @map("stone_weight_ct")
+  makingCharges    BigInt?     @map("making_charges")
+  wastagePercent   Int?        @map("wastage_percent")
+  huidNumber       String?     @map("huid_number") @db.VarChar(6)
+  hallmarkNumber   String?     @map("hallmark_number") @db.VarChar(50)
+  costPricePaise   BigInt?     @map("cost_price_paise")
+  sellingPricePaise BigInt?    @map("selling_price_paise")
+  currencyCode     String      @default("INR") @map("currency_code") @db.VarChar(3)
+  images           Json?       @map("images")
+  attributes       Json?       @map("attributes")
+  isActive         Boolean     @default(true) @map("is_active")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+  createdBy        String?     @map("created_by") @db.VarChar(36)
+  updatedBy        String?     @map("updated_by") @db.VarChar(36)
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  category    Category? @relation("CategoryProducts", fields: [categoryId], references: [id])
+  subCategory Category? @relation("SubCategoryProducts", fields: [subCategoryId], references: [id])
+
+  // Inventory relations
+  stockItems         StockItem[]
+  stockTransferItems StockTransferItem[]
+  stockTakeItems     StockTakeItem[]
+  batchLots          BatchLot[]
+  serialNumbers      SerialNumber[]
+  invoiceLineItems   InvoiceLineItem[]
+
+  // Manufacturing relations
+  boms               BillOfMaterials[] @relation("BomProduct")
+  bomItems           BomItem[]         @relation("BomItemProduct")
+  jobOrders          JobOrder[]        @relation("JobOrderProduct")
+  jobOrderItems      JobOrderItem[]    @relation("JobOrderItemProduct")
+  productionPlanItems ProductionPlanItem[] @relation("PlanItemProduct")
+
+  // Retail relations
+  saleLineItems   SaleLineItem[]
+  saleReturnItems SaleReturnItem[]
+
+  // E-Commerce relations
+  catalogItems      CatalogItem[]
+  onlineOrderItems  OnlineOrderItem[]
+  productReviews    ProductReview[]
+
+  // Compliance relations
+  huidRecords             HuidRecord[]
+  hallmarkSubmissionItems HallmarkSubmissionItem[]
+  gemstoneCertificates    GemstoneCertificate[]
+  chainOfCustodyEvents    ChainOfCustody[]
+  complianceDocuments     ComplianceDocument[]
+
+  // Export relations
+  exportOrderItems ExportOrderItem[] @relation("ExportOrderItemProduct")
+
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@index([tenantId, productType])
+  @@index([tenantId, categoryId])
+  @@map("products")
+}
+
+// ─── Location ──────────────────────────────────────────────────
+
+enum LocationType {
+  SHOWROOM
+  WAREHOUSE
+  WORKSHOP
+  OFFICE
+}
+
+model Location {
+  id           String       @id @default(uuid()) @db.VarChar(36)
+  tenantId     String       @map("tenant_id") @db.VarChar(36)
+  name         String       @db.VarChar(255)
+  locationType LocationType @map("location_type")
+  address      String?      @db.VarChar(500)
+  city         String?      @db.VarChar(100)
+  state        String?      @db.VarChar(100)
+  country      String?      @db.VarChar(2)
+  postalCode   String?      @map("postal_code") @db.VarChar(20)
+  phone        String?      @db.VarChar(20)
+  email        String?      @db.VarChar(255)
+  isActive     Boolean      @default(true) @map("is_active")
+  settings     Json?        @map("settings")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  createdBy    String?      @map("created_by") @db.VarChar(36)
+  updatedBy    String?      @map("updated_by") @db.VarChar(36)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  // Inventory relations
+  stockItems       StockItem[]        @relation("StockItemLocation")
+  transfersFrom    StockTransfer[]    @relation("TransferFrom")
+  transfersTo      StockTransfer[]    @relation("TransferTo")
+  stockTakes       StockTake[]        @relation("StockTakeLocation")
+  metalStocks      MetalStock[]       @relation("MetalStockLocation")
+  stoneStocks      StoneStock[]       @relation("StoneStockLocation")
+  serialNumbers    SerialNumber[]     @relation("SerialNumberLocation")
+  invoices         Invoice[]
+
+  // Manufacturing relations
+  jobOrders        JobOrder[]         @relation("JobOrderLocation")
+  karigars         Karigar[]          @relation("KarigarLocation")
+  productionPlans  ProductionPlan[]   @relation("ProductionPlanLocation")
+
+  // Retail relations
+  retailSales      Sale[]
+  saleReturns      SaleReturn[]
+  repairOrders     RepairOrder[]
+  customOrders     CustomOrder[]
+  oldGoldPurchases OldGoldPurchase[]
+  appraisals       Appraisal[]
+
+  // Wholesale relations
+  purchaseOrders   PurchaseOrder[]   @relation("LocationPurchaseOrders")
+  consignmentsOut  ConsignmentOut[]  @relation("LocationConsignmentsOut")
+  consignmentsIn   ConsignmentIn[]   @relation("LocationConsignmentsIn")
+
+  // Compliance relations
+  hallmarkSubmissions HallmarkSubmission[] @relation("HallmarkSubmissionLocation")
+  custodyEvents       ChainOfCustody[]     @relation("CustodyEventLocation")
+  insurancePolicies   InsurancePolicy[]    @relation("InsurancePolicyLocation")
+  complianceAudits    ComplianceAudit[]    @relation("ComplianceAuditLocation")
+
+  // E-Commerce relations
+  clickAndCollects    ClickAndCollect[]
+
+  // Export relations
+  exportOrders ExportOrder[] @relation("ExportOrderLocation")
+
+  // India-specific relations
+  girviLoans          GirviLoan[]
+
+  @@index([tenantId])
+  @@map("locations")
+}
+
+// ─── Account (Chart of Accounts) ───────────────────────────────
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+model Account {
+  id           String      @id @default(uuid()) @db.VarChar(36)
+  tenantId     String      @map("tenant_id") @db.VarChar(36)
+  accountCode  String      @map("account_code") @db.VarChar(20)
+  name         String      @db.VarChar(255)
+  accountType  AccountType @map("account_type")
+  parentId     String?     @map("parent_id") @db.VarChar(36)
+  isActive     Boolean     @default(true) @map("is_active")
+  currencyCode String      @default("INR") @map("currency_code") @db.VarChar(3)
+  description  String?     @db.VarChar(500)
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  createdBy    String?     @map("created_by") @db.VarChar(36)
+  updatedBy    String?     @map("updated_by") @db.VarChar(36)
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  parent   Account? @relation("AccountTree", fields: [parentId], references: [id])
+  children Account[] @relation("AccountTree")
+
+  journalEntryLines JournalEntryLine[]
+  bankAccounts      BankAccount[]
+  budgets           Budget[]
+
+  @@unique([tenantId, accountCode])
+  @@index([tenantId])
+  @@map("accounts")
+}
+
+// ─── Currency ──────────────────────────────────────────────────
+
+model Currency {
+  code          String  @id @db.VarChar(3)
+  name          String  @db.VarChar(100)
+  symbol        String  @db.VarChar(10)
+  decimalPlaces Int     @default(2) @map("decimal_places")
+  isActive      Boolean @default(true) @map("is_active")
+
+  countries Country[]
+
+  @@map("currencies")
+}
+
+// ─── Country ───────────────────────────────────────────────────
+
+model Country {
+  code         String  @id @db.VarChar(2)
+  name         String  @db.VarChar(100)
+  currencyCode String  @map("currency_code") @db.VarChar(3)
+  callingCode  String  @map("calling_code") @db.VarChar(10)
+  isActive     Boolean @default(true) @map("is_active")
+
+  currency Currency @relation(fields: [currencyCode], references: [code])
+
+  @@map("countries")
+}
+
+// ─── AuditLog ──────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.VarChar(36)
+  tenantId   String   @map("tenant_id") @db.VarChar(36)
+  userId     String?  @map("user_id") @db.VarChar(36)
+  action     String   @db.VarChar(50)
+  entityType String   @map("entity_type") @db.VarChar(50)
+  entityId   String   @map("entity_id") @db.VarChar(36)
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  userAgent  String?  @map("user_agent") @db.VarChar(500)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

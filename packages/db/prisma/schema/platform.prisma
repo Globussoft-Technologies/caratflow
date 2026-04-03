@@ -1,0 +1,223 @@
+// ─── CaratFlow Platform Schema ─────────────────────────────────
+// Additional tables for the Platform & Technology Infrastructure module.
+// Extends core entities (User, Role, Tenant, Location, AuditLog).
+
+// ─── Permission (Global Catalog) ──────────────────────────────
+
+model Permission {
+  id          String  @id @default(uuid()) @db.VarChar(36)
+  module      String  @db.VarChar(50)
+  resource    String  @db.VarChar(50)
+  action      String  @db.VarChar(50)
+  description String? @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([module, resource, action])
+  @@map("permissions")
+}
+
+// ─── Setting (Tenant-scoped key-value) ────────────────────────
+
+model Setting {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  tenantId     String   @map("tenant_id") @db.VarChar(36)
+  settingKey   String   @map("setting_key") @db.VarChar(100)
+  settingValue Json     @map("setting_value")
+  category     String   @db.VarChar(50) // general, billing, tax, pos, notifications, display
+  description  String?  @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, settingKey])
+  @@index([tenantId, category])
+  @@map("settings")
+}
+
+// ─── ImportJob ────────────────────────────────────────────────
+
+enum ImportJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model ImportJob {
+  id            String          @id @default(uuid()) @db.VarChar(36)
+  tenantId      String          @map("tenant_id") @db.VarChar(36)
+  fileName      String          @map("file_name") @db.VarChar(255)
+  fileUrl       String?         @map("file_url") @db.VarChar(500)
+  entityType    String          @map("entity_type") @db.VarChar(50) // customer, product, supplier
+  status        ImportJobStatus @default(PENDING)
+  totalRows     Int             @default(0) @map("total_rows")
+  processedRows Int             @default(0) @map("processed_rows")
+  successRows   Int             @default(0) @map("success_rows")
+  errorRows     Int             @default(0) @map("error_rows")
+  errors        Json?           @map("errors") // [{row, field, error}]
+  columnMapping Json?           @map("column_mapping")
+  startedAt     DateTime?       @map("started_at")
+  completedAt   DateTime?       @map("completed_at")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  createdBy     String?         @map("created_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("import_jobs")
+}
+
+// ─── ExportJob ────────────────────────────────────────────────
+
+enum ExportJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ExportFormat {
+  CSV
+  XLSX
+  PDF
+}
+
+model ExportJob {
+  id          String          @id @default(uuid()) @db.VarChar(36)
+  tenantId    String          @map("tenant_id") @db.VarChar(36)
+  entityType  String          @map("entity_type") @db.VarChar(50)
+  filters     Json?           @map("filters")
+  format      ExportFormat    @default(CSV)
+  status      ExportJobStatus @default(PENDING)
+  fileUrl     String?         @map("file_url") @db.VarChar(500)
+  totalRows   Int             @default(0) @map("total_rows")
+  startedAt   DateTime?       @map("started_at")
+  completedAt DateTime?       @map("completed_at")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  createdBy   String?         @map("created_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("export_jobs")
+}
+
+// ─── Notification (In-app) ────────────────────────────────────
+
+enum InAppNotificationType {
+  INFO
+  WARNING
+  ERROR
+  SUCCESS
+}
+
+model Notification {
+  id        String                 @id @default(uuid()) @db.VarChar(36)
+  tenantId  String                 @map("tenant_id") @db.VarChar(36)
+  userId    String                 @map("user_id") @db.VarChar(36)
+  title     String                 @db.VarChar(255)
+  message   String                 @db.Text
+  type      InAppNotificationType  @default(INFO)
+  isRead    Boolean                @default(false) @map("is_read")
+  readAt    DateTime?              @map("read_at")
+  link      String?                @db.VarChar(500)
+  metadata  Json?                  @map("metadata")
+  createdAt DateTime               @default(now()) @map("created_at")
+
+  @@index([tenantId, userId])
+  @@index([tenantId, userId, isRead])
+  @@map("notifications")
+}
+
+// ─── ActivityLog ──────────────────────────────────────────────
+
+model ActivityLog {
+  id          String   @id @default(uuid()) @db.VarChar(36)
+  tenantId    String   @map("tenant_id") @db.VarChar(36)
+  userId      String?  @map("user_id") @db.VarChar(36)
+  action      String   @db.VarChar(100)
+  description String?  @db.Text
+  metadata    Json?    @map("metadata")
+  ipAddress   String?  @map("ip_address") @db.VarChar(45)
+  userAgent   String?  @map("user_agent") @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([tenantId, userId])
+  @@index([tenantId, action])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+// ─── BackupSchedule ───────────────────────────────────────────
+
+enum BackupFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum BackupScheduleStatus {
+  ACTIVE
+  PAUSED
+}
+
+model BackupSchedule {
+  id            String               @id @default(uuid()) @db.VarChar(36)
+  tenantId      String               @map("tenant_id") @db.VarChar(36)
+  frequency     BackupFrequency      @default(DAILY)
+  time          String               @db.VarChar(5) // HH:mm
+  dayOfWeek     Int?                 @map("day_of_week") // 0-6, Sunday=0
+  dayOfMonth    Int?                 @map("day_of_month") // 1-31
+  retentionDays Int                  @default(30) @map("retention_days")
+  lastRunAt     DateTime?            @map("last_run_at")
+  nextRunAt     DateTime?            @map("next_run_at")
+  status        BackupScheduleStatus @default(ACTIVE)
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("backup_schedules")
+}
+
+// ─── TranslationKey (Global i18n) ─────────────────────────────
+
+model TranslationKey {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  namespace    String   @db.VarChar(50)
+  key          String   @db.VarChar(200)
+  defaultValue String   @map("default_value") @db.Text
+  translations Json     @map("translations") // {en: "...", hi: "...", ta: "..."}
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([namespace, key])
+  @@index([namespace])
+  @@map("translation_keys")
+}
+
+// ─── FileUpload ───────────────────────────────────────────────
+
+enum StorageProvider {
+  LOCAL
+  S3
+  MINIO
+}
+
+model FileUpload {
+  id              String          @id @default(uuid()) @db.VarChar(36)
+  tenantId        String          @map("tenant_id") @db.VarChar(36)
+  fileName        String          @map("file_name") @db.VarChar(255)
+  originalName    String          @map("original_name") @db.VarChar(255)
+  mimeType        String          @map("mime_type") @db.VarChar(100)
+  sizeBytes       Int             @map("size_bytes")
+  storageProvider StorageProvider @default(MINIO) @map("storage_provider")
+  storageKey      String          @map("storage_key") @db.VarChar(500)
+  entityType      String?         @map("entity_type") @db.VarChar(50)
+  entityId        String?         @map("entity_id") @db.VarChar(36)
+  uploadedBy      String          @map("uploaded_by") @db.VarChar(36)
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@map("file_uploads")
+}

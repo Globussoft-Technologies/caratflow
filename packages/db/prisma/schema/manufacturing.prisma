@@ -1,0 +1,443 @@
+// ─── CaratFlow Manufacturing Domain Schema ─────────────────────
+// Job orders, BOM, artisan management, quality checks, costing.
+// Production planning and karigar metal balance tracking.
+
+// ─── Enums ──────────────────────────────────────────────────────
+
+enum BomStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum BomItemType {
+  METAL
+  STONE
+  FINDING
+  LABOR
+  OVERHEAD
+}
+
+enum MfgJobOrderStatus {
+  DRAFT
+  PLANNED
+  MATERIAL_ISSUED
+  IN_PROGRESS
+  QC_PENDING
+  QC_PASSED
+  QC_FAILED
+  COMPLETED
+  CANCELLED
+}
+
+enum JobPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum JobCostType {
+  MATERIAL_METAL
+  MATERIAL_STONE
+  MATERIAL_FINDING
+  LABOR
+  OVERHEAD
+  WASTAGE
+}
+
+enum KarigarSkillLevel {
+  APPRENTICE
+  JUNIOR
+  SENIOR
+  MASTER
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LEAVE
+}
+
+enum KarigarMetalType {
+  GOLD
+  SILVER
+  PLATINUM
+  PALLADIUM
+  RHODIUM
+}
+
+enum KarigarTransactionType {
+  ISSUE
+  RETURN
+  WASTAGE
+  ADJUSTMENT
+}
+
+enum QcCheckpointType {
+  IN_PROCESS
+  FINAL
+  HALLMARK
+}
+
+enum QcStatus {
+  PASSED
+  FAILED
+  REWORK
+}
+
+enum ProductionPlanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+}
+
+// ─── BillOfMaterials ────────────────────────────────────────────
+
+model BillOfMaterials {
+  id                 String    @id @default(uuid()) @db.VarChar(36)
+  tenantId           String    @map("tenant_id") @db.VarChar(36)
+  name               String    @db.VarChar(255)
+  version            Int       @default(1)
+  productId          String    @map("product_id") @db.VarChar(36)
+  outputQuantity     Int       @default(1) @map("output_quantity")
+  status             BomStatus @default(DRAFT)
+  notes              String?   @db.Text
+  estimatedCostPaise BigInt    @default(0) @map("estimated_cost_paise")
+  estimatedTimeMins  Int       @default(0) @map("estimated_time_mins")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  createdBy          String?   @map("created_by") @db.VarChar(36)
+  updatedBy          String?   @map("updated_by") @db.VarChar(36)
+
+  product   Product    @relation("BomProduct", fields: [productId], references: [id])
+  items     BomItem[]
+  jobOrders JobOrder[] @relation("JobOrderBom")
+
+  @@index([tenantId])
+  @@index([tenantId, productId])
+  @@index([tenantId, status])
+  @@map("bill_of_materials")
+}
+
+// ─── BomItem ────────────────────────────────────────────────────
+
+model BomItem {
+  id                String      @id @default(uuid()) @db.VarChar(36)
+  tenantId          String      @map("tenant_id") @db.VarChar(36)
+  bomId             String      @map("bom_id") @db.VarChar(36)
+  itemType          BomItemType @map("item_type")
+  productId         String?     @map("product_id") @db.VarChar(36)
+  description       String      @db.VarChar(500)
+  quantityRequired  Decimal     @map("quantity_required") @db.Decimal(12, 4)
+  unitOfMeasure     String      @map("unit_of_measure") @db.VarChar(20)
+  weightMg          BigInt?     @map("weight_mg")
+  estimatedCostPaise BigInt     @default(0) @map("estimated_cost_paise")
+  wastagePercent    Int         @default(0) @map("wastage_percent")
+  sortOrder         Int         @default(0) @map("sort_order")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+  createdBy         String?     @map("created_by") @db.VarChar(36)
+  updatedBy         String?     @map("updated_by") @db.VarChar(36)
+
+  bom           BillOfMaterials @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  product       Product?        @relation("BomItemProduct", fields: [productId], references: [id])
+  jobOrderItems JobOrderItem[]  @relation("JobOrderItemBomItem")
+
+  @@index([tenantId])
+  @@index([bomId])
+  @@map("bom_items")
+}
+
+// ─── JobOrder ───────────────────────────────────────────────────
+
+model JobOrder {
+  id                 String            @id @default(uuid()) @db.VarChar(36)
+  tenantId           String            @map("tenant_id") @db.VarChar(36)
+  jobNumber          String            @map("job_number") @db.VarChar(50)
+  bomId              String?           @map("bom_id") @db.VarChar(36)
+  productId          String            @map("product_id") @db.VarChar(36)
+  customerId         String?           @map("customer_id") @db.VarChar(36)
+  locationId         String            @map("location_id") @db.VarChar(36)
+  status             MfgJobOrderStatus @default(DRAFT)
+  priority           JobPriority       @default(MEDIUM)
+  quantity           Int               @default(1)
+  estimatedStartDate DateTime?         @map("estimated_start_date")
+  estimatedEndDate   DateTime?         @map("estimated_end_date")
+  actualStartDate    DateTime?         @map("actual_start_date")
+  actualEndDate      DateTime?         @map("actual_end_date")
+  assignedKarigarId  String?           @map("assigned_karigar_id") @db.VarChar(36)
+  notes              String?           @db.Text
+  specialInstructions String?          @map("special_instructions") @db.Text
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  createdBy          String?           @map("created_by") @db.VarChar(36)
+  updatedBy          String?           @map("updated_by") @db.VarChar(36)
+
+  bom              BillOfMaterials?    @relation("JobOrderBom", fields: [bomId], references: [id])
+  product          Product             @relation("JobOrderProduct", fields: [productId], references: [id])
+  customer         Customer?           @relation("JobOrderCustomer", fields: [customerId], references: [id])
+  location         Location            @relation("JobOrderLocation", fields: [locationId], references: [id])
+  assignedKarigar  Karigar?            @relation("KarigarJobOrders", fields: [assignedKarigarId], references: [id])
+  items            JobOrderItem[]
+  costs            JobCost[]
+  qualityCheckpoints QualityCheckpoint[]
+  karigarTransactions KarigarTransaction[] @relation("KarigarTransactionJob")
+  productionPlanItem  ProductionPlanItem? @relation("PlanItemJobOrder")
+
+  @@unique([tenantId, jobNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, locationId])
+  @@index([tenantId, assignedKarigarId])
+  @@index([tenantId, customerId])
+  @@map("job_orders")
+}
+
+// ─── JobOrderItem ───────────────────────────────────────────────
+
+model JobOrderItem {
+  id               String  @id @default(uuid()) @db.VarChar(36)
+  tenantId         String  @map("tenant_id") @db.VarChar(36)
+  jobOrderId       String  @map("job_order_id") @db.VarChar(36)
+  bomItemId        String? @map("bom_item_id") @db.VarChar(36)
+  productId        String? @map("product_id") @db.VarChar(36)
+  description      String  @db.VarChar(500)
+  requiredWeightMg BigInt  @map("required_weight_mg")
+  issuedWeightMg   BigInt  @default(0) @map("issued_weight_mg")
+  returnedWeightMg BigInt  @default(0) @map("returned_weight_mg")
+  wastedWeightMg   BigInt  @default(0) @map("wasted_weight_mg")
+  costPaise        BigInt  @default(0) @map("cost_paise")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdBy        String?  @map("created_by") @db.VarChar(36)
+  updatedBy        String?  @map("updated_by") @db.VarChar(36)
+
+  jobOrder JobOrder @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
+  bomItem  BomItem? @relation("JobOrderItemBomItem", fields: [bomItemId], references: [id])
+  product  Product? @relation("JobOrderItemProduct", fields: [productId], references: [id])
+
+  @@index([tenantId])
+  @@index([jobOrderId])
+  @@map("job_order_items")
+}
+
+// ─── JobCost ────────────────────────────────────────────────────
+
+model JobCost {
+  id          String      @id @default(uuid()) @db.VarChar(36)
+  tenantId    String      @map("tenant_id") @db.VarChar(36)
+  jobOrderId  String      @map("job_order_id") @db.VarChar(36)
+  costType    JobCostType @map("cost_type")
+  description String      @db.VarChar(500)
+  amountPaise BigInt      @map("amount_paise")
+  weightMg    BigInt?     @map("weight_mg")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  createdBy   String?     @map("created_by") @db.VarChar(36)
+  updatedBy   String?     @map("updated_by") @db.VarChar(36)
+
+  jobOrder JobOrder @relation(fields: [jobOrderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([jobOrderId])
+  @@map("job_costs")
+}
+
+// ─── Karigar ────────────────────────────────────────────────────
+
+model Karigar {
+  id                String           @id @default(uuid()) @db.VarChar(36)
+  tenantId          String           @map("tenant_id") @db.VarChar(36)
+  employeeCode      String           @map("employee_code") @db.VarChar(50)
+  firstName         String           @map("first_name") @db.VarChar(100)
+  lastName          String           @map("last_name") @db.VarChar(100)
+  phone             String?          @db.VarChar(20)
+  email             String?          @db.VarChar(255)
+  specialization    String?          @db.VarChar(255)
+  skillLevel        KarigarSkillLevel @default(JUNIOR) @map("skill_level")
+  dailyWagePaise    BigInt           @default(0) @map("daily_wage_paise")
+  locationId        String           @map("location_id") @db.VarChar(36)
+  isActive          Boolean          @default(true) @map("is_active")
+  joiningDate       DateTime?        @map("joining_date") @db.Date
+  address           String?          @db.VarChar(500)
+  idProof           String?          @map("id_proof") @db.VarChar(255)
+  bankAccountNumber String?          @map("bank_account_number") @db.VarChar(30)
+  ifscCode          String?          @map("ifsc_code") @db.VarChar(11)
+  panNumber         String?          @map("pan_number") @db.VarChar(10)
+  aadhaarNumber     String?          @map("aadhaar_number") @db.VarChar(12)
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  createdBy         String?          @map("created_by") @db.VarChar(36)
+  updatedBy         String?          @map("updated_by") @db.VarChar(36)
+
+  location       Location              @relation("KarigarLocation", fields: [locationId], references: [id])
+  jobOrders      JobOrder[]            @relation("KarigarJobOrders")
+  attendance     KarigarAttendance[]
+  metalBalances  KarigarMetalBalance[]
+  transactions   KarigarTransaction[]
+
+  @@unique([tenantId, employeeCode])
+  @@index([tenantId])
+  @@index([tenantId, locationId])
+  @@index([tenantId, isActive])
+  @@map("karigars")
+}
+
+// ─── KarigarAttendance ──────────────────────────────────────────
+
+model KarigarAttendance {
+  id               String           @id @default(uuid()) @db.VarChar(36)
+  tenantId         String           @map("tenant_id") @db.VarChar(36)
+  karigarId        String           @map("karigar_id") @db.VarChar(36)
+  date             DateTime         @db.Date
+  status           AttendanceStatus @default(PRESENT)
+  checkInTime      DateTime?        @map("check_in_time")
+  checkOutTime     DateTime?        @map("check_out_time")
+  overtimeMinutes  Int              @default(0) @map("overtime_minutes")
+  wagePaidPaise    BigInt           @default(0) @map("wage_paid_paise")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  createdBy        String?          @map("created_by") @db.VarChar(36)
+  updatedBy        String?          @map("updated_by") @db.VarChar(36)
+
+  karigar Karigar @relation(fields: [karigarId], references: [id])
+
+  @@unique([tenantId, karigarId, date])
+  @@index([tenantId])
+  @@index([tenantId, karigarId])
+  @@index([tenantId, date])
+  @@map("karigar_attendance")
+}
+
+// ─── KarigarMetalBalance ────────────────────────────────────────
+
+model KarigarMetalBalance {
+  id               String          @id @default(uuid()) @db.VarChar(36)
+  tenantId         String          @map("tenant_id") @db.VarChar(36)
+  karigarId        String          @map("karigar_id") @db.VarChar(36)
+  metalType        KarigarMetalType @map("metal_type")
+  purityFineness   Int             @map("purity_fineness")
+  issuedWeightMg   BigInt          @default(0) @map("issued_weight_mg")
+  returnedWeightMg BigInt          @default(0) @map("returned_weight_mg")
+  wastedWeightMg   BigInt          @default(0) @map("wasted_weight_mg")
+  balanceWeightMg  BigInt          @default(0) @map("balance_weight_mg")
+  lastReconciledAt DateTime?       @map("last_reconciled_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  createdBy        String?         @map("created_by") @db.VarChar(36)
+  updatedBy        String?         @map("updated_by") @db.VarChar(36)
+
+  karigar Karigar @relation(fields: [karigarId], references: [id])
+
+  @@unique([tenantId, karigarId, metalType, purityFineness])
+  @@index([tenantId])
+  @@index([tenantId, karigarId])
+  @@map("karigar_metal_balances")
+}
+
+// ─── KarigarTransaction ─────────────────────────────────────────
+
+model KarigarTransaction {
+  id              String                 @id @default(uuid()) @db.VarChar(36)
+  tenantId        String                 @map("tenant_id") @db.VarChar(36)
+  karigarId       String                 @map("karigar_id") @db.VarChar(36)
+  transactionType KarigarTransactionType @map("transaction_type")
+  jobOrderId      String?                @map("job_order_id") @db.VarChar(36)
+  metalType       KarigarMetalType       @map("metal_type")
+  purityFineness  Int                    @map("purity_fineness")
+  weightMg        BigInt                 @map("weight_mg")
+  notes           String?                @db.Text
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  createdBy       String?                @map("created_by") @db.VarChar(36)
+  updatedBy       String?                @map("updated_by") @db.VarChar(36)
+
+  karigar  Karigar   @relation(fields: [karigarId], references: [id])
+  jobOrder JobOrder? @relation("KarigarTransactionJob", fields: [jobOrderId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, karigarId])
+  @@index([tenantId, jobOrderId])
+  @@map("karigar_transactions")
+}
+
+// ─── QualityCheckpoint ──────────────────────────────────────────
+
+model QualityCheckpoint {
+  id              String           @id @default(uuid()) @db.VarChar(36)
+  tenantId        String           @map("tenant_id") @db.VarChar(36)
+  jobOrderId      String           @map("job_order_id") @db.VarChar(36)
+  checkpointType  QcCheckpointType @map("checkpoint_type")
+  checkedBy       String           @map("checked_by") @db.VarChar(255)
+  status          QcStatus
+  weightMg        BigInt?          @map("weight_mg")
+  purityFineness  Int?             @map("purity_fineness")
+  findings        String?          @db.Text
+  images          Json?
+  checkedAt       DateTime         @default(now()) @map("checked_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  createdBy       String?          @map("created_by") @db.VarChar(36)
+  updatedBy       String?          @map("updated_by") @db.VarChar(36)
+
+  jobOrder JobOrder @relation(fields: [jobOrderId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, jobOrderId])
+  @@index([tenantId, status])
+  @@map("quality_checkpoints")
+}
+
+// ─── ProductionPlan ─────────────────────────────────────────────
+
+model ProductionPlan {
+  id         String               @id @default(uuid()) @db.VarChar(36)
+  tenantId   String               @map("tenant_id") @db.VarChar(36)
+  name       String               @db.VarChar(255)
+  locationId String               @map("location_id") @db.VarChar(36)
+  startDate  DateTime             @map("start_date") @db.Date
+  endDate    DateTime             @map("end_date") @db.Date
+  status     ProductionPlanStatus @default(DRAFT)
+  notes      String?              @db.Text
+  createdAt  DateTime             @default(now()) @map("created_at")
+  updatedAt  DateTime             @updatedAt @map("updated_at")
+  createdBy  String?              @map("created_by") @db.VarChar(36)
+  updatedBy  String?              @map("updated_by") @db.VarChar(36)
+
+  location Location             @relation("ProductionPlanLocation", fields: [locationId], references: [id])
+  items    ProductionPlanItem[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, locationId])
+  @@map("production_plans")
+}
+
+// ─── ProductionPlanItem ─────────────────────────────────────────
+
+model ProductionPlanItem {
+  id                 String      @id @default(uuid()) @db.VarChar(36)
+  tenantId           String      @map("tenant_id") @db.VarChar(36)
+  planId             String      @map("plan_id") @db.VarChar(36)
+  productId          String      @map("product_id") @db.VarChar(36)
+  quantity           Int         @default(1)
+  bomId              String?     @map("bom_id") @db.VarChar(36)
+  priority           JobPriority @default(MEDIUM)
+  estimatedStartDate DateTime?   @map("estimated_start_date")
+  estimatedEndDate   DateTime?   @map("estimated_end_date")
+  jobOrderId         String?     @unique @map("job_order_id") @db.VarChar(36)
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+  createdBy          String?     @map("created_by") @db.VarChar(36)
+  updatedBy          String?     @map("updated_by") @db.VarChar(36)
+
+  plan     ProductionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  product  Product        @relation("PlanItemProduct", fields: [productId], references: [id])
+  jobOrder JobOrder?      @relation("PlanItemJobOrder", fields: [jobOrderId], references: [id])
+
+  @@index([tenantId])
+  @@index([planId])
+  @@map("production_plan_items")
+}

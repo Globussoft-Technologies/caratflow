@@ -1,0 +1,428 @@
+// ─── CaratFlow Wholesale Domain Schema ──────────────────────────
+// Purchase orders, goods receipts, consignments (in/out),
+// agent/broker commissions, credit limits, outstanding balances,
+// rate contracts.
+
+// ─── Enums ────────────────────────────────────────────────────────
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum GoodsReceiptStatus {
+  DRAFT
+  INSPECTED
+  ACCEPTED
+  REJECTED
+}
+
+enum ConsignmentOutStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_RETURNED
+  RETURNED
+  CONVERTED_TO_SALE
+  EXPIRED
+}
+
+enum ConsignmentOutItemStatus {
+  ISSUED
+  RETURNED
+  SOLD
+}
+
+enum ConsignmentInStatus {
+  RECEIVED
+  PARTIALLY_RETURNED
+  RETURNED
+  PURCHASED
+  EXPIRED
+}
+
+enum ConsignmentInItemStatus {
+  RECEIVED
+  RETURNED
+  PURCHASED
+}
+
+enum CommissionType {
+  PERCENTAGE
+  FIXED_PER_PIECE
+  FIXED_PER_WEIGHT
+}
+
+enum CommissionReferenceType {
+  SALE
+  PURCHASE
+}
+
+enum CommissionStatus {
+  PENDING
+  APPROVED
+  PAID
+}
+
+enum CreditEntityType {
+  CUSTOMER
+  SUPPLIER
+}
+
+enum OutstandingStatus {
+  CURRENT
+  OVERDUE
+  PAID
+}
+
+// ─── PurchaseOrder ────────────────────────────────────────────────
+
+model PurchaseOrder {
+  id            String              @id @default(uuid()) @db.VarChar(36)
+  tenantId      String              @map("tenant_id") @db.VarChar(36)
+  poNumber      String              @map("po_number") @db.VarChar(50)
+  supplierId    String              @map("supplier_id") @db.VarChar(36)
+  locationId    String              @map("location_id") @db.VarChar(36)
+  status        PurchaseOrderStatus @default(DRAFT)
+  subtotalPaise BigInt              @map("subtotal_paise")
+  taxPaise      BigInt              @default(0) @map("tax_paise")
+  totalPaise    BigInt              @map("total_paise")
+  currencyCode  String              @default("INR") @map("currency_code") @db.VarChar(3)
+  expectedDate  DateTime?           @map("expected_date") @db.Date
+  notes         String?             @db.Text
+  approvedBy    String?             @map("approved_by") @db.VarChar(36)
+  approvedAt    DateTime?           @map("approved_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+  createdBy     String?             @map("created_by") @db.VarChar(36)
+  updatedBy     String?             @map("updated_by") @db.VarChar(36)
+
+  supplier      Supplier            @relation("SupplierPurchaseOrders", fields: [supplierId], references: [id])
+  location      Location            @relation("LocationPurchaseOrders", fields: [locationId], references: [id])
+  items         PurchaseOrderItem[]
+  goodsReceipts GoodsReceipt[]
+
+  @@unique([tenantId, poNumber])
+  @@index([tenantId])
+  @@index([tenantId, supplierId])
+  @@index([tenantId, status])
+  @@map("purchase_orders")
+}
+
+// ─── PurchaseOrderItem ────────────────────────────────────────────
+
+model PurchaseOrderItem {
+  id               String   @id @default(uuid()) @db.VarChar(36)
+  tenantId         String   @map("tenant_id") @db.VarChar(36)
+  purchaseOrderId  String   @map("purchase_order_id") @db.VarChar(36)
+  productId        String?  @map("product_id") @db.VarChar(36)
+  description      String   @db.VarChar(500)
+  quantity         Int
+  unitPricePaise   BigInt   @map("unit_price_paise")
+  weightMg         BigInt?  @map("weight_mg")
+  purityFineness   Int?     @map("purity_fineness")
+  receivedQuantity Int      @default(0) @map("received_quantity")
+  totalPaise       BigInt   @map("total_paise")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdBy        String?  @map("created_by") @db.VarChar(36)
+  updatedBy        String?  @map("updated_by") @db.VarChar(36)
+
+  purchaseOrder     PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  goodsReceiptItems GoodsReceiptItem[]
+
+  @@index([tenantId])
+  @@index([purchaseOrderId])
+  @@map("purchase_order_items")
+}
+
+// ─── GoodsReceipt ─────────────────────────────────────────────────
+
+model GoodsReceipt {
+  id              String             @id @default(uuid()) @db.VarChar(36)
+  tenantId        String             @map("tenant_id") @db.VarChar(36)
+  receiptNumber   String             @map("receipt_number") @db.VarChar(50)
+  purchaseOrderId String             @map("purchase_order_id") @db.VarChar(36)
+  supplierId      String             @map("supplier_id") @db.VarChar(36)
+  locationId      String             @map("location_id") @db.VarChar(36)
+  status          GoodsReceiptStatus @default(DRAFT)
+  receivedDate    DateTime           @map("received_date") @db.Date
+  notes           String?            @db.Text
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  createdBy       String?            @map("created_by") @db.VarChar(36)
+  updatedBy       String?            @map("updated_by") @db.VarChar(36)
+
+  purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
+  items         GoodsReceiptItem[]
+
+  @@unique([tenantId, receiptNumber])
+  @@index([tenantId])
+  @@index([tenantId, purchaseOrderId])
+  @@index([tenantId, status])
+  @@map("goods_receipts")
+}
+
+// ─── GoodsReceiptItem ─────────────────────────────────────────────
+
+model GoodsReceiptItem {
+  id               String   @id @default(uuid()) @db.VarChar(36)
+  tenantId         String   @map("tenant_id") @db.VarChar(36)
+  goodsReceiptId   String   @map("goods_receipt_id") @db.VarChar(36)
+  poItemId         String?  @map("po_item_id") @db.VarChar(36)
+  productId        String   @map("product_id") @db.VarChar(36)
+  receivedQuantity Int      @map("received_quantity")
+  acceptedQuantity Int      @default(0) @map("accepted_quantity")
+  rejectedQuantity Int      @default(0) @map("rejected_quantity")
+  weightMg         BigInt   @map("weight_mg")
+  notes            String?  @db.Text
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdBy        String?  @map("created_by") @db.VarChar(36)
+  updatedBy        String?  @map("updated_by") @db.VarChar(36)
+
+  goodsReceipt GoodsReceipt       @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  poItem       PurchaseOrderItem? @relation(fields: [poItemId], references: [id])
+
+  @@index([tenantId])
+  @@index([goodsReceiptId])
+  @@map("goods_receipt_items")
+}
+
+// ─── ConsignmentOut ───────────────────────────────────────────────
+
+model ConsignmentOut {
+  id                String               @id @default(uuid()) @db.VarChar(36)
+  tenantId          String               @map("tenant_id") @db.VarChar(36)
+  consignmentNumber String               @map("consignment_number") @db.VarChar(50)
+  customerId        String               @map("customer_id") @db.VarChar(36)
+  locationId        String               @map("location_id") @db.VarChar(36)
+  status            ConsignmentOutStatus @default(DRAFT)
+  issuedDate        DateTime?            @map("issued_date") @db.Date
+  dueDate           DateTime?            @map("due_date") @db.Date
+  totalWeightMg     BigInt               @map("total_weight_mg")
+  totalValuePaise   BigInt               @map("total_value_paise")
+  notes             String?              @db.Text
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  createdBy         String?              @map("created_by") @db.VarChar(36)
+  updatedBy         String?              @map("updated_by") @db.VarChar(36)
+
+  customer Customer            @relation("CustomerConsignmentsOut", fields: [customerId], references: [id])
+  location Location            @relation("LocationConsignmentsOut", fields: [locationId], references: [id])
+  items    ConsignmentOutItem[]
+
+  @@unique([tenantId, consignmentNumber])
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@map("consignments_out")
+}
+
+// ─── ConsignmentOutItem ───────────────────────────────────────────
+
+model ConsignmentOutItem {
+  id               String                   @id @default(uuid()) @db.VarChar(36)
+  tenantId         String                   @map("tenant_id") @db.VarChar(36)
+  consignmentOutId String                   @map("consignment_out_id") @db.VarChar(36)
+  productId        String                   @map("product_id") @db.VarChar(36)
+  quantity         Int
+  weightMg         BigInt                   @map("weight_mg")
+  valuePaise       BigInt                   @map("value_paise")
+  returnedQuantity Int                      @default(0) @map("returned_quantity")
+  soldQuantity     Int                      @default(0) @map("sold_quantity")
+  status           ConsignmentOutItemStatus @default(ISSUED)
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  updatedAt        DateTime                 @updatedAt @map("updated_at")
+  createdBy        String?                  @map("created_by") @db.VarChar(36)
+  updatedBy        String?                  @map("updated_by") @db.VarChar(36)
+
+  consignmentOut ConsignmentOut @relation(fields: [consignmentOutId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([consignmentOutId])
+  @@map("consignment_out_items")
+}
+
+// ─── ConsignmentIn ────────────────────────────────────────────────
+
+model ConsignmentIn {
+  id                String              @id @default(uuid()) @db.VarChar(36)
+  tenantId          String              @map("tenant_id") @db.VarChar(36)
+  consignmentNumber String              @map("consignment_number") @db.VarChar(50)
+  supplierId        String              @map("supplier_id") @db.VarChar(36)
+  locationId        String              @map("location_id") @db.VarChar(36)
+  status            ConsignmentInStatus @default(RECEIVED)
+  receivedDate      DateTime?           @map("received_date") @db.Date
+  dueDate           DateTime?           @map("due_date") @db.Date
+  totalWeightMg     BigInt              @map("total_weight_mg")
+  totalValuePaise   BigInt              @map("total_value_paise")
+  notes             String?             @db.Text
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+  createdBy         String?             @map("created_by") @db.VarChar(36)
+  updatedBy         String?             @map("updated_by") @db.VarChar(36)
+
+  supplier Supplier            @relation("SupplierConsignmentsIn", fields: [supplierId], references: [id])
+  location Location            @relation("LocationConsignmentsIn", fields: [locationId], references: [id])
+  items    ConsignmentInItem[]
+
+  @@unique([tenantId, consignmentNumber])
+  @@index([tenantId])
+  @@index([tenantId, supplierId])
+  @@index([tenantId, status])
+  @@map("consignments_in")
+}
+
+// ─── ConsignmentInItem ────────────────────────────────────────────
+
+model ConsignmentInItem {
+  id                String                  @id @default(uuid()) @db.VarChar(36)
+  tenantId          String                  @map("tenant_id") @db.VarChar(36)
+  consignmentInId   String                  @map("consignment_in_id") @db.VarChar(36)
+  productId         String                  @map("product_id") @db.VarChar(36)
+  quantity          Int
+  weightMg          BigInt                  @map("weight_mg")
+  valuePaise        BigInt                  @map("value_paise")
+  returnedQuantity  Int                     @default(0) @map("returned_quantity")
+  purchasedQuantity Int                     @default(0) @map("purchased_quantity")
+  status            ConsignmentInItemStatus @default(RECEIVED)
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+  createdBy         String?                 @map("created_by") @db.VarChar(36)
+  updatedBy         String?                 @map("updated_by") @db.VarChar(36)
+
+  consignmentIn ConsignmentIn @relation(fields: [consignmentInId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([consignmentInId])
+  @@map("consignment_in_items")
+}
+
+// ─── AgentBroker ──────────────────────────────────────────────────
+
+model AgentBroker {
+  id                String         @id @default(uuid()) @db.VarChar(36)
+  tenantId          String         @map("tenant_id") @db.VarChar(36)
+  name              String         @db.VarChar(255)
+  phone             String?        @db.VarChar(20)
+  email             String?        @db.VarChar(255)
+  commissionType    CommissionType @map("commission_type")
+  commissionRate    Int            @map("commission_rate")
+  isActive          Boolean        @default(true) @map("is_active")
+  bankAccountNumber String?        @map("bank_account_number") @db.VarChar(30)
+  ifscCode          String?        @map("ifsc_code") @db.VarChar(11)
+  panNumber         String?        @map("pan_number") @db.VarChar(10)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  createdBy         String?        @map("created_by") @db.VarChar(36)
+  updatedBy         String?        @map("updated_by") @db.VarChar(36)
+
+  commissions AgentCommission[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("agent_brokers")
+}
+
+// ─── AgentCommission ──────────────────────────────────────────────
+
+model AgentCommission {
+  id               String                  @id @default(uuid()) @db.VarChar(36)
+  tenantId         String                  @map("tenant_id") @db.VarChar(36)
+  agentBrokerId    String                  @map("agent_broker_id") @db.VarChar(36)
+  referenceType    CommissionReferenceType @map("reference_type")
+  referenceId      String                  @map("reference_id") @db.VarChar(36)
+  amountPaise      BigInt                  @map("amount_paise")
+  status           CommissionStatus        @default(PENDING)
+  paidAt           DateTime?               @map("paid_at")
+  paymentReference String?                 @map("payment_reference") @db.VarChar(255)
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
+  createdBy        String?                 @map("created_by") @db.VarChar(36)
+  updatedBy        String?                 @map("updated_by") @db.VarChar(36)
+
+  agentBroker AgentBroker @relation(fields: [agentBrokerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, agentBrokerId])
+  @@index([tenantId, status])
+  @@map("agent_commissions")
+}
+
+// ─── CreditLimit ──────────────────────────────────────────────────
+
+model CreditLimit {
+  id               String           @id @default(uuid()) @db.VarChar(36)
+  tenantId         String           @map("tenant_id") @db.VarChar(36)
+  entityType       CreditEntityType @map("entity_type")
+  entityId         String           @map("entity_id") @db.VarChar(36)
+  creditLimitPaise BigInt           @map("credit_limit_paise")
+  usedPaise        BigInt           @default(0) @map("used_paise")
+  availablePaise   BigInt           @map("available_paise")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  createdBy        String?          @map("created_by") @db.VarChar(36)
+  updatedBy        String?          @map("updated_by") @db.VarChar(36)
+
+  @@unique([tenantId, entityType, entityId])
+  @@index([tenantId])
+  @@map("credit_limits")
+}
+
+// ─── OutstandingBalance ───────────────────────────────────────────
+
+model OutstandingBalance {
+  id            String            @id @default(uuid()) @db.VarChar(36)
+  tenantId      String            @map("tenant_id") @db.VarChar(36)
+  entityType    CreditEntityType  @map("entity_type")
+  entityId      String            @map("entity_id") @db.VarChar(36)
+  invoiceId     String            @map("invoice_id") @db.VarChar(36)
+  invoiceNumber String            @map("invoice_number") @db.VarChar(50)
+  invoiceDate   DateTime          @map("invoice_date") @db.Date
+  dueDate       DateTime          @map("due_date") @db.Date
+  originalPaise BigInt            @map("original_paise")
+  paidPaise     BigInt            @default(0) @map("paid_paise")
+  balancePaise  BigInt            @map("balance_paise")
+  status        OutstandingStatus @default(CURRENT)
+  daysOverdue   Int               @default(0) @map("days_overdue")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  createdBy     String?           @map("created_by") @db.VarChar(36)
+  updatedBy     String?           @map("updated_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, status])
+  @@index([tenantId, dueDate])
+  @@map("outstanding_balances")
+}
+
+// ─── RateContract ─────────────────────────────────────────────────
+
+model RateContract {
+  id                   String    @id @default(uuid()) @db.VarChar(36)
+  tenantId             String    @map("tenant_id") @db.VarChar(36)
+  supplierId           String    @map("supplier_id") @db.VarChar(36)
+  productCategoryId    String?   @map("product_category_id") @db.VarChar(36)
+  metalType            String?   @map("metal_type") @db.VarChar(50)
+  ratePerGramPaise     BigInt?   @map("rate_per_gram_paise")
+  makingChargesPercent Int?      @map("making_charges_percent")
+  validFrom            DateTime  @map("valid_from") @db.Date
+  validTo              DateTime  @map("valid_to") @db.Date
+  isActive             Boolean   @default(true) @map("is_active")
+  terms                String?   @db.Text
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  createdBy            String?   @map("created_by") @db.VarChar(36)
+  updatedBy            String?   @map("updated_by") @db.VarChar(36)
+
+  supplier Supplier @relation("SupplierRateContracts", fields: [supplierId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, supplierId])
+  @@index([tenantId, isActive])
+  @@map("rate_contracts")
+}

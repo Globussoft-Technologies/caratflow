@@ -1,0 +1,341 @@
+// ─── CaratFlow Export & International Trade Schema ──────────────
+// Export orders, export invoices (commercial/proforma/customs),
+// shipping documents, customs duty, HS codes, exchange rates,
+// DGFT licenses, and export compliance rules.
+
+// ─── Enums ────────────────────────────────────────────────────────
+
+enum ExportOrderStatus {
+  DRAFT
+  CONFIRMED
+  IN_PRODUCTION
+  READY
+  CUSTOMS_CLEARED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum ExportInvoiceType {
+  COMMERCIAL
+  PROFORMA
+  CUSTOMS
+}
+
+enum ShippingDocumentType {
+  PACKING_LIST
+  SHIPPING_BILL
+  BILL_OF_LADING
+  AIRWAY_BILL
+  CERTIFICATE_OF_ORIGIN
+  ARE1
+  ARE3
+  FORM_A
+  GR_FORM
+  SOFTEX
+  INSURANCE_CERTIFICATE
+  INSPECTION_CERTIFICATE
+}
+
+enum ShippingDocumentStatus {
+  DRAFT
+  ISSUED
+  SUBMITTED
+  VERIFIED
+}
+
+enum DgftLicenseType {
+  ADVANCE_LICENSE
+  DFIA
+  EPCG
+  MEIS
+  RODTEP
+}
+
+enum DgftLicenseStatus {
+  ACTIVE
+  UTILIZED
+  EXPIRED
+  CANCELLED
+}
+
+// ─── ExportOrder ──────────────────────────────────────────────────
+
+model ExportOrder {
+  id              String            @id @default(uuid()) @db.VarChar(36)
+  tenantId        String            @map("tenant_id") @db.VarChar(36)
+  orderNumber     String            @map("order_number") @db.VarChar(50)
+  buyerId         String            @map("buyer_id") @db.VarChar(36)
+  buyerCountry    String            @map("buyer_country") @db.VarChar(2)
+  locationId      String            @map("location_id") @db.VarChar(36)
+  status          ExportOrderStatus @default(DRAFT)
+  currencyCode    String            @map("currency_code") @db.VarChar(3)
+  exchangeRate    Int               @map("exchange_rate") // rate * 10000
+  subtotalPaise   BigInt            @map("subtotal_paise")
+  dutyPaise       BigInt            @default(0) @map("duty_paise")
+  shippingPaise   BigInt            @default(0) @map("shipping_paise")
+  insurancePaise  BigInt            @default(0) @map("insurance_paise")
+  totalPaise      BigInt            @map("total_paise")
+  incoterms       String            @db.VarChar(10) // FOB, CIF, EXW, DDP
+  paymentTerms    String            @map("payment_terms") @db.VarChar(255)
+  notes           String?           @db.Text
+  expectedShipDate DateTime?        @map("expected_ship_date") @db.Date
+  actualShipDate  DateTime?         @map("actual_ship_date") @db.Date
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  createdBy       String?           @map("created_by") @db.VarChar(36)
+  updatedBy       String?           @map("updated_by") @db.VarChar(36)
+
+  buyer              Customer            @relation("ExportOrderBuyer", fields: [buyerId], references: [id])
+  location           Location            @relation("ExportOrderLocation", fields: [locationId], references: [id])
+  items              ExportOrderItem[]
+  invoices           ExportInvoice[]
+  shippingDocuments  ShippingDocument[]
+  customsDuties      CustomsDuty[]
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, buyerId])
+  @@index([tenantId, buyerCountry])
+  @@map("export_orders")
+}
+
+// ─── ExportOrderItem ──────────────────────────────────────────────
+
+model ExportOrderItem {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  tenantId        String   @map("tenant_id") @db.VarChar(36)
+  exportOrderId   String   @map("export_order_id") @db.VarChar(36)
+  productId       String?  @map("product_id") @db.VarChar(36)
+  description     String   @db.VarChar(500)
+  quantity        Int
+  unitPricePaise  BigInt   @map("unit_price_paise")
+  totalPricePaise BigInt   @map("total_price_paise")
+  hsCode          String   @map("hs_code") @db.VarChar(10)
+  weightMg        BigInt   @map("weight_mg")
+  metalPurity     Int?     @map("metal_purity")
+  countryOfOrigin String   @default("IN") @map("country_of_origin") @db.VarChar(2)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdBy       String?  @map("created_by") @db.VarChar(36)
+  updatedBy       String?  @map("updated_by") @db.VarChar(36)
+
+  exportOrder      ExportOrder        @relation(fields: [exportOrderId], references: [id], onDelete: Cascade)
+  product          Product?           @relation("ExportOrderItemProduct", fields: [productId], references: [id])
+  invoiceItems     ExportInvoiceItem[]
+
+  @@index([tenantId])
+  @@index([exportOrderId])
+  @@map("export_order_items")
+}
+
+// ─── ExportInvoice ────────────────────────────────────────────────
+
+model ExportInvoice {
+  id              String            @id @default(uuid()) @db.VarChar(36)
+  tenantId        String            @map("tenant_id") @db.VarChar(36)
+  invoiceNumber   String            @map("invoice_number") @db.VarChar(50)
+  exportOrderId   String            @map("export_order_id") @db.VarChar(36)
+  invoiceType     ExportInvoiceType @map("invoice_type")
+  buyerId         String            @map("buyer_id") @db.VarChar(36)
+  currencyCode    String            @map("currency_code") @db.VarChar(3)
+  exchangeRate    Int               @map("exchange_rate") // rate * 10000
+  subtotalPaise   BigInt            @map("subtotal_paise")
+  totalPaise      BigInt            @map("total_paise")
+  igstPaise       BigInt            @default(0) @map("igst_paise")
+  lutNumber       String?           @map("lut_number") @db.VarChar(100)
+  lutDate         DateTime?         @map("lut_date") @db.Date
+  adCode          String?           @map("ad_code") @db.VarChar(20)
+  ieCode          String            @map("ie_code") @db.VarChar(20)
+  preCarriageBy   String?           @map("pre_carriage_by") @db.VarChar(100)
+  placeOfReceipt  String?           @map("place_of_receipt") @db.VarChar(255)
+  vesselFlightNo  String?           @map("vessel_flight_no") @db.VarChar(100)
+  portOfLoading   String?           @map("port_of_loading") @db.VarChar(255)
+  portOfDischarge String?           @map("port_of_discharge") @db.VarChar(255)
+  finalDestination String?          @map("final_destination") @db.VarChar(255)
+  terms           String?           @db.Text
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  createdBy       String?           @map("created_by") @db.VarChar(36)
+  updatedBy       String?           @map("updated_by") @db.VarChar(36)
+
+  exportOrder ExportOrder         @relation(fields: [exportOrderId], references: [id])
+  buyer       Customer            @relation("ExportInvoiceBuyer", fields: [buyerId], references: [id])
+  items       ExportInvoiceItem[]
+
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId])
+  @@index([tenantId, invoiceType])
+  @@index([tenantId, exportOrderId])
+  @@index([tenantId, buyerId])
+  @@map("export_invoices")
+}
+
+// ─── ExportInvoiceItem ────────────────────────────────────────────
+
+model ExportInvoiceItem {
+  id                 String   @id @default(uuid()) @db.VarChar(36)
+  tenantId           String   @map("tenant_id") @db.VarChar(36)
+  invoiceId          String   @map("invoice_id") @db.VarChar(36)
+  exportOrderItemId  String?  @map("export_order_item_id") @db.VarChar(36)
+  description        String   @db.VarChar(500)
+  quantity           Int
+  unitPricePaise     BigInt   @map("unit_price_paise")
+  totalPricePaise    BigInt   @map("total_price_paise")
+  hsCode             String   @map("hs_code") @db.VarChar(10)
+  weightMg           BigInt   @map("weight_mg")
+  netWeightMg        BigInt   @map("net_weight_mg")
+  countryOfOrigin    String   @default("IN") @map("country_of_origin") @db.VarChar(2)
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  invoice         ExportInvoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  exportOrderItem ExportOrderItem? @relation(fields: [exportOrderItemId], references: [id])
+
+  @@index([tenantId])
+  @@index([invoiceId])
+  @@map("export_invoice_items")
+}
+
+// ─── ShippingDocument ─────────────────────────────────────────────
+
+model ShippingDocument {
+  id             String                 @id @default(uuid()) @db.VarChar(36)
+  tenantId       String                 @map("tenant_id") @db.VarChar(36)
+  exportOrderId  String                 @map("export_order_id") @db.VarChar(36)
+  documentType   ShippingDocumentType   @map("document_type")
+  documentNumber String?                @map("document_number") @db.VarChar(100)
+  issuedDate     DateTime?              @map("issued_date") @db.Date
+  expiryDate     DateTime?              @map("expiry_date") @db.Date
+  fileUrl        String?                @map("file_url") @db.VarChar(500)
+  status         ShippingDocumentStatus @default(DRAFT)
+  notes          String?                @db.Text
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  createdBy      String?                @map("created_by") @db.VarChar(36)
+  updatedBy      String?                @map("updated_by") @db.VarChar(36)
+
+  exportOrder ExportOrder @relation(fields: [exportOrderId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, exportOrderId])
+  @@index([tenantId, documentType])
+  @@index([tenantId, status])
+  @@map("shipping_documents")
+}
+
+// ─── CustomsDuty ──────────────────────────────────────────────────
+
+model CustomsDuty {
+  id                   String  @id @default(uuid()) @db.VarChar(36)
+  tenantId             String  @map("tenant_id") @db.VarChar(36)
+  exportOrderId        String? @map("export_order_id") @db.VarChar(36)
+  importCountry        String  @map("import_country") @db.VarChar(2)
+  hsCode               String  @map("hs_code") @db.VarChar(10)
+  dutyRate             Int     @map("duty_rate") // percent * 100
+  dutyAmountPaise      BigInt  @map("duty_amount_paise")
+  cessRate             Int?    @map("cess_rate") // percent * 100
+  cessAmountPaise      BigInt? @map("cess_amount_paise")
+  assessableValuePaise BigInt  @map("assessable_value_paise")
+  exemptions           Json?   @map("exemptions")
+  notes                String? @db.Text
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  createdBy            String?  @map("created_by") @db.VarChar(36)
+  updatedBy            String?  @map("updated_by") @db.VarChar(36)
+
+  exportOrder ExportOrder? @relation(fields: [exportOrderId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, importCountry])
+  @@index([tenantId, hsCode])
+  @@map("customs_duties")
+}
+
+// ─── HsCode (Global Reference - NOT tenant-scoped) ───────────────
+
+model HsCode {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  hsCode          String   @unique @map("hs_code") @db.VarChar(10)
+  description     String   @db.VarChar(500)
+  chapter         String   @db.VarChar(10)
+  heading         String   @db.VarChar(10)
+  subheading      String   @db.VarChar(10)
+  defaultDutyRate Int      @default(0) @map("default_duty_rate") // percent * 100
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([chapter])
+  @@index([isActive])
+  @@map("hs_codes")
+}
+
+// ─── ExchangeRateHistory ──────────────────────────────────────────
+
+model ExchangeRateHistory {
+  id            String   @id @default(uuid()) @db.VarChar(36)
+  tenantId      String   @map("tenant_id") @db.VarChar(36)
+  fromCurrency  String   @map("from_currency") @db.VarChar(3)
+  toCurrency    String   @map("to_currency") @db.VarChar(3)
+  rate          Int      // rate * 10000
+  source        String   @db.VarChar(50) // RBI, MANUAL, API
+  recordedDate  DateTime @map("recorded_date")
+  effectiveDate DateTime @map("effective_date") @db.Date
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  createdBy     String?  @map("created_by") @db.VarChar(36)
+  updatedBy     String?  @map("updated_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@index([tenantId, fromCurrency, toCurrency])
+  @@index([tenantId, effectiveDate])
+  @@map("exchange_rate_history")
+}
+
+// ─── ExportCompliance (Global Reference - NOT tenant-scoped) ──────
+
+model ExportCompliance {
+  id                  String  @id @default(uuid()) @db.VarChar(36)
+  destinationCountry  String  @map("destination_country") @db.VarChar(2)
+  productCategory     String  @map("product_category") @db.VarChar(100)
+  requiresHallmark    Boolean @default(false) @map("requires_hallmark")
+  requiresCertificate Boolean @default(false) @map("requires_certificate")
+  restrictedItems     Json?   @map("restricted_items")
+  dutyExemptions      Json?   @map("duty_exemptions")
+  notes               String? @db.Text
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@unique([destinationCountry, productCategory])
+  @@index([destinationCountry])
+  @@map("export_compliance")
+}
+
+// ─── DgftLicense ──────────────────────────────────────────────────
+
+model DgftLicense {
+  id                String           @id @default(uuid()) @db.VarChar(36)
+  tenantId          String           @map("tenant_id") @db.VarChar(36)
+  licenseNumber     String           @map("license_number") @db.VarChar(100)
+  licenseType       DgftLicenseType  @map("license_type")
+  issuedDate        DateTime         @map("issued_date") @db.Date
+  expiryDate        DateTime         @map("expiry_date") @db.Date
+  valuePaise        BigInt           @map("value_paise")
+  usedValuePaise    BigInt           @default(0) @map("used_value_paise")
+  balanceValuePaise BigInt           @map("balance_value_paise")
+  status            DgftLicenseStatus @default(ACTIVE)
+  fileUrl           String?          @map("file_url") @db.VarChar(500)
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  createdBy         String?          @map("created_by") @db.VarChar(36)
+  updatedBy         String?          @map("updated_by") @db.VarChar(36)
+
+  @@unique([tenantId, licenseNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, licenseType])
+  @@index([expiryDate])
+  @@map("dgft_licenses")
+}

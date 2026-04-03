@@ -1,0 +1,490 @@
+// ─── CRM tRPC Router ──────────────────────────────────────────
+// All CRM procedures exposed via tRPC.
+
+import { Injectable } from '@nestjs/common';
+import { TrpcService } from '../../trpc/trpc.service';
+import { CrmService } from './crm.service';
+import { CrmLoyaltyService } from './crm.loyalty.service';
+import { CrmNotificationService } from './crm.notification.service';
+import { CrmCampaignService } from './crm.campaign.service';
+import { CrmLeadService } from './crm.lead.service';
+import { CrmFeedbackService } from './crm.feedback.service';
+import { z } from 'zod';
+import {
+  CustomerSearchInputSchema,
+  CustomerListFilterSchema,
+  LoyaltyProgramInputSchema,
+  LoyaltyTransactionInputSchema,
+  CustomerOccasionInputSchema,
+  CustomerInteractionInputSchema,
+  NotificationTemplateInputSchema,
+  SendNotificationInputSchema,
+  CampaignInputSchema,
+  AudienceFilterCriteriaSchema,
+  LeadInputSchema,
+  LeadActivityInputSchema,
+  LeadStatusUpdateSchema,
+  FeedbackInputSchema,
+  CustomerSegmentInputSchema,
+  SegmentCriteriaSchema,
+} from '@caratflow/shared-types';
+
+@Injectable()
+export class CrmTrpcRouter {
+  constructor(
+    private readonly trpc: TrpcService,
+    private readonly crmService: CrmService,
+    private readonly loyaltyService: CrmLoyaltyService,
+    private readonly notificationService: CrmNotificationService,
+    private readonly campaignService: CrmCampaignService,
+    private readonly leadService: CrmLeadService,
+    private readonly feedbackService: CrmFeedbackService,
+  ) {}
+
+  get router() {
+    const authed = this.trpc.authedProcedure;
+
+    return this.trpc.router({
+      // ─── Dashboard ──────────────────────────────────────────
+      dashboard: authed.query(async ({ ctx }) => {
+        return this.crmService.getDashboard(ctx.tenantId);
+      }),
+
+      // ─── Customer ───────────────────────────────────────────
+      customer360: authed
+        .input(z.object({ customerId: z.string().uuid() }))
+        .query(async ({ ctx, input }) => {
+          return this.crmService.getCustomer360(ctx.tenantId, input.customerId);
+        }),
+
+      customerSearch: authed
+        .input(CustomerSearchInputSchema)
+        .query(async ({ ctx, input }) => {
+          return this.crmService.searchCustomers(ctx.tenantId, input);
+        }),
+
+      customerList: authed
+        .input(CustomerListFilterSchema)
+        .query(async ({ ctx, input }) => {
+          return this.crmService.listCustomers(ctx.tenantId, input);
+        }),
+
+      customerImport: authed
+        .input(z.object({
+          rows: z.array(z.object({
+            firstName: z.string(),
+            lastName: z.string(),
+            phone: z.string().optional(),
+            email: z.string().optional(),
+            city: z.string().optional(),
+            customerType: z.string().optional(),
+          })),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          return this.crmService.importCustomers(ctx.tenantId, ctx.userId, input.rows);
+        }),
+
+      // ─── Occasions ──────────────────────────────────────────
+      occasionCreate: authed
+        .input(CustomerOccasionInputSchema)
+        .mutation(async ({ ctx, input }) => {
+          return this.prismaCreateOccasion(ctx.tenantId, ctx.userId, input);
+        }),
+
+      occasionList: authed
+        .input(z.object({ customerId: z.string().uuid() }))
+        .query(async ({ ctx, input }) => {
+          return this.prismaListOccasions(ctx.tenantId, input.customerId);
+        }),
+
+      occasionDelete: authed
+        .input(z.object({ id: z.string().uuid() }))
+        .mutation(async ({ ctx, input }) => {
+          return this.prismaDeleteOccasion(ctx.tenantId, input.id);
+        }),
+
+      // ─── Interactions ───────────────────────────────────────
+      interactionCreate: authed
+        .input(CustomerInteractionInputSchema)
+        .mutation(async ({ ctx, input }) => {
+          return this.prismaCreateInteraction(ctx.tenantId, ctx.userId, input);
+        }),
+
+      interactionList: authed
+        .input(z.object({ customerId: z.string().uuid(), page: z.number().default(1), limit: z.number().default(20) }))
+        .query(async ({ ctx, input }) => {
+          return this.prismaListInteractions(ctx.tenantId, input.customerId, input.page, input.limit);
+        }),
+
+      // ─── Loyalty ────────────────────────────────────────────
+      loyaltyProgramCreate: authed
+        .input(LoyaltyProgramInputSchema)
+        .mutation(async ({ ctx, input }) => {
+          return this.loyaltyService.createProgram(ctx.tenantId, ctx.userId, input);
+        }),
+
+      loyaltyProgramUpdate: authed
+        .input(z.object({ id: z.string().uuid() }).merge(LoyaltyProgramInputSchema.partial()))
+        .mutation(async ({ ctx, input }) => {
+          const { id, ...data } = input;
+          return this.loyaltyService.updateProgram(ctx.tenantId, ctx.userId, id, data);
+        }),
+
+      loyaltyProgramList: authed.query(async ({ ctx }) => {
+        return this.loyaltyService.listPrograms(ctx.tenantId);
+      }),
+
+      loyaltyProgramActive: authed.query(async ({ ctx }) => {
+        return this.loyaltyService.getActiveProgram(ctx.tenantId);
+      }),
+
+      loyaltyEarnPoints: authed
+        .input(z.object({
+          customerId: z.string().uuid(),
+          points: z.number().int().positive(),
+          referenceType: z.string(),
+          referenceId: z.string().uuid(),
+          description: z.string().optional(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          return this.loyaltyService.earnPoints(
+            ctx.tenantId, ctx.userId, input.customerId,
+            input.points, input.referenceType, input.referenceId, input.description,
+          );
+        }),
+
+      loyaltyRedeemPoints: authed
+        .input(z.object({
+          customerId: z.string().uuid(),
+          points: z.number().int().positive(),
+          referenceType: z.string(),
+          referenceId: z.string().uuid(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          return this.loyaltyService.redeemPoints(
+            ctx.tenantId, ctx.userId, input.customerId,
+            input.points, input.referenceType, input.referenceId,
+          );
+        }),
+
+      loyaltyAdjustPoints: authed
+        .input(LoyaltyTransactionInputSchema)
+        .mutation(async ({ ctx, input }) => {
+          return this.loyaltyService.adjustPoints(ctx.tenantId, ctx.userId, input);
+        }),
+
+      loyaltyBalance: authed
+        .input(z.object({ customerId: z.string().uuid() }))
+        .query(async ({ ctx, input }) => {
+          return this.loyaltyService.getBalance(ctx.tenantId, input.customerId);
+        }),
+
+      loyaltyTransactions: authed
+        .input(z.object({ customerId: z.string().uuid(), page: z.number().default(1), limit: z.number().default(20) }))
+        .query(async ({ ctx, input }) => {
+          return this.loyaltyService.getTransactionHistory(ctx.tenantId, input.customerId, input.page, input.limit);
+        }),
+
+      // ─── Notifications ──────────────────────────────────────
+      notificationTemplateCreate: authed
+        .input(NotificationTemplateInputSchema)
+        .mutation(async ({ ctx, input }) => {
+          return this.notificationService.createTemplate(ctx.tenantId, ctx.userId, input);
+        }),
+
+      notificationTemplateUpdate: authed
+        .input(z.object({ id: z.string().uuid() }).merge(NotificationTemplateInputSchema.partial()))
+        .mutation(async ({ ctx, input }) => {
+          const { id, ...data } = input;
+          return this.notificationService.updateTemplate(ctx.tenantId, ctx.userId, id, data);
+        }),
+
+      notificationTemplateList: authed
+        .input(z.object({ channel: z.string().optional() }).optional())
+        .query(async ({ ctx, input }) => {
+          return this.notificationService.listTemplates(ctx.tenantId, input?.channel);
+        }),
+
+      notificationTemplateGet: authed
+        .input(z.object({ id: z.string().uuid() }))
+        .query(async ({ ctx, input }) => {
+          return this.notificationService.getTemplate(ctx.tenantId, input.id);
+        }),
+
+      notificationTemplateDelete: authed
+        .input(z.object({ id: z.string().uuid() }))
+        .mutation(async ({ ctx, input }) => {
+          return this.notificationService.deleteTemplate(ctx.tenantId, input.id);
+        }),
+
+      notificationSend: authed
+        .input(SendNotificationInputSchema)
+        .mutation(async ({ ctx, input }) => {
+          return this.notificationService.sendNotification(ctx.tenantId, ctx.userId, input);
+        }),
+
+      notificationLogs: authed
+        .input(z.object({ page: z.number().default(1), limit: z.number().default(20), status: z.string().optional() }))
+        .query(async ({ ctx, input }) => {
+          return this.notificationService.listNotificationLogs(ctx.tenantId, input.page, input.limit, input.status);
+        }),
+
+      // ─── Campaigns ──────────────────────────────────────────
+      campaignCreate: authed
+        .input(CampaignInputSchema)
+        .mutation(async ({ ctx, input }) => {
+          return this.campaignService.createCampaign(ctx.tenantId, ctx.userId, input);
+        }),
+
+      campaignUpdate: authed
+        .input(z.object({ id: z.string().uuid() }).merge(CampaignInputSchema.partial()))
+        .mutation(async ({ ctx, input }) => {
+          const { id, ...data } = input;
+          return this.campaignService.updateCampaign(ctx.tenantId, ctx.userId, id, data);
+        }),
+
+      campaignGet: authed
+        .input(z.object({ id: z.string().uuid() }))
+        .query(async ({ ctx, input }) => {
+          return this.campaignService.getCampaign(ctx.tenantId, input.id);
+        }),
+
+      campaignList: authed
+        .input(z.object({ page: z.number().default(1), limit: z.number().default(20), status: z.string().optional() }))
+        .query(async ({ ctx, input }) => {
+          return this.campaignService.listCampaigns(ctx.tenantId, input.page, input.limit, input.status);
+        }),
+
+      campaignPreviewAudience: authed
+        .input(AudienceFilterCriteriaSchema)
+        .query(async ({ ctx, input }) => {
+          return this.campaignService.previewAudience(ctx.tenantId, input);
+        }),
+
+      campaignExecute: authed
+        .input(z.object({ id: z.string().uuid() }))
+        .mutation(async ({ ctx, input }) => {
+          return this.campaignService.executeCampaign(ctx.tenantId, ctx.userId, input.id);
+        }),
+
+      campaignPause: authed
+        .input(z.object({ id: z.string().uuid() }))
+        .mutation(async ({ ctx, input }) => {
+          return this.campaignService.pauseCampaign(ctx.tenantId, ctx.userId, input.id);
+        }),
+
+      campaignCancel: authed
+        .input(z.object({ id: z.string().uuid() }))
+        .mutation(async ({ ctx, input }) => {
+          return this.campaignService.cancelCampaign(ctx.tenantId, ctx.userId, input.id);
+        }),
+
+      // ─── Leads ──────────────────────────────────────────────
+      leadCreate: authed
+        .input(LeadInputSchema)
+        .mutation(async ({ ctx, input }) => {
+          return this.leadService.createLead(ctx.tenantId, ctx.userId, input);
+        }),
+
+      leadUpdate: authed
+        .input(z.object({ id: z.string().uuid() }).merge(LeadInputSchema.partial()))
+        .mutation(async ({ ctx, input }) => {
+          const { id, ...data } = input;
+          return this.leadService.updateLead(ctx.tenantId, ctx.userId, id, data);
+        }),
+
+      leadGet: authed
+        .input(z.object({ id: z.string().uuid() }))
+        .query(async ({ ctx, input }) => {
+          return this.leadService.getLead(ctx.tenantId, input.id);
+        }),
+
+      leadList: authed
+        .input(z.object({
+          page: z.number().default(1),
+          limit: z.number().default(20),
+          status: z.string().optional(),
+          assignedTo: z.string().optional(),
+        }))
+        .query(async ({ ctx, input }) => {
+          return this.leadService.listLeads(ctx.tenantId, input.page, input.limit, input.status, input.assignedTo);
+        }),
+
+      leadPipeline: authed.query(async ({ ctx }) => {
+        return this.leadService.getLeadPipeline(ctx.tenantId);
+      }),
+
+      leadUpdateStatus: authed
+        .input(LeadStatusUpdateSchema)
+        .mutation(async ({ ctx, input }) => {
+          return this.leadService.updateLeadStatus(ctx.tenantId, ctx.userId, input);
+        }),
+
+      leadAssign: authed
+        .input(z.object({ leadId: z.string().uuid(), assignToUserId: z.string().uuid() }))
+        .mutation(async ({ ctx, input }) => {
+          return this.leadService.assignLead(ctx.tenantId, ctx.userId, input.leadId, input.assignToUserId);
+        }),
+
+      leadConvert: authed
+        .input(z.object({ leadId: z.string().uuid() }))
+        .mutation(async ({ ctx, input }) => {
+          return this.leadService.convertToCustomer(ctx.tenantId, ctx.userId, input.leadId);
+        }),
+
+      leadActivityCreate: authed
+        .input(LeadActivityInputSchema)
+        .mutation(async ({ ctx, input }) => {
+          return this.leadService.addActivity(ctx.tenantId, ctx.userId, input);
+        }),
+
+      leadActivities: authed
+        .input(z.object({ leadId: z.string().uuid() }))
+        .query(async ({ ctx, input }) => {
+          return this.leadService.listActivities(ctx.tenantId, input.leadId);
+        }),
+
+      leadOverdueFollowUps: authed.query(async ({ ctx }) => {
+        return this.leadService.getOverdueFollowUps(ctx.tenantId);
+      }),
+
+      // ─── Feedback ───────────────────────────────────────────
+      feedbackCreate: authed
+        .input(FeedbackInputSchema)
+        .mutation(async ({ ctx, input }) => {
+          return this.feedbackService.createFeedback(ctx.tenantId, ctx.userId, input);
+        }),
+
+      feedbackGet: authed
+        .input(z.object({ id: z.string().uuid() }))
+        .query(async ({ ctx, input }) => {
+          return this.feedbackService.getFeedback(ctx.tenantId, input.id);
+        }),
+
+      feedbackList: authed
+        .input(z.object({
+          page: z.number().default(1),
+          limit: z.number().default(20),
+          status: z.string().optional(),
+          feedbackType: z.string().optional(),
+        }))
+        .query(async ({ ctx, input }) => {
+          return this.feedbackService.listFeedback(ctx.tenantId, input.page, input.limit, input.status, input.feedbackType);
+        }),
+
+      feedbackReview: authed
+        .input(z.object({ id: z.string().uuid() }))
+        .mutation(async ({ ctx, input }) => {
+          return this.feedbackService.reviewFeedback(ctx.tenantId, ctx.userId, input.id);
+        }),
+
+      feedbackAction: authed
+        .input(z.object({ id: z.string().uuid() }))
+        .mutation(async ({ ctx, input }) => {
+          return this.feedbackService.actionFeedback(ctx.tenantId, ctx.userId, input.id);
+        }),
+
+      feedbackAverageRating: authed
+        .input(z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional() }))
+        .query(async ({ ctx, input }) => {
+          return this.feedbackService.getAverageRating(ctx.tenantId, input.from, input.to);
+        }),
+
+      feedbackRatingDistribution: authed.query(async ({ ctx }) => {
+        return this.feedbackService.getRatingDistribution(ctx.tenantId);
+      }),
+
+      // ─── Segments ───────────────────────────────────────────
+      segmentCreate: authed
+        .input(CustomerSegmentInputSchema)
+        .mutation(async ({ ctx, input }) => {
+          return this.crmService.createSegment(ctx.tenantId, ctx.userId, input);
+        }),
+
+      segmentList: authed.query(async ({ ctx }) => {
+        return this.crmService.listSegments(ctx.tenantId);
+      }),
+
+      segmentEvaluate: authed
+        .input(SegmentCriteriaSchema)
+        .query(async ({ ctx, input }) => {
+          return this.crmService.evaluateSegment(ctx.tenantId, input);
+        }),
+
+      segmentRefresh: authed
+        .input(z.object({ id: z.string().uuid() }))
+        .mutation(async ({ ctx, input }) => {
+          return this.crmService.refreshSegment(ctx.tenantId, input.id);
+        }),
+    });
+  }
+
+  // ─── Inline Prisma helpers for occasions/interactions ─────────
+  // These are simple enough to not need separate services.
+
+  private async prismaCreateOccasion(tenantId: string, userId: string, input: z.infer<typeof CustomerOccasionInputSchema>) {
+    const { PrismaService } = await import('../../common/prisma.service');
+    // Access prisma via the CRM service which has it injected
+    return (this.crmService as unknown as { prisma: InstanceType<typeof PrismaService> }).prisma.customerOccasion.create({
+      data: {
+        tenantId,
+        customerId: input.customerId,
+        occasionType: input.occasionType,
+        date: input.date,
+        description: input.description,
+        reminderDaysBefore: input.reminderDaysBefore,
+        createdBy: userId,
+        updatedBy: userId,
+      },
+    });
+  }
+
+  private async prismaListOccasions(tenantId: string, customerId: string) {
+    const { PrismaService } = await import('../../common/prisma.service');
+    return (this.crmService as unknown as { prisma: InstanceType<typeof PrismaService> }).prisma.customerOccasion.findMany({
+      where: { tenantId, customerId },
+      orderBy: { date: 'asc' },
+    });
+  }
+
+  private async prismaDeleteOccasion(tenantId: string, id: string) {
+    const { PrismaService } = await import('../../common/prisma.service');
+    const prisma = (this.crmService as unknown as { prisma: InstanceType<typeof PrismaService> }).prisma;
+    await prisma.customerOccasion.findFirstOrThrow({ where: { id, tenantId } });
+    return prisma.customerOccasion.delete({ where: { id } });
+  }
+
+  private async prismaCreateInteraction(tenantId: string, userId: string, input: z.infer<typeof CustomerInteractionInputSchema>) {
+    const { PrismaService } = await import('../../common/prisma.service');
+    return (this.crmService as unknown as { prisma: InstanceType<typeof PrismaService> }).prisma.customerInteraction.create({
+      data: {
+        tenantId,
+        customerId: input.customerId,
+        interactionType: input.interactionType,
+        direction: input.direction,
+        subject: input.subject,
+        content: input.content,
+        userId: input.userId ?? userId,
+        attachments: input.attachments ?? undefined,
+        createdBy: userId,
+        updatedBy: userId,
+      },
+    });
+  }
+
+  private async prismaListInteractions(tenantId: string, customerId: string, page: number, limit: number) {
+    const { PrismaService } = await import('../../common/prisma.service');
+    const prisma = (this.crmService as unknown as { prisma: InstanceType<typeof PrismaService> }).prisma;
+    const [items, total] = await Promise.all([
+      prisma.customerInteraction.findMany({
+        where: { tenantId, customerId },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.customerInteraction.count({ where: { tenantId, customerId } }),
+    ]);
+    const totalPages = Math.ceil(total / limit);
+    return { items, total, page, limit, totalPages, hasNext: page < totalPages, hasPrevious: page > 1 };
+  }
+}

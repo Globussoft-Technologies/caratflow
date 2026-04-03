@@ -1,0 +1,442 @@
+// ─── CaratFlow India-Specific Domain Schema ────────────────────
+// Girvi (mortgage lending), Kitty/Chit schemes, Gold Savings,
+// MCX/IBJA rate feed, and KYC verification.
+
+// ─── Enums ────────────────────────────────────────────────────────
+
+enum GirviLoanStatus {
+  ACTIVE
+  PARTIALLY_PAID
+  CLOSED
+  AUCTIONED
+  DEFAULTED
+}
+
+enum GirviInterestType {
+  SIMPLE
+  COMPOUND
+}
+
+enum GirviCompoundingPeriod {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum GirviPaymentType {
+  INTEREST_ONLY
+  PRINCIPAL_ONLY
+  BOTH
+  CLOSURE
+}
+
+enum GirviPaymentMethod {
+  CASH
+  BANK_TRANSFER
+  UPI
+  CHEQUE
+}
+
+enum GirviAuctionStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum KittySchemeType {
+  KITTY
+  CHIT
+}
+
+enum KittySchemeStatus {
+  OPEN
+  ACTIVE
+  MATURED
+  CANCELLED
+}
+
+enum KittyMemberStatus {
+  ACTIVE
+  COMPLETED
+  DEFAULTED
+  WITHDRAWN
+}
+
+enum KittyInstallmentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  WAIVED
+}
+
+enum GoldSavingsSchemeStatus {
+  OPEN
+  ACTIVE
+  CLOSED
+}
+
+enum GoldSavingsMemberStatus {
+  ACTIVE
+  MATURED
+  REDEEMED
+  CANCELLED
+}
+
+enum GoldSavingsInstallmentStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+enum KycVerificationType {
+  AADHAAR
+  PAN
+  VOTER_ID
+  PASSPORT
+  DRIVING_LICENSE
+}
+
+enum KycVerificationStatus {
+  PENDING
+  VERIFIED
+  FAILED
+  EXPIRED
+}
+
+// ─── Girvi Loan ───────────────────────────────────────────────────
+
+model GirviLoan {
+  id                      String              @id @default(uuid()) @db.VarChar(36)
+  tenantId                String              @map("tenant_id") @db.VarChar(36)
+  loanNumber              String              @map("loan_number") @db.VarChar(50)
+  customerId              String              @map("customer_id") @db.VarChar(36)
+  locationId              String              @map("location_id") @db.VarChar(36)
+  status                  GirviLoanStatus     @default(ACTIVE)
+  collateralDescription   String              @map("collateral_description") @db.Text
+  collateralImages        Json?               @map("collateral_images")
+  metalType               String              @map("metal_type") @db.VarChar(20)
+  grossWeightMg           BigInt              @map("gross_weight_mg")
+  netWeightMg             BigInt              @map("net_weight_mg")
+  purityFineness          Int                 @map("purity_fineness")
+  appraisedValuePaise     BigInt              @map("appraised_value_paise")
+  loanAmountPaise         BigInt              @map("loan_amount_paise")
+  interestRate            Int                 @map("interest_rate") // annual percent * 100
+  interestType            GirviInterestType   @map("interest_type")
+  compoundingPeriod       GirviCompoundingPeriod? @map("compounding_period")
+  disbursedDate           DateTime            @map("disbursed_date") @db.Date
+  dueDate                 DateTime            @map("due_date") @db.Date
+  closedDate              DateTime?           @map("closed_date") @db.Date
+  totalInterestPaidPaise  BigInt              @default(0) @map("total_interest_paid_paise")
+  totalPrincipalPaidPaise BigInt              @default(0) @map("total_principal_paid_paise")
+  outstandingPrincipalPaise BigInt            @map("outstanding_principal_paise")
+  outstandingInterestPaise BigInt             @default(0) @map("outstanding_interest_paise")
+  aadhaarVerified         Boolean             @default(false) @map("aadhaar_verified")
+  panVerified             Boolean             @default(false) @map("pan_verified")
+  notes                   String?             @db.Text
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
+  createdBy               String?             @map("created_by") @db.VarChar(36)
+  updatedBy               String?             @map("updated_by") @db.VarChar(36)
+
+  customer  Customer          @relation(fields: [customerId], references: [id])
+  location  Location          @relation(fields: [locationId], references: [id])
+  payments  GirviPayment[]
+  accruals  GirviInterestAccrual[]
+  auctions  GirviAuction[]
+
+  @@unique([tenantId, loanNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([tenantId, dueDate])
+  @@map("girvi_loans")
+}
+
+// ─── Girvi Payment ────────────────────────────────────────────────
+
+model GirviPayment {
+  id            String             @id @default(uuid()) @db.VarChar(36)
+  tenantId      String             @map("tenant_id") @db.VarChar(36)
+  girviLoanId   String             @map("girvi_loan_id") @db.VarChar(36)
+  paymentDate   DateTime           @map("payment_date") @db.Date
+  paymentType   GirviPaymentType   @map("payment_type")
+  principalPaise BigInt            @default(0) @map("principal_paise")
+  interestPaise BigInt             @default(0) @map("interest_paise")
+  totalPaise    BigInt             @map("total_paise")
+  method        GirviPaymentMethod
+  reference     String?            @db.VarChar(255)
+  receivedBy    String?            @map("received_by") @db.VarChar(255)
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  createdBy     String?            @map("created_by") @db.VarChar(36)
+  updatedBy     String?            @map("updated_by") @db.VarChar(36)
+
+  girviLoan GirviLoan @relation(fields: [girviLoanId], references: [id])
+
+  @@index([tenantId])
+  @@index([girviLoanId])
+  @@map("girvi_payments")
+}
+
+// ─── Girvi Interest Accrual ───────────────────────────────────────
+
+model GirviInterestAccrual {
+  id                      String   @id @default(uuid()) @db.VarChar(36)
+  tenantId                String   @map("tenant_id") @db.VarChar(36)
+  girviLoanId             String   @map("girvi_loan_id") @db.VarChar(36)
+  accrualDate             DateTime @map("accrual_date") @db.Date
+  daysCalculated          Int      @map("days_calculated")
+  principalPaise          BigInt   @map("principal_paise")
+  rateBps                 Int      @map("rate_bps") // basis points
+  interestPaise           BigInt   @map("interest_paise")
+  cumulativeInterestPaise BigInt   @map("cumulative_interest_paise")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  girviLoan GirviLoan @relation(fields: [girviLoanId], references: [id])
+
+  @@index([tenantId])
+  @@index([girviLoanId])
+  @@index([girviLoanId, accrualDate])
+  @@map("girvi_interest_accruals")
+}
+
+// ─── Girvi Auction ────────────────────────────────────────────────
+
+model GirviAuction {
+  id              String             @id @default(uuid()) @db.VarChar(36)
+  tenantId        String             @map("tenant_id") @db.VarChar(36)
+  girviLoanId     String             @map("girvi_loan_id") @db.VarChar(36)
+  auctionDate     DateTime           @map("auction_date") @db.Date
+  reservePricePaise BigInt           @map("reserve_price_paise")
+  soldPricePaise  BigInt?            @map("sold_price_paise")
+  buyerName       String?            @map("buyer_name") @db.VarChar(255)
+  buyerPhone      String?            @map("buyer_phone") @db.VarChar(20)
+  status          GirviAuctionStatus @default(SCHEDULED)
+  notes           String?            @db.Text
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  createdBy       String?            @map("created_by") @db.VarChar(36)
+  updatedBy       String?            @map("updated_by") @db.VarChar(36)
+
+  girviLoan GirviLoan @relation(fields: [girviLoanId], references: [id])
+
+  @@index([tenantId])
+  @@index([girviLoanId])
+  @@index([tenantId, status])
+  @@map("girvi_auctions")
+}
+
+// ─── Kitty Scheme ─────────────────────────────────────────────────
+
+model KittyScheme {
+  id                String           @id @default(uuid()) @db.VarChar(36)
+  tenantId          String           @map("tenant_id") @db.VarChar(36)
+  schemeName        String           @map("scheme_name") @db.VarChar(255)
+  schemeType        KittySchemeType   @map("scheme_type")
+  monthlyAmountPaise BigInt          @map("monthly_amount_paise")
+  durationMonths    Int              @map("duration_months")
+  totalValuePaise   BigInt           @map("total_value_paise")
+  bonusPercent      Int?             @map("bonus_percent") // percent * 100
+  startDate         DateTime         @map("start_date") @db.Date
+  endDate           DateTime         @map("end_date") @db.Date
+  status            KittySchemeStatus @default(OPEN)
+  maxMembers        Int              @map("max_members")
+  currentMembers    Int              @default(0) @map("current_members")
+  terms             String?          @db.Text
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  createdBy         String?          @map("created_by") @db.VarChar(36)
+  updatedBy         String?          @map("updated_by") @db.VarChar(36)
+
+  members KittyMember[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("kitty_schemes")
+}
+
+// ─── Kitty Member ─────────────────────────────────────────────────
+
+model KittyMember {
+  id                String            @id @default(uuid()) @db.VarChar(36)
+  tenantId          String            @map("tenant_id") @db.VarChar(36)
+  kittySchemeId     String            @map("kitty_scheme_id") @db.VarChar(36)
+  customerId        String            @map("customer_id") @db.VarChar(36)
+  memberNumber      String            @map("member_number") @db.VarChar(50)
+  joinedDate        DateTime          @map("joined_date") @db.Date
+  status            KittyMemberStatus @default(ACTIVE)
+  paidInstallments  Int               @default(0) @map("paid_installments")
+  totalPaidPaise    BigInt            @default(0) @map("total_paid_paise")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  createdBy         String?           @map("created_by") @db.VarChar(36)
+  updatedBy         String?           @map("updated_by") @db.VarChar(36)
+
+  kittyScheme  KittyScheme        @relation(fields: [kittySchemeId], references: [id])
+  customer     Customer           @relation(fields: [customerId], references: [id])
+  installments KittyInstallment[]
+
+  @@index([tenantId])
+  @@index([kittySchemeId])
+  @@index([tenantId, customerId])
+  @@map("kitty_members")
+}
+
+// ─── Kitty Installment ────────────────────────────────────────────
+
+model KittyInstallment {
+  id                String                 @id @default(uuid()) @db.VarChar(36)
+  tenantId          String                 @map("tenant_id") @db.VarChar(36)
+  kittyMemberId     String                 @map("kitty_member_id") @db.VarChar(36)
+  installmentNumber Int                    @map("installment_number")
+  dueDate           DateTime               @map("due_date") @db.Date
+  paidDate          DateTime?              @map("paid_date") @db.Date
+  amountPaise       BigInt                 @map("amount_paise")
+  lateFeePaise      BigInt                 @default(0) @map("late_fee_paise")
+  method            GirviPaymentMethod?
+  reference         String?                @db.VarChar(255)
+  status            KittyInstallmentStatus @default(PENDING)
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+  createdBy         String?                @map("created_by") @db.VarChar(36)
+  updatedBy         String?                @map("updated_by") @db.VarChar(36)
+
+  kittyMember KittyMember @relation(fields: [kittyMemberId], references: [id])
+
+  @@index([tenantId])
+  @@index([kittyMemberId])
+  @@index([tenantId, status])
+  @@map("kitty_installments")
+}
+
+// ─── Gold Savings Scheme ──────────────────────────────────────────
+
+model GoldSavingsScheme {
+  id                   String                  @id @default(uuid()) @db.VarChar(36)
+  tenantId             String                  @map("tenant_id") @db.VarChar(36)
+  schemeName           String                  @map("scheme_name") @db.VarChar(255)
+  monthlyAmountPaise   BigInt                  @map("monthly_amount_paise")
+  durationMonths       Int                     @map("duration_months")
+  bonusMonths          Int                     @map("bonus_months") // e.g., pay 11 get 12
+  maturityBonusPercent Int                     @map("maturity_bonus_percent") // percent * 100
+  startDate            DateTime                @map("start_date") @db.Date
+  status               GoldSavingsSchemeStatus @default(OPEN)
+  terms                String?                 @db.Text
+  createdAt            DateTime                @default(now()) @map("created_at")
+  updatedAt            DateTime                @updatedAt @map("updated_at")
+  createdBy            String?                 @map("created_by") @db.VarChar(36)
+  updatedBy            String?                 @map("updated_by") @db.VarChar(36)
+
+  members GoldSavingsMember[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("gold_savings_schemes")
+}
+
+// ─── Gold Savings Member ──────────────────────────────────────────
+
+model GoldSavingsMember {
+  id                   String                   @id @default(uuid()) @db.VarChar(36)
+  tenantId             String                   @map("tenant_id") @db.VarChar(36)
+  goldSavingsSchemeId  String                   @map("gold_savings_scheme_id") @db.VarChar(36)
+  customerId           String                   @map("customer_id") @db.VarChar(36)
+  memberNumber         String                   @map("member_number") @db.VarChar(50)
+  joinedDate           DateTime                 @map("joined_date") @db.Date
+  status               GoldSavingsMemberStatus  @default(ACTIVE)
+  totalPaidPaise       BigInt                   @default(0) @map("total_paid_paise")
+  maturityDate         DateTime?                @map("maturity_date") @db.Date
+  redemptionDate       DateTime?                @map("redemption_date") @db.Date
+  maturityValuePaise   BigInt                   @default(0) @map("maturity_value_paise")
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+  createdBy            String?                  @map("created_by") @db.VarChar(36)
+  updatedBy            String?                  @map("updated_by") @db.VarChar(36)
+
+  goldSavingsScheme GoldSavingsScheme        @relation(fields: [goldSavingsSchemeId], references: [id])
+  customer          Customer                 @relation(fields: [customerId], references: [id])
+  installments      GoldSavingsInstallment[]
+
+  @@index([tenantId])
+  @@index([goldSavingsSchemeId])
+  @@index([tenantId, customerId])
+  @@map("gold_savings_members")
+}
+
+// ─── Gold Savings Installment ─────────────────────────────────────
+
+model GoldSavingsInstallment {
+  id                   String                       @id @default(uuid()) @db.VarChar(36)
+  tenantId             String                       @map("tenant_id") @db.VarChar(36)
+  goldSavingsMemberId  String                       @map("gold_savings_member_id") @db.VarChar(36)
+  installmentNumber    Int                          @map("installment_number")
+  dueDate              DateTime                     @map("due_date") @db.Date
+  paidDate             DateTime?                    @map("paid_date") @db.Date
+  amountPaise          BigInt                       @map("amount_paise")
+  method               GirviPaymentMethod?
+  reference            String?                      @db.VarChar(255)
+  status               GoldSavingsInstallmentStatus @default(PENDING)
+  createdAt            DateTime                     @default(now()) @map("created_at")
+  updatedAt            DateTime                     @updatedAt @map("updated_at")
+  createdBy            String?                      @map("created_by") @db.VarChar(36)
+  updatedBy            String?                      @map("updated_by") @db.VarChar(36)
+
+  goldSavingsMember GoldSavingsMember @relation(fields: [goldSavingsMemberId], references: [id])
+
+  @@index([tenantId])
+  @@index([goldSavingsMemberId])
+  @@index([tenantId, status])
+  @@map("gold_savings_installments")
+}
+
+// ─── Metal Rate History ───────────────────────────────────────────
+// NOT tenant-scoped -- global rate data
+
+model MetalRateHistory {
+  id                 String   @id @default(uuid()) @db.VarChar(36)
+  metalType          String   @map("metal_type") @db.VarChar(20)
+  purity             Int
+  ratePerGramPaise   BigInt   @map("rate_per_gram_paise")
+  ratePer10gPaise    BigInt   @map("rate_per_10g_paise")
+  ratePerTolaPaise   BigInt   @map("rate_per_tola_paise")
+  ratePerTroyOzPaise BigInt   @map("rate_per_troy_oz_paise")
+  source             String   @db.VarChar(50) // MCX, MANUAL, IBJA
+  recordedAt         DateTime @map("recorded_at")
+  currencyCode       String   @default("INR") @map("currency_code") @db.VarChar(3)
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@index([metalType, purity])
+  @@index([recordedAt])
+  @@index([metalType, purity, recordedAt])
+  @@map("metal_rate_history")
+}
+
+// ─── KYC Verification ─────────────────────────────────────────────
+
+model KycVerification {
+  id                 String                @id @default(uuid()) @db.VarChar(36)
+  tenantId           String                @map("tenant_id") @db.VarChar(36)
+  customerId         String                @map("customer_id") @db.VarChar(36)
+  verificationType   KycVerificationType   @map("verification_type")
+  documentNumber     String                @map("document_number") @db.VarChar(50)
+  verificationStatus KycVerificationStatus @default(PENDING) @map("verification_status")
+  verifiedAt         DateTime?             @map("verified_at")
+  verifiedBy         String?               @map("verified_by") @db.VarChar(36)
+  documentUrl        String?               @map("document_url") @db.VarChar(500)
+  ocrData            Json?                 @map("ocr_data")
+  validUntil         DateTime?             @map("valid_until") @db.Date
+  notes              String?               @db.Text
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  createdBy          String?               @map("created_by") @db.VarChar(36)
+  updatedBy          String?               @map("updated_by") @db.VarChar(36)
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, verificationType])
+  @@map("kyc_verifications")
+}

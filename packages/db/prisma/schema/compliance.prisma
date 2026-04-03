@@ -1,0 +1,359 @@
+// ─── CaratFlow Compliance Domain Schema ─────────────────────────
+// HUID registration, hallmarking, gemstone certification, chain of
+// custody, compliance documents, insurance, and audit tracking.
+
+// ─── Enums ────────────────────────────────────────────────────
+
+enum HuidStatus {
+  ACTIVE
+  SOLD
+  RETURNED
+  TRANSFERRED
+}
+
+enum HallmarkSubmissionStatus {
+  SUBMITTED
+  IN_PROGRESS
+  COMPLETED
+  PARTIAL_REJECT
+  REJECTED
+}
+
+enum HallmarkItemStatus {
+  PENDING
+  PASSED
+  FAILED
+  REWORK
+}
+
+enum CertificateIssuingLab {
+  GIA
+  IGI
+  HRD
+  AGS
+  EGL
+  SGL
+  OTHER
+}
+
+enum CustodyEventType {
+  SOURCED
+  IMPORTED
+  MANUFACTURED
+  TRANSFERRED
+  SOLD
+  RETURNED
+}
+
+enum ComplianceDocumentType {
+  KIMBERLEY_CERTIFICATE
+  CONFLICT_FREE_DECLARATION
+  CERTIFICATE_OF_ORIGIN
+  IMPORT_LICENSE
+  EXPORT_LICENSE
+  BIS_CERTIFICATE
+  INSURANCE_POLICY
+  ASSAY_REPORT
+}
+
+enum ComplianceDocumentStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+enum InsuranceCoverageType {
+  ALL_RISK
+  TRANSIT
+  STORAGE
+  DISPLAY
+}
+
+enum InsurancePolicyStatus {
+  ACTIVE
+  EXPIRED
+  CLAIMED
+  CANCELLED
+}
+
+enum ComplianceAuditType {
+  INTERNAL
+  BIS
+  CUSTOMS
+  TAX
+}
+
+enum ComplianceAuditStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  FINDINGS_OPEN
+  RESOLVED
+}
+
+// ─── HuidRecord ──────────────────────────────────────────────
+
+model HuidRecord {
+  id                String     @id @default(uuid()) @db.VarChar(36)
+  tenantId          String     @map("tenant_id") @db.VarChar(36)
+  productId         String     @map("product_id") @db.VarChar(36)
+  huidNumber        String     @map("huid_number") @db.VarChar(6)
+  articleType       String     @map("article_type") @db.VarChar(100)
+  metalType         String     @map("metal_type") @db.VarChar(50)
+  purityFineness    Int        @map("purity_fineness")
+  weightMg          BigInt     @map("weight_mg")
+  hallmarkCenterId  String?    @map("hallmark_center_id") @db.VarChar(36)
+  registeredAt      DateTime   @map("registered_at")
+  status            HuidStatus @default(ACTIVE)
+  verifiedAt        DateTime?  @map("verified_at")
+  verifiedBy        String?    @map("verified_by") @db.VarChar(36)
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  createdBy         String?    @map("created_by") @db.VarChar(36)
+  updatedBy         String?    @map("updated_by") @db.VarChar(36)
+
+  product        Product         @relation(fields: [productId], references: [id])
+  hallmarkCenter HallmarkCenter? @relation(fields: [hallmarkCenterId], references: [id])
+
+  @@unique([tenantId, huidNumber])
+  @@index([tenantId])
+  @@index([tenantId, productId])
+  @@index([tenantId, status])
+  @@map("huid_records")
+}
+
+// ─── HallmarkCenter ──────────────────────────────────────────
+// NOT tenant-scoped (shared reference data)
+
+model HallmarkCenter {
+  id               String  @id @default(uuid()) @db.VarChar(36)
+  centerCode       String  @map("center_code") @db.VarChar(50)
+  name             String  @db.VarChar(255)
+  address          String? @db.VarChar(500)
+  city             String? @db.VarChar(100)
+  state            String? @db.VarChar(100)
+  phone            String? @db.VarChar(20)
+  email            String? @db.VarChar(255)
+  bisLicenseNumber String? @map("bis_license_number") @db.VarChar(100)
+  isActive         Boolean @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  huidRecords  HuidRecord[]
+  submissions  HallmarkSubmission[]
+
+  @@unique([centerCode])
+  @@map("hallmark_centers")
+}
+
+// ─── HallmarkSubmission ──────────────────────────────────────
+
+model HallmarkSubmission {
+  id                 String                   @id @default(uuid()) @db.VarChar(36)
+  tenantId           String                   @map("tenant_id") @db.VarChar(36)
+  submissionNumber   String                   @map("submission_number") @db.VarChar(100)
+  hallmarkCenterId   String                   @map("hallmark_center_id") @db.VarChar(36)
+  locationId         String                   @map("location_id") @db.VarChar(36)
+  status             HallmarkSubmissionStatus @default(SUBMITTED)
+  submittedDate      DateTime                 @map("submitted_date")
+  expectedReturnDate DateTime?                @map("expected_return_date")
+  actualReturnDate   DateTime?                @map("actual_return_date")
+  totalItems         Int                      @default(0) @map("total_items")
+  passedItems        Int                      @default(0) @map("passed_items")
+  failedItems        Int                      @default(0) @map("failed_items")
+  notes              String?                  @db.Text
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+  createdBy          String?                  @map("created_by") @db.VarChar(36)
+  updatedBy          String?                  @map("updated_by") @db.VarChar(36)
+
+  hallmarkCenter HallmarkCenter         @relation(fields: [hallmarkCenterId], references: [id])
+  location       Location               @relation("HallmarkSubmissionLocation", fields: [locationId], references: [id])
+  items          HallmarkSubmissionItem[]
+
+  @@unique([tenantId, submissionNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, hallmarkCenterId])
+  @@map("hallmark_submissions")
+}
+
+// ─── HallmarkSubmissionItem ──────────────────────────────────
+
+model HallmarkSubmissionItem {
+  id              String             @id @default(uuid()) @db.VarChar(36)
+  tenantId        String             @map("tenant_id") @db.VarChar(36)
+  submissionId    String             @map("submission_id") @db.VarChar(36)
+  productId       String             @map("product_id") @db.VarChar(36)
+  status          HallmarkItemStatus @default(PENDING)
+  testedPurity    Int?               @map("tested_purity")
+  declaredPurity  Int                @map("declared_purity")
+  huidAssigned    String?            @map("huid_assigned") @db.VarChar(6)
+  failureReason   String?            @map("failure_reason") @db.VarChar(500)
+  notes           String?            @db.Text
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  createdBy       String?            @map("created_by") @db.VarChar(36)
+  updatedBy       String?            @map("updated_by") @db.VarChar(36)
+
+  submission HallmarkSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  product    Product            @relation(fields: [productId], references: [id])
+
+  @@index([tenantId])
+  @@index([submissionId])
+  @@map("hallmark_submission_items")
+}
+
+// ─── GemstoneCertificate ─────────────────────────────────────
+
+model GemstoneCertificate {
+  id                String              @id @default(uuid()) @db.VarChar(36)
+  tenantId          String              @map("tenant_id") @db.VarChar(36)
+  productId         String              @map("product_id") @db.VarChar(36)
+  certificateNumber String              @map("certificate_number") @db.VarChar(100)
+  issuingLab        CertificateIssuingLab @map("issuing_lab")
+  stoneType         String              @map("stone_type") @db.VarChar(100)
+  caratWeight       Int                 @map("carat_weight")
+  color             String?             @db.VarChar(50)
+  clarity           String?             @db.VarChar(50)
+  cut               String?             @db.VarChar(50)
+  shape             String?             @db.VarChar(50)
+  dimensions        String?             @db.VarChar(100)
+  fluorescence      String?             @db.VarChar(50)
+  certificateDate   DateTime?           @map("certificate_date")
+  certificateUrl    String?             @map("certificate_url") @db.VarChar(500)
+  imageUrl          String?             @map("image_url") @db.VarChar(500)
+  verifiedAt        DateTime?           @map("verified_at")
+  isVerified        Boolean             @default(false) @map("is_verified")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+  createdBy         String?             @map("created_by") @db.VarChar(36)
+  updatedBy         String?             @map("updated_by") @db.VarChar(36)
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([tenantId, certificateNumber])
+  @@index([tenantId])
+  @@index([tenantId, productId])
+  @@index([tenantId, issuingLab])
+  @@map("gemstone_certificates")
+}
+
+// ─── ChainOfCustody ──────────────────────────────────────────
+
+model ChainOfCustody {
+  id                String           @id @default(uuid()) @db.VarChar(36)
+  tenantId          String           @map("tenant_id") @db.VarChar(36)
+  productId         String           @map("product_id") @db.VarChar(36)
+  eventType         CustodyEventType @map("event_type")
+  fromEntityType    String?          @map("from_entity_type") @db.VarChar(100)
+  fromEntityId      String?          @map("from_entity_id") @db.VarChar(36)
+  toEntityType      String?          @map("to_entity_type") @db.VarChar(100)
+  toEntityId        String?          @map("to_entity_id") @db.VarChar(36)
+  eventDate         DateTime         @map("event_date")
+  locationId        String?          @map("location_id") @db.VarChar(36)
+  documentReference String?          @map("document_reference") @db.VarChar(200)
+  notes             String?          @db.Text
+  metadata          Json?            @map("metadata")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  createdBy         String?          @map("created_by") @db.VarChar(36)
+  updatedBy         String?          @map("updated_by") @db.VarChar(36)
+
+  product  Product   @relation(fields: [productId], references: [id])
+  location Location? @relation("CustodyEventLocation", fields: [locationId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, productId])
+  @@index([tenantId, eventType])
+  @@index([eventDate])
+  @@map("chain_of_custody")
+}
+
+// ─── ComplianceDocument ──────────────────────────────────────
+
+model ComplianceDocument {
+  id             String                   @id @default(uuid()) @db.VarChar(36)
+  tenantId       String                   @map("tenant_id") @db.VarChar(36)
+  productId      String?                  @map("product_id") @db.VarChar(36)
+  supplierId     String?                  @map("supplier_id") @db.VarChar(36)
+  documentType   ComplianceDocumentType   @map("document_type")
+  documentNumber String                   @map("document_number") @db.VarChar(200)
+  issuedBy       String?                  @map("issued_by") @db.VarChar(255)
+  issuedDate     DateTime?                @map("issued_date")
+  expiryDate     DateTime?                @map("expiry_date")
+  fileUrl        String?                  @map("file_url") @db.VarChar(500)
+  status         ComplianceDocumentStatus @default(ACTIVE)
+  notes          String?                  @db.Text
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
+  createdBy      String?                  @map("created_by") @db.VarChar(36)
+  updatedBy      String?                  @map("updated_by") @db.VarChar(36)
+
+  product  Product?  @relation(fields: [productId], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, documentType])
+  @@index([tenantId, status])
+  @@index([expiryDate])
+  @@map("compliance_documents")
+}
+
+// ─── InsurancePolicy ─────────────────────────────────────────
+
+model InsurancePolicy {
+  id               String                @id @default(uuid()) @db.VarChar(36)
+  tenantId         String                @map("tenant_id") @db.VarChar(36)
+  policyNumber     String                @map("policy_number") @db.VarChar(100)
+  provider         String                @db.VarChar(255)
+  locationId       String?               @map("location_id") @db.VarChar(36)
+  coverageType     InsuranceCoverageType @map("coverage_type")
+  coveredValuePaise BigInt               @map("covered_value_paise")
+  premiumPaise     BigInt                @map("premium_paise")
+  startDate        DateTime              @map("start_date")
+  endDate          DateTime              @map("end_date")
+  status           InsurancePolicyStatus @default(ACTIVE)
+  claimHistory     Json?                 @map("claim_history")
+  documentUrl      String?               @map("document_url") @db.VarChar(500)
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+  createdBy        String?               @map("created_by") @db.VarChar(36)
+  updatedBy        String?               @map("updated_by") @db.VarChar(36)
+
+  location Location? @relation("InsurancePolicyLocation", fields: [locationId], references: [id])
+
+  @@unique([tenantId, policyNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([endDate])
+  @@map("insurance_policies")
+}
+
+// ─── ComplianceAudit ─────────────────────────────────────────
+
+model ComplianceAudit {
+  id              String                @id @default(uuid()) @db.VarChar(36)
+  tenantId        String                @map("tenant_id") @db.VarChar(36)
+  auditType       ComplianceAuditType   @map("audit_type")
+  auditDate       DateTime              @map("audit_date")
+  auditorName     String                @map("auditor_name") @db.VarChar(255)
+  locationId      String?               @map("location_id") @db.VarChar(36)
+  status          ComplianceAuditStatus @default(SCHEDULED)
+  findings        String?               @db.Text
+  recommendations String?               @db.Text
+  resolvedAt      DateTime?             @map("resolved_at")
+  resolvedBy      String?               @map("resolved_by") @db.VarChar(36)
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  createdBy       String?               @map("created_by") @db.VarChar(36)
+  updatedBy       String?               @map("updated_by") @db.VarChar(36)
+
+  location Location? @relation("ComplianceAuditLocation", fields: [locationId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, auditType])
+  @@index([tenantId, status])
+  @@index([auditDate])
+  @@map("compliance_audits")
+}

@@ -1,0 +1,484 @@
+// ─── CaratFlow Retail Domain Schema ─────────────────────────────
+// Sales, POS, returns, custom orders, repairs, layaway, old gold,
+// appraisals, discounts, gift cards.
+
+// ─── Enums ────────────────────────────────────────────────────────
+
+enum SaleStatus {
+  DRAFT
+  COMPLETED
+  RETURNED
+  PARTIALLY_RETURNED
+  VOIDED
+}
+
+enum DiscountTypeEnum {
+  PERCENTAGE
+  FIXED
+}
+
+enum SalePaymentMethod {
+  CASH
+  CARD
+  UPI
+  BANK_TRANSFER
+  CHEQUE
+  OLD_GOLD
+  GIFT_CARD
+  LOYALTY_POINTS
+}
+
+enum SalePaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum SaleReturnStatus {
+  DRAFT
+  APPROVED
+  COMPLETED
+  REJECTED
+}
+
+enum RepairOrderStatus {
+  RECEIVED
+  DIAGNOSED
+  QUOTED
+  APPROVED
+  IN_PROGRESS
+  COMPLETED
+  DELIVERED
+  CANCELLED
+}
+
+enum CustomOrderStatus {
+  INQUIRY
+  DESIGNED
+  QUOTED
+  CONFIRMED
+  DEPOSIT_PAID
+  IN_PRODUCTION
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum LayawayStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  FORFEITED
+}
+
+enum OldGoldPurchaseStatus {
+  DRAFT
+  TESTED
+  VALUED
+  PURCHASED
+  EXCHANGED
+}
+
+enum RetailDiscountType {
+  PERCENTAGE
+  FIXED
+  BUY_X_GET_Y
+}
+
+enum GiftCardStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  CANCELLED
+}
+
+// ─── Sale ─────────────────────────────────────────────────────────
+
+model Sale {
+  id              String     @id @default(uuid()) @db.VarChar(36)
+  tenantId        String     @map("tenant_id") @db.VarChar(36)
+  saleNumber      String     @map("sale_number") @db.VarChar(50)
+  customerId      String?    @map("customer_id") @db.VarChar(36)
+  locationId      String     @map("location_id") @db.VarChar(36)
+  userId          String     @map("user_id") @db.VarChar(36)
+  status          SaleStatus @default(DRAFT)
+  subtotalPaise   BigInt     @map("subtotal_paise")
+  discountPaise   BigInt     @default(0) @map("discount_paise")
+  taxPaise        BigInt     @default(0) @map("tax_paise")
+  totalPaise      BigInt     @map("total_paise")
+  currencyCode    String     @default("INR") @map("currency_code") @db.VarChar(3)
+  roundOffPaise   BigInt     @default(0) @map("round_off_paise")
+  notes           String?    @db.Text
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  createdBy       String?    @map("created_by") @db.VarChar(36)
+  updatedBy       String?    @map("updated_by") @db.VarChar(36)
+
+  customer    Customer?      @relation(fields: [customerId], references: [id])
+  location    Location       @relation(fields: [locationId], references: [id])
+  user        User           @relation(fields: [userId], references: [id])
+  lineItems   SaleLineItem[]
+  payments    SalePayment[]
+  returns     SaleReturn[]
+  layaways    Layaway[]
+  oldGoldUsed OldGoldPurchase[] @relation("OldGoldAgainstSale")
+
+  @@unique([tenantId, saleNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([tenantId, locationId])
+  @@index([tenantId, userId])
+  @@index([tenantId, createdAt])
+  @@map("sales")
+}
+
+// ─── Sale Line Item ───────────────────────────────────────────────
+
+model SaleLineItem {
+  id                  String           @id @default(uuid()) @db.VarChar(36)
+  tenantId            String           @map("tenant_id") @db.VarChar(36)
+  saleId              String           @map("sale_id") @db.VarChar(36)
+  productId           String?          @map("product_id") @db.VarChar(36)
+  description         String           @db.VarChar(500)
+  quantity            Int              @default(1)
+  unitPricePaise      BigInt           @map("unit_price_paise")
+  discountPaise       BigInt           @default(0) @map("discount_paise")
+  discountType        DiscountTypeEnum? @map("discount_type")
+  makingChargesPaise  BigInt           @default(0) @map("making_charges_paise")
+  wastageChargesPaise BigInt           @default(0) @map("wastage_charges_paise")
+  metalRatePaise      BigInt           @default(0) @map("metal_rate_paise")
+  metalWeightMg       BigInt           @default(0) @map("metal_weight_mg")
+  hsnCode             String           @default("7113") @map("hsn_code") @db.VarChar(10)
+  gstRate             Int              @default(300) @map("gst_rate") // percent * 100, e.g. 300 = 3%
+  cgstPaise           BigInt           @default(0) @map("cgst_paise")
+  sgstPaise           BigInt           @default(0) @map("sgst_paise")
+  igstPaise           BigInt           @default(0) @map("igst_paise")
+  lineTotalPaise      BigInt           @map("line_total_paise")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  sale            Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product         Product?         @relation(fields: [productId], references: [id])
+  returnItems     SaleReturnItem[]
+
+  @@index([tenantId])
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_line_items")
+}
+
+// ─── Sale Payment ─────────────────────────────────────────────────
+
+model SalePayment {
+  id            String            @id @default(uuid()) @db.VarChar(36)
+  tenantId      String            @map("tenant_id") @db.VarChar(36)
+  saleId        String            @map("sale_id") @db.VarChar(36)
+  method        SalePaymentMethod
+  amountPaise   BigInt            @map("amount_paise")
+  reference     String?           @db.VarChar(255)
+  status        SalePaymentStatus @default(PENDING)
+  processedAt   DateTime?         @map("processed_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([saleId])
+  @@map("sale_payments")
+}
+
+// ─── Sale Return ──────────────────────────────────────────────────
+
+model SaleReturn {
+  id                        String           @id @default(uuid()) @db.VarChar(36)
+  tenantId                  String           @map("tenant_id") @db.VarChar(36)
+  returnNumber              String           @map("return_number") @db.VarChar(50)
+  originalSaleId            String           @map("original_sale_id") @db.VarChar(36)
+  customerId                String?          @map("customer_id") @db.VarChar(36)
+  locationId                String           @map("location_id") @db.VarChar(36)
+  reason                    String?          @db.Text
+  status                    SaleReturnStatus @default(DRAFT)
+  subtotalPaise             BigInt           @map("subtotal_paise")
+  refundAmountPaise         BigInt           @map("refund_amount_paise")
+  refundMethod              String?          @map("refund_method") @db.VarChar(50)
+  metalRateDifferencePaise  BigInt           @default(0) @map("metal_rate_difference_paise")
+  createdAt                 DateTime         @default(now()) @map("created_at")
+  updatedAt                 DateTime         @updatedAt @map("updated_at")
+  createdBy                 String?          @map("created_by") @db.VarChar(36)
+  updatedBy                 String?          @map("updated_by") @db.VarChar(36)
+
+  originalSale Sale             @relation(fields: [originalSaleId], references: [id])
+  customer     Customer?        @relation(fields: [customerId], references: [id])
+  location     Location         @relation(fields: [locationId], references: [id])
+  items        SaleReturnItem[]
+
+  @@unique([tenantId, returnNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, originalSaleId])
+  @@map("sale_returns")
+}
+
+// ─── Sale Return Item ─────────────────────────────────────────────
+
+model SaleReturnItem {
+  id                 String  @id @default(uuid()) @db.VarChar(36)
+  tenantId           String  @map("tenant_id") @db.VarChar(36)
+  returnId           String  @map("return_id") @db.VarChar(36)
+  originalLineItemId String  @map("original_line_item_id") @db.VarChar(36)
+  productId          String? @map("product_id") @db.VarChar(36)
+  quantity           Int     @default(1)
+  returnPricePaise   BigInt  @map("return_price_paise")
+  reason             String? @db.Text
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  saleReturn       SaleReturn   @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  originalLineItem SaleLineItem @relation(fields: [originalLineItemId], references: [id])
+  product          Product?     @relation(fields: [productId], references: [id])
+
+  @@index([tenantId])
+  @@index([returnId])
+  @@map("sale_return_items")
+}
+
+// ─── Repair Order ─────────────────────────────────────────────────
+
+model RepairOrder {
+  id               String            @id @default(uuid()) @db.VarChar(36)
+  tenantId         String            @map("tenant_id") @db.VarChar(36)
+  repairNumber     String            @map("repair_number") @db.VarChar(50)
+  customerId       String            @map("customer_id") @db.VarChar(36)
+  locationId       String            @map("location_id") @db.VarChar(36)
+  status           RepairOrderStatus @default(RECEIVED)
+  itemDescription  String            @map("item_description") @db.VarChar(500)
+  itemWeightMg     BigInt?           @map("item_weight_mg")
+  itemImages       Json?             @map("item_images")
+  diagnosticNotes  String?           @map("diagnostic_notes") @db.Text
+  estimatePaise    BigInt?           @map("estimate_paise")
+  actualCostPaise  BigInt?           @map("actual_cost_paise")
+  laborPaise       BigInt?           @map("labor_paise")
+  materialPaise    BigInt?           @map("material_paise")
+  promisedDate     DateTime?         @map("promised_date") @db.Date
+  completedDate    DateTime?         @map("completed_date") @db.Date
+  deliveredDate    DateTime?         @map("delivered_date") @db.Date
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  createdBy        String?           @map("created_by") @db.VarChar(36)
+  updatedBy        String?           @map("updated_by") @db.VarChar(36)
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+
+  @@unique([tenantId, repairNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([tenantId, locationId])
+  @@map("repair_orders")
+}
+
+// ─── Custom Order ─────────────────────────────────────────────────
+
+model CustomOrder {
+  id             String            @id @default(uuid()) @db.VarChar(36)
+  tenantId       String            @map("tenant_id") @db.VarChar(36)
+  orderNumber    String            @map("order_number") @db.VarChar(50)
+  customerId     String            @map("customer_id") @db.VarChar(36)
+  locationId     String            @map("location_id") @db.VarChar(36)
+  status         CustomOrderStatus @default(INQUIRY)
+  description    String            @db.Text
+  designNotes    String?           @map("design_notes") @db.Text
+  designImages   Json?             @map("design_images")
+  estimatePaise  BigInt?           @map("estimate_paise")
+  finalPricePaise BigInt?          @map("final_price_paise")
+  depositPaise   BigInt            @default(0) @map("deposit_paise")
+  balancePaise   BigInt            @default(0) @map("balance_paise")
+  expectedDate   DateTime?         @map("expected_date") @db.Date
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  createdBy      String?           @map("created_by") @db.VarChar(36)
+  updatedBy      String?           @map("updated_by") @db.VarChar(36)
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@map("custom_orders")
+}
+
+// ─── Layaway ──────────────────────────────────────────────────────
+
+model Layaway {
+  id               String        @id @default(uuid()) @db.VarChar(36)
+  tenantId         String        @map("tenant_id") @db.VarChar(36)
+  layawayNumber    String        @map("layaway_number") @db.VarChar(50)
+  saleId           String        @map("sale_id") @db.VarChar(36)
+  customerId       String        @map("customer_id") @db.VarChar(36)
+  totalPaise       BigInt        @map("total_paise")
+  paidPaise        BigInt        @default(0) @map("paid_paise")
+  remainingPaise   BigInt        @map("remaining_paise")
+  status           LayawayStatus @default(ACTIVE)
+  dueDate          DateTime?     @map("due_date") @db.Date
+  installmentCount Int           @default(1) @map("installment_count")
+  nextPaymentDate  DateTime?     @map("next_payment_date") @db.Date
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  createdBy        String?       @map("created_by") @db.VarChar(36)
+  updatedBy        String?       @map("updated_by") @db.VarChar(36)
+
+  sale     Sale             @relation(fields: [saleId], references: [id])
+  customer Customer         @relation(fields: [customerId], references: [id])
+  payments LayawayPayment[]
+
+  @@unique([tenantId, layawayNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@map("layaways")
+}
+
+// ─── Layaway Payment ──────────────────────────────────────────────
+
+model LayawayPayment {
+  id          String   @id @default(uuid()) @db.VarChar(36)
+  tenantId    String   @map("tenant_id") @db.VarChar(36)
+  layawayId   String   @map("layaway_id") @db.VarChar(36)
+  amountPaise BigInt   @map("amount_paise")
+  method      String   @db.VarChar(50)
+  reference   String?  @db.VarChar(255)
+  paidAt      DateTime @default(now()) @map("paid_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  layaway Layaway @relation(fields: [layawayId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([layawayId])
+  @@map("layaway_payments")
+}
+
+// ─── Old Gold Purchase ────────────────────────────────────────────
+
+model OldGoldPurchase {
+  id                String                @id @default(uuid()) @db.VarChar(36)
+  tenantId          String                @map("tenant_id") @db.VarChar(36)
+  purchaseNumber    String                @map("purchase_number") @db.VarChar(50)
+  customerId        String?               @map("customer_id") @db.VarChar(36)
+  locationId        String                @map("location_id") @db.VarChar(36)
+  metalType         String                @map("metal_type") @db.VarChar(20)
+  grossWeightMg     BigInt                @map("gross_weight_mg")
+  netWeightMg       BigInt                @map("net_weight_mg")
+  purityFineness    Int                   @map("purity_fineness")
+  ratePaisePer10g   BigInt                @map("rate_paise_per_10g")
+  totalValuePaise   BigInt                @map("total_value_paise")
+  deductions        Json?                 @map("deductions")
+  finalAmountPaise  BigInt                @map("final_amount_paise")
+  paymentMethod     String?               @map("payment_method") @db.VarChar(50)
+  status            OldGoldPurchaseStatus @default(DRAFT)
+  usedAgainstSaleId String?               @map("used_against_sale_id") @db.VarChar(36)
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+  createdBy         String?               @map("created_by") @db.VarChar(36)
+  updatedBy         String?               @map("updated_by") @db.VarChar(36)
+
+  customer        Customer? @relation(fields: [customerId], references: [id])
+  location        Location  @relation(fields: [locationId], references: [id])
+  usedAgainstSale Sale?     @relation("OldGoldAgainstSale", fields: [usedAgainstSaleId], references: [id])
+
+  @@unique([tenantId, purchaseNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@map("old_gold_purchases")
+}
+
+// ─── Appraisal ────────────────────────────────────────────────────
+
+model Appraisal {
+  id                 String    @id @default(uuid()) @db.VarChar(36)
+  tenantId           String    @map("tenant_id") @db.VarChar(36)
+  appraisalNumber    String    @map("appraisal_number") @db.VarChar(50)
+  customerId         String    @map("customer_id") @db.VarChar(36)
+  locationId         String    @map("location_id") @db.VarChar(36)
+  itemDescription    String    @map("item_description") @db.VarChar(500)
+  metalType          String?   @map("metal_type") @db.VarChar(20)
+  weightMg           BigInt?   @map("weight_mg")
+  purityFineness     Int?      @map("purity_fineness")
+  stoneDetails       Json?     @map("stone_details")
+  appraisedValuePaise BigInt   @map("appraised_value_paise")
+  appraisedBy        String    @map("appraised_by") @db.VarChar(100)
+  appraisedAt        DateTime  @map("appraised_at")
+  validUntil         DateTime? @map("valid_until") @db.Date
+  certificateUrl     String?   @map("certificate_url") @db.VarChar(500)
+  notes              String?   @db.Text
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  createdBy          String?   @map("created_by") @db.VarChar(36)
+  updatedBy          String?   @map("updated_by") @db.VarChar(36)
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+
+  @@unique([tenantId, appraisalNumber])
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@map("appraisals")
+}
+
+// ─── Discount ─────────────────────────────────────────────────────
+
+model Discount {
+  id                     String             @id @default(uuid()) @db.VarChar(36)
+  tenantId               String             @map("tenant_id") @db.VarChar(36)
+  name                   String             @db.VarChar(255)
+  discountType           RetailDiscountType @map("discount_type")
+  value                  Int                // percent*100 or paise depending on type
+  minPurchasePaise       BigInt?            @map("min_purchase_paise")
+  maxDiscountPaise       BigInt?            @map("max_discount_paise")
+  applicableCategories   Json?              @map("applicable_categories")
+  applicableProducts     Json?              @map("applicable_products")
+  startDate              DateTime           @map("start_date")
+  endDate                DateTime           @map("end_date")
+  isActive               Boolean            @default(true) @map("is_active")
+  usageLimit             Int?               @map("usage_limit")
+  usedCount              Int                @default(0) @map("used_count")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+  createdBy              String?            @map("created_by") @db.VarChar(36)
+  updatedBy              String?            @map("updated_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("discounts")
+}
+
+// ─── Gift Card ────────────────────────────────────────────────────
+
+model GiftCard {
+  id                String         @id @default(uuid()) @db.VarChar(36)
+  tenantId          String         @map("tenant_id") @db.VarChar(36)
+  cardNumber        String         @map("card_number") @db.VarChar(50)
+  balancePaise      BigInt         @map("balance_paise")
+  initialValuePaise BigInt         @map("initial_value_paise")
+  customerId        String?        @map("customer_id") @db.VarChar(36)
+  status            GiftCardStatus @default(ACTIVE)
+  expiresAt         DateTime?      @map("expires_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  createdBy         String?        @map("created_by") @db.VarChar(36)
+  updatedBy         String?        @map("updated_by") @db.VarChar(36)
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+
+  @@unique([tenantId, cardNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("gift_cards")
+}

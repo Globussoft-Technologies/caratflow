@@ -1,0 +1,406 @@
+// ─── CaratFlow CRM Domain Schema ────────────────────────────────
+// Customer interactions, loyalty, campaigns, notifications, leads, feedback.
+// Customer model lives in core.prisma -- this file adds related CRM tables.
+
+// ─── Enums ─────────────────────────────────────────────────────
+
+enum LoyaltyTransactionType {
+  EARNED
+  REDEEMED
+  EXPIRED
+  ADJUSTED
+  BONUS
+}
+
+enum OccasionType {
+  BIRTHDAY
+  ANNIVERSARY
+  WEDDING
+  ENGAGEMENT
+  FESTIVAL
+  OTHER
+}
+
+enum InteractionType {
+  CALL
+  EMAIL
+  SMS
+  WHATSAPP
+  VISIT
+  NOTE
+}
+
+enum InteractionDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum NotificationChannel {
+  WHATSAPP
+  SMS
+  EMAIL
+}
+
+enum NotificationCategory {
+  TRANSACTIONAL
+  PROMOTIONAL
+  REMINDER
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum LeadSource {
+  WALK_IN
+  REFERRAL
+  WEBSITE
+  SOCIAL_MEDIA
+  CAMPAIGN
+  OTHER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum LeadActivityType {
+  NOTE
+  CALL
+  EMAIL
+  MEETING
+  FOLLOW_UP
+}
+
+enum FeedbackType {
+  PURCHASE
+  REPAIR
+  SERVICE
+  GENERAL
+}
+
+enum FeedbackStatus {
+  NEW
+  REVIEWED
+  ACTIONED
+}
+
+enum PassbookType {
+  LOYALTY
+  GOLD_SAVINGS
+  KITTY
+}
+
+// ─── Loyalty Program ───────────────────────────────────────────
+
+model LoyaltyProgram {
+  id                   String   @id @default(uuid()) @db.VarChar(36)
+  tenantId             String   @map("tenant_id") @db.VarChar(36)
+  name                 String   @db.VarChar(255)
+  pointsPerCurrencyUnit Int    @map("points_per_currency_unit")
+  redemptionRate       Int      @map("redemption_rate")
+  tiers                Json     @map("tiers")
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  createdBy            String?  @map("created_by") @db.VarChar(36)
+  updatedBy            String?  @map("updated_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@map("loyalty_programs")
+}
+
+// ─── Loyalty Transaction ───────────────────────────────────────
+
+model LoyaltyTransaction {
+  id              String                 @id @default(uuid()) @db.VarChar(36)
+  tenantId        String                 @map("tenant_id") @db.VarChar(36)
+  customerId      String                 @map("customer_id") @db.VarChar(36)
+  transactionType LoyaltyTransactionType @map("transaction_type")
+  points          Int
+  balanceAfter    Int                    @map("balance_after")
+  referenceType   String?                @map("reference_type") @db.VarChar(50)
+  referenceId     String?                @map("reference_id") @db.VarChar(36)
+  description     String?                @db.VarChar(500)
+  expiresAt       DateTime?              @map("expires_at")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  createdBy       String?                @map("created_by") @db.VarChar(36)
+  updatedBy       String?                @map("updated_by") @db.VarChar(36)
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([expiresAt])
+  @@map("loyalty_transactions")
+}
+
+// ─── Customer Occasion ─────────────────────────────────────────
+
+model CustomerOccasion {
+  id                 String       @id @default(uuid()) @db.VarChar(36)
+  tenantId           String       @map("tenant_id") @db.VarChar(36)
+  customerId         String       @map("customer_id") @db.VarChar(36)
+  occasionType       OccasionType @map("occasion_type")
+  date               DateTime     @db.Date
+  description        String?      @db.VarChar(500)
+  reminderDaysBefore Int          @default(7) @map("reminder_days_before")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  createdBy          String?      @map("created_by") @db.VarChar(36)
+  updatedBy          String?      @map("updated_by") @db.VarChar(36)
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@map("customer_occasions")
+}
+
+// ─── Customer Interaction ──────────────────────────────────────
+
+model CustomerInteraction {
+  id              String               @id @default(uuid()) @db.VarChar(36)
+  tenantId        String               @map("tenant_id") @db.VarChar(36)
+  customerId      String               @map("customer_id") @db.VarChar(36)
+  interactionType InteractionType      @map("interaction_type")
+  direction       InteractionDirection
+  subject         String?              @db.VarChar(255)
+  content         String?              @db.Text
+  userId          String?              @map("user_id") @db.VarChar(36)
+  attachments     Json?                @map("attachments")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+  createdBy       String?              @map("created_by") @db.VarChar(36)
+  updatedBy       String?              @map("updated_by") @db.VarChar(36)
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@map("customer_interactions")
+}
+
+// ─── Notification Template ─────────────────────────────────────
+
+model NotificationTemplate {
+  id        String               @id @default(uuid()) @db.VarChar(36)
+  tenantId  String               @map("tenant_id") @db.VarChar(36)
+  name      String               @db.VarChar(255)
+  channel   NotificationChannel
+  subject   String?              @db.VarChar(500)
+  body      String               @db.Text
+  variables Json?                @map("variables")
+  category  NotificationCategory
+  isActive  Boolean              @default(true) @map("is_active")
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+  createdBy String?              @map("created_by") @db.VarChar(36)
+  updatedBy String?              @map("updated_by") @db.VarChar(36)
+
+  notificationLogs NotificationLog[]
+  campaigns        Campaign[]
+
+  @@index([tenantId])
+  @@map("notification_templates")
+}
+
+// ─── Notification Log ──────────────────────────────────────────
+
+model NotificationLog {
+  id            String             @id @default(uuid()) @db.VarChar(36)
+  tenantId      String             @map("tenant_id") @db.VarChar(36)
+  customerId    String             @map("customer_id") @db.VarChar(36)
+  templateId    String?            @map("template_id") @db.VarChar(36)
+  channel       NotificationChannel
+  subject       String?            @db.VarChar(500)
+  body          String             @db.Text
+  status        NotificationStatus @default(QUEUED)
+  sentAt        DateTime?          @map("sent_at")
+  deliveredAt   DateTime?          @map("delivered_at")
+  failureReason String?            @map("failure_reason") @db.VarChar(500)
+  metadata      Json?              @map("metadata")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  createdBy     String?            @map("created_by") @db.VarChar(36)
+  updatedBy     String?            @map("updated_by") @db.VarChar(36)
+
+  customer Customer             @relation(fields: [customerId], references: [id])
+  template NotificationTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([status])
+  @@map("notification_logs")
+}
+
+// ─── Campaign ──────────────────────────────────────────────────
+
+model Campaign {
+  id              String             @id @default(uuid()) @db.VarChar(36)
+  tenantId        String             @map("tenant_id") @db.VarChar(36)
+  name            String             @db.VarChar(255)
+  description     String?            @db.Text
+  status          CampaignStatus     @default(DRAFT)
+  channel         NotificationChannel
+  templateId      String?            @map("template_id") @db.VarChar(36)
+  audienceFilter  Json?              @map("audience_filter")
+  scheduledAt     DateTime?          @map("scheduled_at")
+  startedAt       DateTime?          @map("started_at")
+  completedAt     DateTime?          @map("completed_at")
+  totalRecipients Int                @default(0) @map("total_recipients")
+  sentCount       Int                @default(0) @map("sent_count")
+  deliveredCount  Int                @default(0) @map("delivered_count")
+  failedCount     Int                @default(0) @map("failed_count")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  createdBy       String?            @map("created_by") @db.VarChar(36)
+  updatedBy       String?            @map("updated_by") @db.VarChar(36)
+
+  template NotificationTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("campaigns")
+}
+
+// ─── Lead ──────────────────────────────────────────────────────
+
+model Lead {
+  id                 String     @id @default(uuid()) @db.VarChar(36)
+  tenantId           String     @map("tenant_id") @db.VarChar(36)
+  customerId         String?    @map("customer_id") @db.VarChar(36)
+  firstName          String     @map("first_name") @db.VarChar(100)
+  lastName           String     @map("last_name") @db.VarChar(100)
+  phone              String?    @db.VarChar(20)
+  email              String?    @db.VarChar(255)
+  source             LeadSource
+  status             LeadStatus @default(NEW)
+  assignedTo         String?    @map("assigned_to") @db.VarChar(36)
+  estimatedValuePaise BigInt?   @map("estimated_value_paise")
+  notes              String?    @db.Text
+  nextFollowUpDate   DateTime?  @map("next_follow_up_date")
+  lostReason         String?    @map("lost_reason") @db.VarChar(500)
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+  createdBy          String?    @map("created_by") @db.VarChar(36)
+  updatedBy          String?    @map("updated_by") @db.VarChar(36)
+
+  customer   Customer?      @relation(fields: [customerId], references: [id])
+  activities LeadActivity[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, assignedTo])
+  @@map("leads")
+}
+
+// ─── Lead Activity ─────────────────────────────────────────────
+
+model LeadActivity {
+  id           String           @id @default(uuid()) @db.VarChar(36)
+  tenantId     String           @map("tenant_id") @db.VarChar(36)
+  leadId       String           @map("lead_id") @db.VarChar(36)
+  activityType LeadActivityType @map("activity_type")
+  description  String?          @db.Text
+  scheduledAt  DateTime?        @map("scheduled_at")
+  completedAt  DateTime?        @map("completed_at")
+  userId       String?          @map("user_id") @db.VarChar(36)
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  createdBy    String?          @map("created_by") @db.VarChar(36)
+  updatedBy    String?          @map("updated_by") @db.VarChar(36)
+
+  lead Lead @relation(fields: [leadId], references: [id])
+
+  @@index([tenantId])
+  @@index([leadId])
+  @@map("lead_activities")
+}
+
+// ─── Feedback ──────────────────────────────────────────────────
+
+model Feedback {
+  id           String         @id @default(uuid()) @db.VarChar(36)
+  tenantId     String         @map("tenant_id") @db.VarChar(36)
+  customerId   String         @map("customer_id") @db.VarChar(36)
+  feedbackType FeedbackType   @map("feedback_type")
+  rating       Int
+  comment      String?        @db.Text
+  saleId       String?        @map("sale_id") @db.VarChar(36)
+  status       FeedbackStatus @default(NEW)
+  reviewedBy   String?        @map("reviewed_by") @db.VarChar(36)
+  reviewedAt   DateTime?      @map("reviewed_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  createdBy    String?        @map("created_by") @db.VarChar(36)
+  updatedBy    String?        @map("updated_by") @db.VarChar(36)
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@map("feedbacks")
+}
+
+// ─── Customer Segment ──────────────────────────────────────────
+
+model CustomerSegment {
+  id               String    @id @default(uuid()) @db.VarChar(36)
+  tenantId         String    @map("tenant_id") @db.VarChar(36)
+  name             String    @db.VarChar(255)
+  description      String?   @db.Text
+  criteria         Json      @map("criteria")
+  customerCount    Int       @default(0) @map("customer_count")
+  lastCalculatedAt DateTime? @map("last_calculated_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdBy        String?   @map("created_by") @db.VarChar(36)
+  updatedBy        String?   @map("updated_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@map("customer_segments")
+}
+
+// ─── Digital Passbook ──────────────────────────────────────────
+
+model DigitalPassbook {
+  id                  String       @id @default(uuid()) @db.VarChar(36)
+  tenantId            String       @map("tenant_id") @db.VarChar(36)
+  customerId          String       @map("customer_id") @db.VarChar(36)
+  type                PassbookType
+  schemeName          String       @map("scheme_name") @db.VarChar(255)
+  currentBalancePaise BigInt?      @map("current_balance_paise")
+  currentPoints       Int?         @map("current_points")
+  metadata            Json?        @map("metadata")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+  createdBy           String?      @map("created_by") @db.VarChar(36)
+  updatedBy           String?      @map("updated_by") @db.VarChar(36)
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@map("digital_passbooks")
+}

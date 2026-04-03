@@ -1,0 +1,50 @@
+{
+  "name": "@caratflow/ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CaratFlow UI component library built on shadcn/ui + Tailwind CSS",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./components": "./src/components/index.ts",
+    "./layout": "./src/layout/index.ts",
+    "./tailwind.config": "./tailwind.config.ts",
+    "./globals.css": "./src/globals.css"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@caratflow/shared-types": "workspace:*",
+    "@caratflow/utils": "workspace:*",
+    "@radix-ui/react-dialog": "^1.1.0",
+    "@radix-ui/react-dropdown-menu": "^2.1.0",
+    "@radix-ui/react-popover": "^1.1.0",
+    "@radix-ui/react-select": "^2.1.0",
+    "@radix-ui/react-separator": "^1.1.0",
+    "@radix-ui/react-slot": "^1.1.0",
+    "@radix-ui/react-tooltip": "^1.1.0",
+    "@tanstack/react-table": "^8.20.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "cmdk": "^1.0.0",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.460.0",
+    "react-day-picker": "^9.4.0",
+    "tailwind-merge": "^2.6.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "rimraf": "^6.0.1",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,165 @@
+// ─── CaratFlow Reporting Domain Schema ──────────────────────────
+// Saved reports, scheduled delivery, execution logs, dashboards.
+
+// ─── Enums ────────────────────────────────────────────────────
+
+enum ReportType {
+  SALES
+  INVENTORY
+  FINANCIAL
+  MANUFACTURING
+  CRM
+  CUSTOM
+}
+
+enum ReportFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum ReportFormat {
+  PDF
+  XLSX
+  CSV
+}
+
+enum ReportExecutionStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum DashboardWidgetType {
+  STAT_CARD
+  CHART
+  TABLE
+  RATE_TICKER
+  ALERT_LIST
+}
+
+// ─── SavedReport ──────────────────────────────────────────────
+
+model SavedReport {
+  id          String     @id @default(uuid()) @db.VarChar(36)
+  tenantId    String     @map("tenant_id") @db.VarChar(36)
+  name        String     @db.VarChar(255)
+  description String?    @db.VarChar(500)
+  reportType  ReportType @map("report_type")
+  filters     Json?      @map("filters")
+  columns     Json?      @map("columns")
+  groupBy     Json?      @map("group_by")
+  sortBy      Json?      @map("sort_by")
+  chartType   String?    @map("chart_type") @db.VarChar(50)
+  isDefault   Boolean    @default(false) @map("is_default")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  createdBy   String?    @map("created_by") @db.VarChar(36)
+  updatedBy   String?    @map("updated_by") @db.VarChar(36)
+
+  scheduledReports ScheduledReport[]
+  executions       ReportExecution[] @relation("SavedReportExecutions")
+
+  @@index([tenantId])
+  @@index([tenantId, reportType])
+  @@index([tenantId, createdBy])
+  @@map("saved_reports")
+}
+
+// ─── ScheduledReport ──────────────────────────────────────────
+
+model ScheduledReport {
+  id            String          @id @default(uuid()) @db.VarChar(36)
+  tenantId      String          @map("tenant_id") @db.VarChar(36)
+  savedReportId String          @map("saved_report_id") @db.VarChar(36)
+  frequency     ReportFrequency
+  dayOfWeek     Int?            @map("day_of_week")
+  dayOfMonth    Int?            @map("day_of_month")
+  timeOfDay     String          @map("time_of_day") @db.VarChar(5)
+  format        ReportFormat    @default(PDF)
+  recipients    Json            @map("recipients")
+  isActive      Boolean         @default(true) @map("is_active")
+  lastRunAt     DateTime?       @map("last_run_at")
+  nextRunAt     DateTime?       @map("next_run_at")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  createdBy     String?         @map("created_by") @db.VarChar(36)
+  updatedBy     String?         @map("updated_by") @db.VarChar(36)
+
+  savedReport SavedReport       @relation(fields: [savedReportId], references: [id])
+  executions  ReportExecution[] @relation("ScheduledReportExecutions")
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([nextRunAt])
+  @@map("scheduled_reports")
+}
+
+// ─── ReportExecution ──────────────────────────────────────────
+
+model ReportExecution {
+  id               String                @id @default(uuid()) @db.VarChar(36)
+  tenantId         String                @map("tenant_id") @db.VarChar(36)
+  savedReportId    String?               @map("saved_report_id") @db.VarChar(36)
+  scheduledReportId String?              @map("scheduled_report_id") @db.VarChar(36)
+  reportType       ReportType            @map("report_type")
+  status           ReportExecutionStatus @default(QUEUED)
+  parameters       Json?                 @map("parameters")
+  resultFileUrl    String?               @map("result_file_url") @db.VarChar(500)
+  rowCount         Int?                  @map("row_count")
+  executionTimeMs  Int?                  @map("execution_time_ms")
+  startedAt        DateTime?             @map("started_at")
+  completedAt      DateTime?             @map("completed_at")
+  error            String?               @db.Text
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+  createdBy        String?               @map("created_by") @db.VarChar(36)
+  updatedBy        String?               @map("updated_by") @db.VarChar(36)
+
+  savedReport     SavedReport?     @relation("SavedReportExecutions", fields: [savedReportId], references: [id])
+  scheduledReport ScheduledReport? @relation("ScheduledReportExecutions", fields: [scheduledReportId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, reportType])
+  @@index([tenantId, status])
+  @@index([createdAt])
+  @@map("report_executions")
+}
+
+// ─── DashboardLayout ──────────────────────────────────────────
+
+model DashboardLayout {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  tenantId  String   @map("tenant_id") @db.VarChar(36)
+  userId    String   @map("user_id") @db.VarChar(36)
+  name      String   @db.VarChar(255)
+  isDefault Boolean  @default(false) @map("is_default")
+  layout    Json     @map("layout")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by") @db.VarChar(36)
+  updatedBy String?  @map("updated_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@index([tenantId, userId])
+  @@map("dashboard_layouts")
+}
+
+// ─── DashboardWidget ──────────────────────────────────────────
+// Global widget registry -- NOT tenant-scoped.
+
+model DashboardWidget {
+  id            String              @id @default(uuid()) @db.VarChar(36)
+  widgetType    DashboardWidgetType @map("widget_type")
+  name          String              @db.VarChar(255)
+  description   String?             @db.VarChar(500)
+  dataSource    String              @map("data_source") @db.VarChar(255)
+  defaultConfig Json?               @map("default_config")
+  isSystem      Boolean             @default(true) @map("is_system")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  @@index([widgetType])
+  @@map("dashboard_widgets")
+}

@@ -1,0 +1,393 @@
+// ─── CaratFlow E-Commerce Domain Schema ─────────────────────────
+// Online orders, product catalog sync, sales channels, shipping,
+// payment gateways, webhooks, reviews, click & collect.
+
+// ─── Enums ────────────────────────────────────────────────────────
+
+enum SalesChannelType {
+  SHOPIFY
+  AMAZON
+  FLIPKART
+  WEBSITE
+  INSTAGRAM
+  CUSTOM
+}
+
+enum CatalogItemStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum CatalogSyncStatus {
+  PENDING
+  SYNCED
+  FAILED
+  OUT_OF_SYNC
+}
+
+enum OnlineOrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  RETURNED
+  REFUNDED
+}
+
+enum ShipmentStatus {
+  LABEL_CREATED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  RETURNED
+}
+
+enum PaymentGatewayType {
+  RAZORPAY
+  STRIPE
+  PAYPAL
+  PAYU
+  CASHFREE
+}
+
+enum OnlinePaymentStatus {
+  INITIATED
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum WebhookLogStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+}
+
+enum ClickAndCollectStatus {
+  READY_FOR_PICKUP
+  NOTIFIED
+  PICKED_UP
+  CANCELLED
+}
+
+// ─── SalesChannel ─────────────────────────────────────────────────
+
+model SalesChannel {
+  id            String           @id @default(uuid()) @db.VarChar(36)
+  tenantId      String           @map("tenant_id") @db.VarChar(36)
+  name          String           @db.VarChar(255)
+  channelType   SalesChannelType @map("channel_type")
+  apiKey        String?          @map("api_key") @db.VarChar(500)
+  apiSecret     String?          @map("api_secret") @db.VarChar(500)
+  storeUrl      String?          @map("store_url") @db.VarChar(500)
+  webhookSecret String?          @map("webhook_secret") @db.VarChar(500)
+  settings      Json?            @map("settings")
+  isActive      Boolean          @default(true) @map("is_active")
+  lastSyncAt    DateTime?        @map("last_sync_at")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  createdBy     String?          @map("created_by") @db.VarChar(36)
+  updatedBy     String?          @map("updated_by") @db.VarChar(36)
+
+  catalogItems   CatalogItem[]
+  onlineOrders   OnlineOrder[]
+  webhookLogs    WebhookLog[]
+  productReviews ProductReview[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([tenantId, channelType])
+  @@index([tenantId, isActive])
+  @@map("sales_channels")
+}
+
+// ─── CatalogItem ──────────────────────────────────────────────────
+
+model CatalogItem {
+  id                 String            @id @default(uuid()) @db.VarChar(36)
+  tenantId           String            @map("tenant_id") @db.VarChar(36)
+  productId          String            @map("product_id") @db.VarChar(36)
+  channelId          String            @map("channel_id") @db.VarChar(36)
+  externalProductId  String?           @map("external_product_id") @db.VarChar(255)
+  externalVariantId  String?           @map("external_variant_id") @db.VarChar(255)
+  title              String            @db.VarChar(500)
+  description        String?           @db.Text
+  pricePaise         BigInt            @map("price_paise")
+  comparePricePaise  BigInt?           @map("compare_price_paise")
+  currencyCode       String            @default("INR") @map("currency_code") @db.VarChar(3)
+  images             Json?             @map("images")
+  status             CatalogItemStatus @default(DRAFT)
+  syncStatus         CatalogSyncStatus @default(PENDING) @map("sync_status")
+  lastSyncAt         DateTime?         @map("last_sync_at")
+  syncError          String?           @map("sync_error") @db.Text
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  createdBy          String?           @map("created_by") @db.VarChar(36)
+  updatedBy          String?           @map("updated_by") @db.VarChar(36)
+
+  product         Product           @relation(fields: [productId], references: [id])
+  channel         SalesChannel      @relation(fields: [channelId], references: [id])
+  onlineOrderItems OnlineOrderItem[]
+
+  @@unique([tenantId, productId, channelId])
+  @@index([tenantId])
+  @@index([tenantId, channelId])
+  @@index([tenantId, syncStatus])
+  @@index([tenantId, productId])
+  @@map("catalog_items")
+}
+
+// ─── OnlineOrder ──────────────────────────────────────────────────
+
+model OnlineOrder {
+  id               String            @id @default(uuid()) @db.VarChar(36)
+  tenantId         String            @map("tenant_id") @db.VarChar(36)
+  orderNumber      String            @map("order_number") @db.VarChar(50)
+  channelId        String            @map("channel_id") @db.VarChar(36)
+  externalOrderId  String?           @map("external_order_id") @db.VarChar(255)
+  customerId       String?           @map("customer_id") @db.VarChar(36)
+  customerEmail    String?           @map("customer_email") @db.VarChar(255)
+  customerPhone    String?           @map("customer_phone") @db.VarChar(20)
+  customerName     String?           @map("customer_name") @db.VarChar(255)
+  status           OnlineOrderStatus @default(PENDING)
+  subtotalPaise    BigInt            @map("subtotal_paise")
+  shippingPaise    BigInt            @default(0) @map("shipping_paise")
+  taxPaise         BigInt            @default(0) @map("tax_paise")
+  discountPaise    BigInt            @default(0) @map("discount_paise")
+  totalPaise       BigInt            @map("total_paise")
+  currencyCode     String            @default("INR") @map("currency_code") @db.VarChar(3)
+  shippingAddress  Json?             @map("shipping_address")
+  billingAddress   Json?             @map("billing_address")
+  notes            String?           @db.Text
+  cancelReason     String?           @map("cancel_reason") @db.Text
+  placedAt         DateTime?         @map("placed_at")
+  confirmedAt      DateTime?         @map("confirmed_at")
+  shippedAt        DateTime?         @map("shipped_at")
+  deliveredAt      DateTime?         @map("delivered_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  createdBy        String?           @map("created_by") @db.VarChar(36)
+  updatedBy        String?           @map("updated_by") @db.VarChar(36)
+
+  channel          SalesChannel      @relation(fields: [channelId], references: [id])
+  customer         Customer?         @relation(fields: [customerId], references: [id])
+  items            OnlineOrderItem[]
+  shipments        Shipment[]
+  payments         OnlinePayment[]
+  clickAndCollects ClickAndCollect[]
+
+  @@unique([tenantId, orderNumber])
+  @@unique([tenantId, channelId, externalOrderId])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, channelId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, placedAt])
+  @@map("online_orders")
+}
+
+// ─── OnlineOrderItem ──────────────────────────────────────────────
+
+model OnlineOrderItem {
+  id                 String  @id @default(uuid()) @db.VarChar(36)
+  tenantId           String  @map("tenant_id") @db.VarChar(36)
+  orderId            String  @map("order_id") @db.VarChar(36)
+  catalogItemId      String? @map("catalog_item_id") @db.VarChar(36)
+  productId          String? @map("product_id") @db.VarChar(36)
+  externalLineItemId String? @map("external_line_item_id") @db.VarChar(255)
+  title              String  @db.VarChar(500)
+  quantity           Int     @default(1)
+  unitPricePaise     BigInt  @map("unit_price_paise")
+  totalPaise         BigInt  @map("total_paise")
+  sku                String? @db.VarChar(50)
+  weightMg           BigInt? @map("weight_mg")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  order       OnlineOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  catalogItem CatalogItem? @relation(fields: [catalogItemId], references: [id])
+  product     Product?     @relation(fields: [productId], references: [id])
+
+  @@index([tenantId])
+  @@index([orderId])
+  @@map("online_order_items")
+}
+
+// ─── Shipment ─────────────────────────────────────────────────────
+
+model Shipment {
+  id                    String         @id @default(uuid()) @db.VarChar(36)
+  tenantId              String         @map("tenant_id") @db.VarChar(36)
+  orderId               String         @map("order_id") @db.VarChar(36)
+  shipmentNumber        String         @map("shipment_number") @db.VarChar(50)
+  carrier               String?        @db.VarChar(100)
+  trackingNumber        String?        @map("tracking_number") @db.VarChar(255)
+  trackingUrl           String?        @map("tracking_url") @db.VarChar(500)
+  status                ShipmentStatus @default(LABEL_CREATED)
+  estimatedDeliveryDate DateTime?      @map("estimated_delivery_date") @db.Date
+  actualDeliveryDate    DateTime?      @map("actual_delivery_date") @db.Date
+  weightGrams           Int?           @map("weight_grams")
+  shippingCostPaise     BigInt         @default(0) @map("shipping_cost_paise")
+  labelUrl              String?        @map("label_url") @db.VarChar(500)
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+  createdBy             String?        @map("created_by") @db.VarChar(36)
+  updatedBy             String?        @map("updated_by") @db.VarChar(36)
+
+  order OnlineOrder @relation(fields: [orderId], references: [id])
+
+  @@unique([tenantId, shipmentNumber])
+  @@index([tenantId])
+  @@index([tenantId, orderId])
+  @@index([tenantId, status])
+  @@index([tenantId, trackingNumber])
+  @@map("shipments")
+}
+
+// ─── PaymentGateway ───────────────────────────────────────────────
+
+model PaymentGateway {
+  id               String             @id @default(uuid()) @db.VarChar(36)
+  tenantId         String             @map("tenant_id") @db.VarChar(36)
+  name             String             @db.VarChar(255)
+  gatewayType      PaymentGatewayType @map("gateway_type")
+  apiKey           String?            @map("api_key") @db.VarChar(500)
+  apiSecret        String?            @map("api_secret") @db.VarChar(500)
+  webhookSecret    String?            @map("webhook_secret") @db.VarChar(500)
+  isActive         Boolean            @default(true) @map("is_active")
+  isDefault        Boolean            @default(false) @map("is_default")
+  supportedMethods Json?              @map("supported_methods")
+  settings         Json?              @map("settings")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  createdBy        String?            @map("created_by") @db.VarChar(36)
+  updatedBy        String?            @map("updated_by") @db.VarChar(36)
+
+  onlinePayments OnlinePayment[]
+  webhookLogs    WebhookLog[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("payment_gateways")
+}
+
+// ─── OnlinePayment ────────────────────────────────────────────────
+
+model OnlinePayment {
+  id                 String              @id @default(uuid()) @db.VarChar(36)
+  tenantId           String              @map("tenant_id") @db.VarChar(36)
+  orderId            String              @map("order_id") @db.VarChar(36)
+  gatewayId          String              @map("gateway_id") @db.VarChar(36)
+  externalPaymentId  String?             @map("external_payment_id") @db.VarChar(255)
+  method             String?             @db.VarChar(50)
+  amountPaise        BigInt              @map("amount_paise")
+  currencyCode       String              @default("INR") @map("currency_code") @db.VarChar(3)
+  status             OnlinePaymentStatus @default(INITIATED)
+  gatewayResponse    Json?               @map("gateway_response")
+  initiatedAt        DateTime?           @map("initiated_at")
+  completedAt        DateTime?           @map("completed_at")
+  refundedAt         DateTime?           @map("refunded_at")
+  refundAmountPaise  BigInt?             @map("refund_amount_paise")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  createdBy          String?             @map("created_by") @db.VarChar(36)
+  updatedBy          String?             @map("updated_by") @db.VarChar(36)
+
+  order   OnlineOrder    @relation(fields: [orderId], references: [id])
+  gateway PaymentGateway @relation(fields: [gatewayId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, orderId])
+  @@index([tenantId, status])
+  @@index([tenantId, externalPaymentId])
+  @@map("online_payments")
+}
+
+// ─── WebhookLog ───────────────────────────────────────────────────
+
+model WebhookLog {
+  id          String           @id @default(uuid()) @db.VarChar(36)
+  tenantId    String           @map("tenant_id") @db.VarChar(36)
+  channelId   String?          @map("channel_id") @db.VarChar(36)
+  gatewayId   String?          @map("gateway_id") @db.VarChar(36)
+  source      String           @db.VarChar(100)
+  eventType   String           @map("event_type") @db.VarChar(200)
+  payload     Json             @map("payload")
+  status      WebhookLogStatus @default(RECEIVED)
+  processedAt DateTime?        @map("processed_at")
+  error       String?          @db.Text
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  channel SalesChannel?  @relation(fields: [channelId], references: [id])
+  gateway PaymentGateway? @relation(fields: [gatewayId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, source])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("webhook_logs")
+}
+
+// ─── ProductReview ────────────────────────────────────────────────
+
+model ProductReview {
+  id           String    @id @default(uuid()) @db.VarChar(36)
+  tenantId     String    @map("tenant_id") @db.VarChar(36)
+  productId    String    @map("product_id") @db.VarChar(36)
+  channelId    String?   @map("channel_id") @db.VarChar(36)
+  customerName String    @map("customer_name") @db.VarChar(255)
+  rating       Int       // 1-5
+  title        String?   @db.VarChar(500)
+  body         String?   @db.Text
+  isVerified   Boolean   @default(false) @map("is_verified")
+  isPublished  Boolean   @default(false) @map("is_published")
+  publishedAt  DateTime? @map("published_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  createdBy    String?   @map("created_by") @db.VarChar(36)
+  updatedBy    String?   @map("updated_by") @db.VarChar(36)
+
+  product Product       @relation(fields: [productId], references: [id])
+  channel SalesChannel? @relation(fields: [channelId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, productId])
+  @@index([tenantId, isPublished])
+  @@index([tenantId, rating])
+  @@map("product_reviews")
+}
+
+// ─── ClickAndCollect ──────────────────────────────────────────────
+
+model ClickAndCollect {
+  id         String               @id @default(uuid()) @db.VarChar(36)
+  tenantId   String               @map("tenant_id") @db.VarChar(36)
+  orderId    String               @map("order_id") @db.VarChar(36)
+  locationId String               @map("location_id") @db.VarChar(36)
+  status     ClickAndCollectStatus @default(READY_FOR_PICKUP)
+  readyAt    DateTime?            @map("ready_at")
+  notifiedAt DateTime?            @map("notified_at")
+  pickedUpAt DateTime?            @map("picked_up_at")
+  expiresAt  DateTime?            @map("expires_at")
+  createdAt  DateTime             @default(now()) @map("created_at")
+  updatedAt  DateTime             @updatedAt @map("updated_at")
+  createdBy  String?              @map("created_by") @db.VarChar(36)
+  updatedBy  String?              @map("updated_by") @db.VarChar(36)
+
+  order    OnlineOrder @relation(fields: [orderId], references: [id])
+  location Location    @relation(fields: [locationId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, locationId])
+  @@index([tenantId, status])
+  @@index([tenantId, orderId])
+  @@map("click_and_collects")
+}

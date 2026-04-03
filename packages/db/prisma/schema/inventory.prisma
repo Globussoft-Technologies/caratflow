@@ -1,0 +1,311 @@
+// ─── CaratFlow Inventory Domain Schema ─────────────────────────
+// Stock items, stock movements, transfers, stock-takes, metal/stone
+// inventory, batch/lot tracking, serial numbers.
+
+// ─── Enums ────────────────────────────────────────────────────
+
+enum MovementType {
+  IN
+  OUT
+  TRANSFER
+  ADJUST
+  RETURN
+  PRODUCTION
+}
+
+enum TransferStatus {
+  DRAFT
+  IN_TRANSIT
+  RECEIVED
+  CANCELLED
+}
+
+enum StockTakeStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum InventoryMetalType {
+  GOLD
+  SILVER
+  PLATINUM
+}
+
+enum BatchSourceType {
+  PURCHASE
+  PRODUCTION
+  TRANSFER
+}
+
+enum SerialStatus {
+  AVAILABLE
+  SOLD
+  RESERVED
+  IN_REPAIR
+  IN_TRANSIT
+}
+
+// ─── StockItem ────────────────────────────────────────────────
+
+model StockItem {
+  id               String    @id @default(uuid()) @db.VarChar(36)
+  tenantId         String    @map("tenant_id") @db.VarChar(36)
+  productId        String    @map("product_id") @db.VarChar(36)
+  locationId       String    @map("location_id") @db.VarChar(36)
+  quantityOnHand   Int       @default(0) @map("quantity_on_hand")
+  quantityReserved Int       @default(0) @map("quantity_reserved")
+  quantityOnOrder  Int       @default(0) @map("quantity_on_order")
+  reorderLevel     Int       @default(0) @map("reorder_level")
+  reorderQuantity  Int       @default(0) @map("reorder_quantity")
+  lastCountedAt    DateTime? @map("last_counted_at")
+  binLocation      String?   @map("bin_location") @db.VarChar(100)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdBy        String?   @map("created_by") @db.VarChar(36)
+  updatedBy        String?   @map("updated_by") @db.VarChar(36)
+
+  product   Product  @relation(fields: [productId], references: [id])
+  location  Location @relation("StockItemLocation", fields: [locationId], references: [id])
+  movements StockMovement[]
+
+  @@unique([tenantId, productId, locationId])
+  @@index([tenantId])
+  @@index([tenantId, locationId])
+  @@index([tenantId, productId])
+  @@map("stock_items")
+}
+
+// ─── StockMovement ────────────────────────────────────────────
+
+model StockMovement {
+  id             String       @id @default(uuid()) @db.VarChar(36)
+  tenantId       String       @map("tenant_id") @db.VarChar(36)
+  stockItemId    String       @map("stock_item_id") @db.VarChar(36)
+  movementType   MovementType @map("movement_type")
+  quantityChange Int          @map("quantity_change")
+  referenceType  String?      @map("reference_type") @db.VarChar(100)
+  referenceId    String?      @map("reference_id") @db.VarChar(36)
+  notes          String?      @db.Text
+  movedAt        DateTime     @default(now()) @map("moved_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  createdBy      String?      @map("created_by") @db.VarChar(36)
+  updatedBy      String?      @map("updated_by") @db.VarChar(36)
+
+  stockItem StockItem @relation(fields: [stockItemId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, stockItemId])
+  @@index([tenantId, movementType])
+  @@index([movedAt])
+  @@map("stock_movements")
+}
+
+// ─── StockTransfer ────────────────────────────────────────────
+
+model StockTransfer {
+  id             String         @id @default(uuid()) @db.VarChar(36)
+  tenantId       String         @map("tenant_id") @db.VarChar(36)
+  fromLocationId String         @map("from_location_id") @db.VarChar(36)
+  toLocationId   String         @map("to_location_id") @db.VarChar(36)
+  status         TransferStatus @default(DRAFT)
+  requestedBy    String?        @map("requested_by") @db.VarChar(36)
+  approvedBy     String?        @map("approved_by") @db.VarChar(36)
+  notes          String?        @db.Text
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  createdBy      String?        @map("created_by") @db.VarChar(36)
+  updatedBy      String?        @map("updated_by") @db.VarChar(36)
+
+  fromLocation Location           @relation("TransferFrom", fields: [fromLocationId], references: [id])
+  toLocation   Location           @relation("TransferTo", fields: [toLocationId], references: [id])
+  items        StockTransferItem[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, fromLocationId])
+  @@index([tenantId, toLocationId])
+  @@map("stock_transfers")
+}
+
+// ─── StockTransferItem ────────────────────────────────────────
+
+model StockTransferItem {
+  id                String @id @default(uuid()) @db.VarChar(36)
+  tenantId          String @map("tenant_id") @db.VarChar(36)
+  stockTransferId   String @map("stock_transfer_id") @db.VarChar(36)
+  productId         String @map("product_id") @db.VarChar(36)
+  quantityRequested Int    @map("quantity_requested")
+  quantityShipped   Int    @default(0) @map("quantity_shipped")
+  quantitySent      Int    @default(0) @map("quantity_sent")
+  quantityReceived  Int    @default(0) @map("quantity_received")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdBy         String?  @map("created_by") @db.VarChar(36)
+  updatedBy         String?  @map("updated_by") @db.VarChar(36)
+
+  stockTransfer StockTransfer @relation(fields: [stockTransferId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
+
+  @@index([tenantId])
+  @@index([stockTransferId])
+  @@map("stock_transfer_items")
+}
+
+// ─── StockTake ────────────────────────────────────────────────
+
+model StockTake {
+  id          String          @id @default(uuid()) @db.VarChar(36)
+  tenantId    String          @map("tenant_id") @db.VarChar(36)
+  locationId  String          @map("location_id") @db.VarChar(36)
+  status      StockTakeStatus @default(DRAFT)
+  startedAt   DateTime?       @map("started_at")
+  completedAt DateTime?       @map("completed_at")
+  notes       String?         @db.Text
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  createdBy   String?         @map("created_by") @db.VarChar(36)
+  updatedBy   String?         @map("updated_by") @db.VarChar(36)
+
+  location Location        @relation("StockTakeLocation", fields: [locationId], references: [id])
+  items    StockTakeItem[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, locationId])
+  @@map("stock_takes")
+}
+
+// ─── StockTakeItem ────────────────────────────────────────────
+
+model StockTakeItem {
+  id               String  @id @default(uuid()) @db.VarChar(36)
+  tenantId         String  @map("tenant_id") @db.VarChar(36)
+  stockTakeId      String  @map("stock_take_id") @db.VarChar(36)
+  productId        String  @map("product_id") @db.VarChar(36)
+  systemQuantity   Int     @map("system_quantity")
+  countedQuantity  Int?    @map("counted_quantity")
+  varianceQuantity Int?    @map("variance_quantity")
+  notes            String? @db.Text
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdBy        String?  @map("created_by") @db.VarChar(36)
+  updatedBy        String?  @map("updated_by") @db.VarChar(36)
+
+  stockTake StockTake @relation(fields: [stockTakeId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@index([tenantId])
+  @@index([stockTakeId])
+  @@map("stock_take_items")
+}
+
+// ─── MetalStock ───────────────────────────────────────────────
+
+model MetalStock {
+  id              String             @id @default(uuid()) @db.VarChar(36)
+  tenantId        String             @map("tenant_id") @db.VarChar(36)
+  locationId      String             @map("location_id") @db.VarChar(36)
+  metalType       InventoryMetalType @map("metal_type")
+  purityFineness  Int                @map("purity_fineness")
+  weightMg        BigInt             @map("weight_mg")
+  valuePaise      BigInt             @map("value_paise")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  createdBy       String?            @map("created_by") @db.VarChar(36)
+  updatedBy       String?            @map("updated_by") @db.VarChar(36)
+
+  location Location @relation("MetalStockLocation", fields: [locationId], references: [id])
+
+  @@unique([tenantId, locationId, metalType, purityFineness])
+  @@index([tenantId])
+  @@index([tenantId, locationId])
+  @@map("metal_stocks")
+}
+
+// ─── StoneStock ───────────────────────────────────────────────
+
+model StoneStock {
+  id                  String   @id @default(uuid()) @db.VarChar(36)
+  tenantId            String   @map("tenant_id") @db.VarChar(36)
+  locationId          String   @map("location_id") @db.VarChar(36)
+  stoneType           String   @map("stone_type") @db.VarChar(100)
+  shape               String?  @db.VarChar(50)
+  sizeRange           String?  @map("size_range") @db.VarChar(50)
+  color               String?  @db.VarChar(50)
+  clarity             String?  @db.VarChar(50)
+  cutGrade            String?  @map("cut_grade") @db.VarChar(50)
+  totalWeightCt       Int      @map("total_weight_ct")
+  totalPieces         Int      @map("total_pieces")
+  valuePaise          BigInt   @map("value_paise")
+  certificationNumber String?  @map("certification_number") @db.VarChar(100)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  createdBy           String?  @map("created_by") @db.VarChar(36)
+  updatedBy           String?  @map("updated_by") @db.VarChar(36)
+
+  location Location @relation("StoneStockLocation", fields: [locationId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, locationId])
+  @@index([tenantId, stoneType])
+  @@map("stone_stocks")
+}
+
+// ─── BatchLot ─────────────────────────────────────────────────
+
+model BatchLot {
+  id              String          @id @default(uuid()) @db.VarChar(36)
+  tenantId        String          @map("tenant_id") @db.VarChar(36)
+  productId       String          @map("product_id") @db.VarChar(36)
+  batchNumber     String          @map("batch_number") @db.VarChar(100)
+  lotNumber       String?         @map("lot_number") @db.VarChar(100)
+  sourceType      BatchSourceType @map("source_type")
+  sourceId        String?         @map("source_id") @db.VarChar(36)
+  quantityInitial Int             @map("quantity_initial")
+  quantityCurrent Int             @map("quantity_current")
+  expiryDate      DateTime?       @map("expiry_date") @db.Date
+  notes           String?         @db.Text
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  createdBy       String?         @map("created_by") @db.VarChar(36)
+  updatedBy       String?         @map("updated_by") @db.VarChar(36)
+
+  product       Product        @relation(fields: [productId], references: [id])
+  serialNumbers SerialNumber[]
+
+  @@unique([tenantId, batchNumber])
+  @@index([tenantId])
+  @@index([tenantId, productId])
+  @@map("batch_lots")
+}
+
+// ─── SerialNumber ─────────────────────────────────────────────
+
+model SerialNumber {
+  id           String       @id @default(uuid()) @db.VarChar(36)
+  tenantId     String       @map("tenant_id") @db.VarChar(36)
+  productId    String       @map("product_id") @db.VarChar(36)
+  serialNumber String       @map("serial_number") @db.VarChar(200)
+  batchLotId   String?      @map("batch_lot_id") @db.VarChar(36)
+  locationId   String?      @map("location_id") @db.VarChar(36)
+  status       SerialStatus @default(AVAILABLE)
+  rfidTag      String?      @map("rfid_tag") @db.VarChar(200)
+  barcodeData  String?      @map("barcode_data") @db.VarChar(200)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  createdBy    String?      @map("created_by") @db.VarChar(36)
+  updatedBy    String?      @map("updated_by") @db.VarChar(36)
+
+  product  Product   @relation(fields: [productId], references: [id])
+  batchLot BatchLot? @relation(fields: [batchLotId], references: [id])
+  location Location? @relation("SerialNumberLocation", fields: [locationId], references: [id])
+
+  @@unique([tenantId, serialNumber])
+  @@index([tenantId])
+  @@index([tenantId, productId])
+  @@index([tenantId, status])
+  @@map("serial_numbers")
+}

@@ -1,0 +1,376 @@
+// ─── CaratFlow Financial Domain Schema ──────────────────────────
+// Journal entries, invoices, payments, GST, TDS/TCS, reconciliation.
+// Double-entry accounting with Indian GST compliance.
+
+// ─── Enums ────────────────────────────────────────────────────────
+
+enum JournalEntryStatus {
+  DRAFT
+  POSTED
+  VOIDED
+}
+
+enum InvoiceTypeEnum {
+  SALES
+  PURCHASE
+  CREDIT_NOTE
+  DEBIT_NOTE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+  VOIDED
+}
+
+enum PaymentTypeEnum {
+  RECEIVED
+  MADE
+}
+
+enum PaymentMethodEnum {
+  CASH
+  CARD
+  UPI
+  BANK_TRANSFER
+  CHEQUE
+  ONLINE
+}
+
+enum PaymentStatusEnum {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum TaxTypeEnum {
+  CGST
+  SGST
+  IGST
+  CESS
+  TDS
+  TCS
+  SALES_TAX
+  VAT
+}
+
+enum FinancialYearStatus {
+  OPEN
+  CLOSING
+  CLOSED
+}
+
+// ─── Journal Entry ────────────────────────────────────────────────
+
+model JournalEntry {
+  id          String             @id @default(uuid()) @db.VarChar(36)
+  tenantId    String             @map("tenant_id") @db.VarChar(36)
+  entryNumber String             @map("entry_number") @db.VarChar(50)
+  date        DateTime           @db.Date
+  description String             @db.VarChar(500)
+  reference   String?            @db.VarChar(255)
+  status      JournalEntryStatus @default(DRAFT)
+  postedAt    DateTime?          @map("posted_at")
+  voidedAt    DateTime?          @map("voided_at")
+  voidReason  String?            @map("void_reason") @db.VarChar(500)
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  createdBy   String?            @map("created_by") @db.VarChar(36)
+  updatedBy   String?            @map("updated_by") @db.VarChar(36)
+
+  lines JournalEntryLine[]
+
+  @@unique([tenantId, entryNumber])
+  @@index([tenantId])
+  @@index([tenantId, date])
+  @@index([tenantId, status])
+  @@map("journal_entries")
+}
+
+// ─── Journal Entry Line ───────────────────────────────────────────
+
+model JournalEntryLine {
+  id             String  @id @default(uuid()) @db.VarChar(36)
+  tenantId       String  @map("tenant_id") @db.VarChar(36)
+  journalEntryId String  @map("journal_entry_id") @db.VarChar(36)
+  accountId      String  @map("account_id") @db.VarChar(36)
+  debitPaise     BigInt  @default(0) @map("debit_paise")
+  creditPaise    BigInt  @default(0) @map("credit_paise")
+  description    String? @db.VarChar(500)
+  currencyCode   String  @default("INR") @map("currency_code") @db.VarChar(3)
+  exchangeRate   Int     @default(10000) @map("exchange_rate")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  account      Account      @relation(fields: [accountId], references: [id])
+
+  @@index([tenantId])
+  @@index([journalEntryId])
+  @@index([accountId])
+  @@map("journal_entry_lines")
+}
+
+// ─── Invoice ──────────────────────────────────────────────────────
+
+model Invoice {
+  id               String          @id @default(uuid()) @db.VarChar(36)
+  tenantId         String          @map("tenant_id") @db.VarChar(36)
+  invoiceNumber    String          @map("invoice_number") @db.VarChar(50)
+  invoiceType      InvoiceTypeEnum @map("invoice_type")
+  customerId       String?         @map("customer_id") @db.VarChar(36)
+  supplierId       String?         @map("supplier_id") @db.VarChar(36)
+  locationId       String          @map("location_id") @db.VarChar(36)
+  status           InvoiceStatus   @default(DRAFT)
+  subtotalPaise    BigInt          @map("subtotal_paise")
+  discountPaise    BigInt          @default(0) @map("discount_paise")
+  taxPaise         BigInt          @default(0) @map("tax_paise")
+  totalPaise       BigInt          @map("total_paise")
+  currencyCode     String          @default("INR") @map("currency_code") @db.VarChar(3)
+  dueDate          DateTime?       @map("due_date") @db.Date
+  paidPaise        BigInt          @default(0) @map("paid_paise")
+  notes            String?         @db.Text
+  terms            String?         @db.Text
+  journalEntryId   String?         @map("journal_entry_id") @db.VarChar(36)
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  createdBy        String?         @map("created_by") @db.VarChar(36)
+  updatedBy        String?         @map("updated_by") @db.VarChar(36)
+
+  customer    Customer?        @relation(fields: [customerId], references: [id])
+  supplier    Supplier?        @relation(fields: [supplierId], references: [id])
+  location    Location         @relation(fields: [locationId], references: [id])
+  lineItems   InvoiceLineItem[]
+  payments    Payment[]
+  taxTransactions TaxTransaction[]
+
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId])
+  @@index([tenantId, invoiceType])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([tenantId, supplierId])
+  @@index([tenantId, dueDate])
+  @@map("invoices")
+}
+
+// ─── Invoice Line Item ────────────────────────────────────────────
+
+model InvoiceLineItem {
+  id                  String  @id @default(uuid()) @db.VarChar(36)
+  tenantId            String  @map("tenant_id") @db.VarChar(36)
+  invoiceId           String  @map("invoice_id") @db.VarChar(36)
+  productId           String? @map("product_id") @db.VarChar(36)
+  description         String  @db.VarChar(500)
+  quantity            Int     @default(1)
+  unitPricePaise      BigInt  @map("unit_price_paise")
+  discountPaise       BigInt  @default(0) @map("discount_paise")
+  taxableAmountPaise  BigInt  @map("taxable_amount_paise")
+  hsnCode             String  @default("7113") @map("hsn_code") @db.VarChar(10)
+  gstRate             Int     @default(300) @map("gst_rate") // percent * 100, e.g., 300 = 3%
+  cgstPaise           BigInt  @default(0) @map("cgst_paise")
+  sgstPaise           BigInt  @default(0) @map("sgst_paise")
+  igstPaise           BigInt  @default(0) @map("igst_paise")
+  totalPaise          BigInt  @map("total_paise")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@index([tenantId])
+  @@index([invoiceId])
+  @@map("invoice_line_items")
+}
+
+// ─── Payment ──────────────────────────────────────────────────────
+
+model Payment {
+  id              String           @id @default(uuid()) @db.VarChar(36)
+  tenantId        String           @map("tenant_id") @db.VarChar(36)
+  paymentNumber   String           @map("payment_number") @db.VarChar(50)
+  paymentType     PaymentTypeEnum  @map("payment_type")
+  method          PaymentMethodEnum
+  amountPaise     BigInt           @map("amount_paise")
+  currencyCode    String           @default("INR") @map("currency_code") @db.VarChar(3)
+  customerId      String?          @map("customer_id") @db.VarChar(36)
+  supplierId      String?          @map("supplier_id") @db.VarChar(36)
+  invoiceId       String?          @map("invoice_id") @db.VarChar(36)
+  reference       String?          @db.VarChar(255)
+  status          PaymentStatusEnum @default(PENDING)
+  processedAt     DateTime?        @map("processed_at")
+  journalEntryId  String?          @map("journal_entry_id") @db.VarChar(36)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  createdBy       String?          @map("created_by") @db.VarChar(36)
+  updatedBy       String?          @map("updated_by") @db.VarChar(36)
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+  invoice  Invoice?  @relation(fields: [invoiceId], references: [id])
+
+  @@unique([tenantId, paymentNumber])
+  @@index([tenantId])
+  @@index([tenantId, paymentType])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([tenantId, supplierId])
+  @@map("payments")
+}
+
+// ─── Tax Transaction ──────────────────────────────────────────────
+
+model TaxTransaction {
+  id                  String      @id @default(uuid()) @db.VarChar(36)
+  tenantId            String      @map("tenant_id") @db.VarChar(36)
+  invoiceId           String      @map("invoice_id") @db.VarChar(36)
+  taxType             TaxTypeEnum @map("tax_type")
+  taxRate             Int         @map("tax_rate") // percent * 100
+  taxableAmountPaise  BigInt      @map("taxable_amount_paise")
+  taxAmountPaise      BigInt      @map("tax_amount_paise")
+  hsnCode             String?     @map("hsn_code") @db.VarChar(10)
+  sourceState         String?     @map("source_state") @db.VarChar(5)
+  destState           String?     @map("dest_state") @db.VarChar(5)
+  isReverseCharge     Boolean     @default(false) @map("is_reverse_charge")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([invoiceId])
+  @@index([tenantId, taxType])
+  @@map("tax_transactions")
+}
+
+// ─── Bank Account ─────────────────────────────────────────────────
+
+model BankAccount {
+  id                  String   @id @default(uuid()) @db.VarChar(36)
+  tenantId            String   @map("tenant_id") @db.VarChar(36)
+  accountId           String   @map("account_id") @db.VarChar(36)
+  bankName            String   @map("bank_name") @db.VarChar(255)
+  accountNumber       String   @map("account_number") @db.VarChar(30)
+  ifscCode            String?  @map("ifsc_code") @db.VarChar(11)
+  swiftCode           String?  @map("swift_code") @db.VarChar(11)
+  branchName          String?  @map("branch_name") @db.VarChar(255)
+  currencyCode        String   @default("INR") @map("currency_code") @db.VarChar(3)
+  currentBalancePaise BigInt   @default(0) @map("current_balance_paise")
+  isDefault           Boolean  @default(false) @map("is_default")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  createdBy           String?  @map("created_by") @db.VarChar(36)
+  updatedBy           String?  @map("updated_by") @db.VarChar(36)
+
+  account      Account           @relation(fields: [accountId], references: [id])
+  transactions BankTransaction[]
+
+  @@index([tenantId])
+  @@index([accountId])
+  @@map("bank_accounts")
+}
+
+// ─── Bank Transaction ─────────────────────────────────────────────
+
+model BankTransaction {
+  id                String    @id @default(uuid()) @db.VarChar(36)
+  tenantId          String    @map("tenant_id") @db.VarChar(36)
+  bankAccountId     String    @map("bank_account_id") @db.VarChar(36)
+  transactionDate   DateTime  @map("transaction_date") @db.Date
+  description       String    @db.VarChar(500)
+  debitPaise        BigInt    @default(0) @map("debit_paise")
+  creditPaise       BigInt    @default(0) @map("credit_paise")
+  runningBalancePaise BigInt  @default(0) @map("running_balance_paise")
+  reference         String?   @db.VarChar(255)
+  isReconciled      Boolean   @default(false) @map("is_reconciled")
+  reconciledWithId  String?   @map("reconciled_with_id") @db.VarChar(36)
+  reconciledAt      DateTime? @map("reconciled_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([bankAccountId])
+  @@index([tenantId, transactionDate])
+  @@index([tenantId, isReconciled])
+  @@map("bank_transactions")
+}
+
+// ─── Financial Year ───────────────────────────────────────────────
+
+model FinancialYear {
+  id              String              @id @default(uuid()) @db.VarChar(36)
+  tenantId        String              @map("tenant_id") @db.VarChar(36)
+  name            String              @db.VarChar(50)
+  startDate       DateTime            @map("start_date") @db.Date
+  endDate         DateTime            @map("end_date") @db.Date
+  status          FinancialYearStatus @default(OPEN)
+  closingEntryId  String?             @map("closing_entry_id") @db.VarChar(36)
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  createdBy       String?             @map("created_by") @db.VarChar(36)
+  updatedBy       String?             @map("updated_by") @db.VarChar(36)
+
+  budgets Budget[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("financial_years")
+}
+
+// ─── Cost Center ──────────────────────────────────────────────────
+
+model CostCenter {
+  id          String   @id @default(uuid()) @db.VarChar(36)
+  tenantId    String   @map("tenant_id") @db.VarChar(36)
+  code        String   @db.VarChar(20)
+  name        String   @db.VarChar(255)
+  description String?  @db.VarChar(500)
+  parentId    String?  @map("parent_id") @db.VarChar(36)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdBy   String?  @map("created_by") @db.VarChar(36)
+  updatedBy   String?  @map("updated_by") @db.VarChar(36)
+
+  parent   CostCenter?  @relation("CostCenterTree", fields: [parentId], references: [id])
+  children CostCenter[] @relation("CostCenterTree")
+  budgets  Budget[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("cost_centers")
+}
+
+// ─── Budget ───────────────────────────────────────────────────────
+
+model Budget {
+  id                String  @id @default(uuid()) @db.VarChar(36)
+  tenantId          String  @map("tenant_id") @db.VarChar(36)
+  costCenterId      String? @map("cost_center_id") @db.VarChar(36)
+  accountId         String  @map("account_id") @db.VarChar(36)
+  financialYearId   String  @map("financial_year_id") @db.VarChar(36)
+  monthlyBudgets    Json    @map("monthly_budgets") // array of 12 monthly amounts in paise
+  totalBudgetPaise  BigInt  @map("total_budget_paise")
+  totalActualPaise  BigInt  @default(0) @map("total_actual_paise")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdBy         String?  @map("created_by") @db.VarChar(36)
+  updatedBy         String?  @map("updated_by") @db.VarChar(36)
+
+  costCenter    CostCenter?   @relation(fields: [costCenterId], references: [id])
+  account       Account       @relation(fields: [accountId], references: [id])
+  financialYear FinancialYear @relation(fields: [financialYearId], references: [id])
+
+  @@index([tenantId])
+  @@index([financialYearId])
+  @@index([accountId])
+  @@map("budgets")
+}

@@ -1,0 +1,39 @@
+{
+  "name": "@caratflow/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CaratFlow database schemas and Prisma client",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts"
+  },
+  "scripts": {
+    "generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:pull": "prisma db pull",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:reset": "prisma migrate reset",
+    "studio": "prisma studio",
+    "seed": "tsx src/seed.ts",
+    "build": "tsc",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.1.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.1.0",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "uuid": "^11.0.0",
+    "@types/uuid": "^10.0.0"
+  },
+  "prisma": {
+    "schema": "./prisma/schema",
+    "seed": "tsx src/seed.ts"
+  }
+}
