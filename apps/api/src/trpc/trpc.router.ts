@@ -5,6 +5,7 @@ import { CmsTrpcRouter } from '../modules/cms/cms.trpc';
 import { ReferralTrpcRouter } from '../modules/referral/referral.trpc';
 import { AmlTrpcRouter } from '../modules/aml/aml.trpc';
 import { PreOrderTrpcRouter } from '../modules/preorder/preorder.trpc';
+import { SearchTrpcRouter } from '../modules/search/search.trpc';
 import { z } from 'zod';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class TrpcRouter {
     private readonly referralTrpc: ReferralTrpcRouter,
     private readonly amlTrpc: AmlTrpcRouter,
     private readonly preOrderTrpc: PreOrderTrpcRouter,
+    private readonly searchTrpc: SearchTrpcRouter,
   ) {}
 
   get appRouter() {
@@ -79,6 +81,9 @@ export class TrpcRouter {
 
       // Pre-order, backorder, modifications, reorder
       preorder: this.preOrderTrpc.router,
+
+      // Search: synonyms, suggestions, analytics, reindex
+      search: this.searchTrpc.router,
     });
   }
 }

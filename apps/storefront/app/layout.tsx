@@ -4,6 +4,7 @@ import Header from "@/components/Header";
 import LiveRateTicker from "@/components/LiveRateTicker";
 import CartDrawer from "@/components/CartDrawer";
 import CompareBar from "@/components/CompareBar";
+import ChatWidget from "@/components/ChatWidget";
 import Footer from "@/components/Footer";
 import "./globals.css";
 
@@ -57,6 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Footer />
           <CartDrawer />
           <CompareBar />
+          <ChatWidget />
         </StoreProvider>
       </body>
     </html>

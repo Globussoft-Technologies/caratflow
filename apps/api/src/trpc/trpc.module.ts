@@ -7,9 +7,10 @@ import { CmsModule } from '../modules/cms/cms.module';
 import { ReferralModule } from '../modules/referral/referral.module';
 import { AmlModule } from '../modules/aml/aml.module';
 import { PreOrderModule } from '../modules/preorder/preorder.module';
+import { SearchModule } from '../modules/search/search.module';
 
 @Module({
-  imports: [InventoryModule, CmsModule, ReferralModule, AmlModule, PreOrderModule],
+  imports: [InventoryModule, CmsModule, ReferralModule, AmlModule, PreOrderModule, SearchModule],
   controllers: [TrpcController],
   providers: [TrpcService, TrpcRouter],
   exports: [TrpcService, TrpcRouter],

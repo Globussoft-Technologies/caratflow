@@ -1,0 +1,121 @@
+// ─── AR & Virtual Try-On Schema ───────────────────────────────
+// 3D/AR assets, try-on sessions, 360-degree product views.
+
+// ─── Enums ────────────────────────────────────────────────────
+
+enum ArAssetType {
+  AR_MODEL_3D
+  AR_OVERLAY_2D
+  SPIN_360_IMAGES
+  VIDEO_360
+}
+
+enum ArAssetFormat {
+  GLTF
+  GLB
+  USDZ
+  OBJ
+  PNG_SEQUENCE
+  MP4
+}
+
+enum ArJewelryCategory {
+  RING
+  NECKLACE
+  EARRING
+  BANGLE
+  BRACELET
+  PENDANT
+  CHAIN
+}
+
+enum ArProcessingStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum ArDeviceType {
+  MOBILE_IOS
+  MOBILE_ANDROID
+  DESKTOP_WEBCAM
+}
+
+// ─── ArAsset ──────────────────────────────────────────────────
+
+model ArAsset {
+  id               String             @id @default(uuid()) @db.VarChar(36)
+  tenantId         String             @map("tenant_id") @db.VarChar(36)
+  productId        String             @map("product_id") @db.VarChar(36)
+  assetType        ArAssetType        @map("asset_type")
+  fileUrl          String             @map("file_url") @db.VarChar(1000)
+  thumbnailUrl     String?            @map("thumbnail_url") @db.VarChar(1000)
+  format           ArAssetFormat
+  fileSizeBytes    Int                @map("file_size_bytes")
+  dimensions       Json?              @map("dimensions")
+  category         ArJewelryCategory
+  isActive         Boolean            @default(true) @map("is_active")
+  processingStatus ArProcessingStatus @default(UPLOADING) @map("processing_status")
+  metadata         Json?              @map("metadata")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  createdBy        String?            @map("created_by") @db.VarChar(36)
+  updatedBy        String?            @map("updated_by") @db.VarChar(36)
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, productId])
+  @@index([tenantId, category])
+  @@index([tenantId, assetType])
+  @@map("ar_assets")
+}
+
+// ─── ArTryOnSession ───────────────────────────────────────────
+
+model ArTryOnSession {
+  id              String       @id @default(uuid()) @db.VarChar(36)
+  tenantId        String       @map("tenant_id") @db.VarChar(36)
+  customerId      String?      @map("customer_id") @db.VarChar(36)
+  sessionId       String       @map("session_id") @db.VarChar(100)
+  productId       String       @map("product_id") @db.VarChar(36)
+  deviceType      ArDeviceType @map("device_type")
+  duration        Int          @default(0) @map("duration")
+  screenshotTaken Boolean      @default(false) @map("screenshot_taken")
+  sharedVia       String?      @map("shared_via") @db.VarChar(50)
+  addedToCart      Boolean     @default(false) @map("added_to_cart")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, productId])
+  @@index([tenantId, createdAt])
+  @@index([sessionId])
+  @@map("ar_tryon_sessions")
+}
+
+// ─── Product360 ───────────────────────────────────────────────
+
+model Product360 {
+  id              String  @id @default(uuid()) @db.VarChar(36)
+  tenantId        String  @map("tenant_id") @db.VarChar(36)
+  productId       String  @map("product_id") @db.VarChar(36)
+  imageUrls       Json    @map("image_urls")
+  frameCount      Int     @map("frame_count")
+  autoRotate      Boolean @default(true) @map("auto_rotate")
+  rotationSpeed   Int     @default(30) @map("rotation_speed")
+  backgroundColor String  @default("#FFFFFF") @map("background_color") @db.VarChar(9)
+  zoomEnabled     Boolean @default(true) @map("zoom_enabled")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdBy       String?  @map("created_by") @db.VarChar(36)
+  updatedBy       String?  @map("updated_by") @db.VarChar(36)
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([tenantId, productId])
+  @@index([tenantId])
+  @@map("product_360")
+}

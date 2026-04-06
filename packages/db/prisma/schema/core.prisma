@@ -368,6 +368,11 @@ model Product {
   preOrders       PreOrder[]
   preOrderConfigs PreOrderConfig[]
 
+  // AR & Virtual Try-On relations
+  arAssets         ArAsset[]
+  arTryOnSessions  ArTryOnSession[]
+  product360       Product360[]
+
   @@unique([tenantId, sku])
   @@index([tenantId])
   @@index([tenantId, productType])

@@ -1,0 +1,120 @@
+// ─── CaratFlow Chatbot Schema ──────────────────────────────────
+// AI chatbot / smart assistant for storefront customers.
+// Manages chat sessions, messages, FAQ knowledge base, and templates.
+
+// ─── Enums ─────────────────────────────────────────────────────
+
+enum ChatSessionStatus {
+  ACTIVE
+  CLOSED
+  ESCALATED
+}
+
+enum ChatMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum ChatMessageType {
+  TEXT
+  PRODUCT_CARD
+  PRODUCT_LIST
+  QUICK_REPLIES
+  OCCASION_PICKER
+  BUDGET_SLIDER
+  IMAGE
+}
+
+enum ChatTemplateCategory {
+  GREETING
+  PRODUCT_QUERY
+  PRICE_QUERY
+  OCCASION
+  MATERIAL
+  SHIPPING
+  RETURNS
+  CUSTOM_ORDER
+  SCHEME
+  GENERAL
+}
+
+// ─── Chat Session ──────────────────────────────────────────────
+
+model ChatSession {
+  id            String            @id @default(uuid()) @db.VarChar(36)
+  tenantId      String            @map("tenant_id") @db.VarChar(36)
+  customerId    String?           @map("customer_id") @db.VarChar(36)
+  sessionId     String            @map("session_id") @db.VarChar(255)
+  status        ChatSessionStatus @default(ACTIVE)
+  startedAt     DateTime          @default(now()) @map("started_at")
+  lastMessageAt DateTime          @default(now()) @map("last_message_at")
+  closedAt      DateTime?         @map("closed_at")
+  escalatedTo   String?           @map("escalated_to") @db.VarChar(36)
+  metadata      Json?             @map("metadata")
+
+  messages ChatMessage[]
+
+  @@unique([tenantId, sessionId])
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@index([lastMessageAt])
+  @@map("chat_sessions")
+}
+
+// ─── Chat Message ──────────────────────────────────────────────
+
+model ChatMessage {
+  id              String          @id @default(uuid()) @db.VarChar(36)
+  chatSessionId   String          @map("chat_session_id") @db.VarChar(36)
+  role            ChatMessageRole
+  content         String          @db.Text
+  messageType     ChatMessageType @default(TEXT) @map("message_type")
+  metadata        Json?           @map("metadata")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  session ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+
+  @@index([chatSessionId])
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
+// ─── Chat FAQ ──────────────────────────────────────────────────
+
+model ChatFaq {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  tenantId  String   @map("tenant_id") @db.VarChar(36)
+  question  String   @db.Text
+  answer    String   @db.Text
+  category  String   @db.VarChar(100)
+  keywords  Json     @map("keywords")
+  priority  Int      @default(0)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([tenantId, category])
+  @@index([tenantId, isActive])
+  @@map("chat_faqs")
+}
+
+// ─── Chat Template ─────────────────────────────────────────────
+
+model ChatTemplate {
+  id               String               @id @default(uuid()) @db.VarChar(36)
+  tenantId         String               @map("tenant_id") @db.VarChar(36)
+  triggerKeywords  Json                  @map("trigger_keywords")
+  responseTemplate String               @map("response_template") @db.Text
+  category         ChatTemplateCategory
+  isActive         Boolean              @default(true) @map("is_active")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([tenantId, category])
+  @@index([tenantId, isActive])
+  @@map("chat_templates")
+}

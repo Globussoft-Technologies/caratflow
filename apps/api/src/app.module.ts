@@ -23,6 +23,8 @@ import { StorefrontModule } from './modules/storefront/storefront.module';
 import { CustomerPortalModule } from './modules/customer-portal/customer-portal.module';
 import { BnplModule } from './modules/bnpl/bnpl.module';
 import { PreOrderModule } from './modules/preorder/preorder.module';
+import { SearchModule } from './modules/search/search.module';
+import { ChatbotModule } from './modules/chatbot/chatbot.module';
 
 @Module({
   imports: [
@@ -49,6 +51,8 @@ import { PreOrderModule } from './modules/preorder/preorder.module';
     CustomerPortalModule,
     BnplModule,
     PreOrderModule,
+    SearchModule,
+    ChatbotModule,
   ],
 })
 export class AppModule implements NestModule {

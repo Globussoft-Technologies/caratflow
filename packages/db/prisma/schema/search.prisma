@@ -1,0 +1,88 @@
+// ─── CaratFlow Search Domain Schema ─────────────────────────────
+// Full-text search index, popular searches, curated suggestions,
+// and synonym mapping for the storefront search experience.
+
+// ─── Search Index ────────────────────────────────────────────────
+// Denormalized product search index optimized for MySQL FULLTEXT queries.
+
+model SearchIndex {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  tenantId        String   @map("tenant_id") @db.VarChar(36)
+  productId       String   @map("product_id") @db.VarChar(36)
+  searchableText  String   @map("searchable_text") @db.Text
+  metalType       String?  @map("metal_type") @db.VarChar(50)
+  purityFineness  Int?     @map("purity_fineness")
+  categoryName    String?  @map("category_name") @db.VarChar(100)
+  priceRangeBucket String? @map("price_range_bucket") @db.VarChar(20)
+  tags            Json?    @map("tags")
+  weightBucket    String?  @map("weight_bucket") @db.VarChar(20)
+  isInStock       Boolean  @default(true) @map("is_in_stock")
+  lastIndexedAt   DateTime @default(now()) @map("last_indexed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, productId])
+  @@index([tenantId])
+  @@index([tenantId, metalType])
+  @@index([tenantId, categoryName])
+  @@index([tenantId, priceRangeBucket])
+  @@index([tenantId, weightBucket])
+  @@index([tenantId, isInStock])
+  @@fulltext([searchableText])
+  @@map("search_index")
+}
+
+// ─── Popular Search ──────────────────────────────────────────────
+// Aggregated search query counts for trending / popular searches.
+
+model PopularSearch {
+  id             String    @id @default(uuid()) @db.VarChar(36)
+  tenantId       String    @map("tenant_id") @db.VarChar(36)
+  query          String    @db.VarChar(500)
+  searchCount    Int       @default(1) @map("search_count")
+  lastSearchedAt DateTime  @default(now()) @map("last_searched_at")
+  resultCount    Int       @default(0) @map("result_count")
+  category       String?   @db.VarChar(100)
+
+  @@unique([tenantId, query])
+  @@index([tenantId])
+  @@index([tenantId, searchCount])
+  @@map("popular_searches")
+}
+
+// ─── Search Suggestion ───────────────────────────────────────────
+// Admin-curated suggestions shown in autocomplete.
+
+model SearchSuggestion {
+  id         String  @id @default(uuid()) @db.VarChar(36)
+  tenantId   String  @map("tenant_id") @db.VarChar(36)
+  suggestion String  @db.VarChar(500)
+  category   String? @db.VarChar(100)
+  priority   Int     @default(0)
+  isActive   Boolean @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("search_suggestions")
+}
+
+// ─── Search Synonym ──────────────────────────────────────────────
+// Synonym mapping for query expansion.
+// e.g., "choker" -> ["short necklace", "collar necklace"]
+
+model SearchSynonym {
+  id        String  @id @default(uuid()) @db.VarChar(36)
+  tenantId  String  @map("tenant_id") @db.VarChar(36)
+  term      String  @db.VarChar(255)
+  synonyms  Json    @map("synonyms")
+  isActive  Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, term])
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("search_synonyms")
+}

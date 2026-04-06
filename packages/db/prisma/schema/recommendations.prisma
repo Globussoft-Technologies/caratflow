@@ -1,0 +1,93 @@
+// ─── CaratFlow Recommendations Domain Schema ───────────────────
+// AI-powered product recommendations: customer behavior profiles,
+// pre-computed product similarities, and recommendation tracking.
+
+// ─── Enums ────────────────────────────────────────────────────────
+
+enum SimilarityReason {
+  SAME_CATEGORY
+  SAME_METAL
+  SAME_PRICE_RANGE
+  BOUGHT_TOGETHER
+  VIEWED_TOGETHER
+}
+
+enum RecommendationType {
+  PERSONALIZED
+  SIMILAR
+  TRENDING
+  RECENTLY_VIEWED
+  BOUGHT_TOGETHER
+  NEW_ARRIVALS
+  POPULAR_IN_CATEGORY
+}
+
+// ─── Customer Behavior ────────────────────────────────────────────
+
+model CustomerBehavior {
+  id                  String   @id @default(uuid()) @db.VarChar(36)
+  tenantId            String   @map("tenant_id") @db.VarChar(36)
+  customerId          String   @map("customer_id") @db.VarChar(36)
+  viewedCategories    Json?    @map("viewed_categories")    // {categoryId: count}
+  viewedProducts      Json?    @map("viewed_products")      // {productId: count}
+  purchasedCategories Json?    @map("purchased_categories") // {categoryId: count}
+  purchasedProducts   Json?    @map("purchased_products")   // {productId: count}
+  searchQueries       Json?    @map("search_queries")       // string[] of recent queries
+  avgOrderValuePaise  BigInt   @default(0) @map("avg_order_value_paise")
+  preferredMetalType  String?  @map("preferred_metal_type") @db.VarChar(20)
+  preferredPurity     Int?     @map("preferred_purity")
+  priceRangeLowPaise  BigInt?  @map("price_range_low_paise")
+  priceRangeHighPaise BigInt?  @map("price_range_high_paise")
+  lastUpdatedAt       DateTime @default(now()) @map("last_updated_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, customerId])
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@map("customer_behaviors")
+}
+
+// ─── Product Similarity ───────────────────────────────────────────
+
+model ProductSimilarity {
+  id               String           @id @default(uuid()) @db.VarChar(36)
+  tenantId         String           @map("tenant_id") @db.VarChar(36)
+  productId        String           @map("product_id") @db.VarChar(36)
+  similarProductId String           @map("similar_product_id") @db.VarChar(36)
+  similarityScore  Int              @map("similarity_score") // 0-1000
+  reason           SimilarityReason
+  computedAt       DateTime         @default(now()) @map("computed_at")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  @@unique([tenantId, productId, similarProductId])
+  @@index([tenantId])
+  @@index([tenantId, productId])
+  @@index([tenantId, similarProductId])
+  @@index([tenantId, productId, similarityScore])
+  @@map("product_similarities")
+}
+
+// ─── Recommendation Log ───────────────────────────────────────────
+
+model RecommendationLog {
+  id                 String             @id @default(uuid()) @db.VarChar(36)
+  tenantId           String             @map("tenant_id") @db.VarChar(36)
+  customerId         String?            @map("customer_id") @db.VarChar(36)
+  sessionId          String             @map("session_id") @db.VarChar(255)
+  recommendationType RecommendationType @map("recommendation_type")
+  productIds         Json               @map("product_ids") // string[]
+  clickedProductId   String?            @map("clicked_product_id") @db.VarChar(36)
+  shownAt            DateTime           @default(now()) @map("shown_at")
+  clickedAt          DateTime?          @map("clicked_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, sessionId])
+  @@index([tenantId, recommendationType])
+  @@index([tenantId, shownAt])
+  @@map("recommendation_logs")
+}

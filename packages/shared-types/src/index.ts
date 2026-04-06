@@ -25,3 +25,7 @@ export * from './preorder';
 export * from './customer-portal';
 export * from './digital-gold';
 export * from './bnpl';
+export * from './chatbot';
+export * from './ar';
+export * from './search';
+export * from './recommendations';
