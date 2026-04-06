@@ -19,6 +19,7 @@
     "build": "tsc",
     "clean": "rimraf dist",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "lint": "eslint src/"
   },
@@ -28,6 +29,7 @@
   "devDependencies": {
     "rimraf": "^6.0.1",
     "typescript": "^5.7.0",
+    "@vitest/coverage-v8": "^2.1.0",
     "vitest": "^2.1.0"
   }
 }

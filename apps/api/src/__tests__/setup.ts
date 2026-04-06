@@ -118,6 +118,8 @@ export function createMockPrismaService() {
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    $queryRaw: vi.fn(),
+    $queryRawUnsafe: vi.fn(),
     stockItem: {
       findFirst: vi.fn(),
       findMany: vi.fn(),

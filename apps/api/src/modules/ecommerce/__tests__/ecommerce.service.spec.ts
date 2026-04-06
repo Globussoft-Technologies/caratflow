@@ -39,12 +39,11 @@ describe('EcommerceService (Unit)', () => {
 
   describe('createOrder', () => {
     it('creates an online order with items and publishes event', async () => {
-      mockPrisma.onlineOrder.findFirst.mockResolvedValueOnce(null); // idempotency check
       mockPrisma.salesChannel.findFirst.mockResolvedValue({ channelType: 'WEBSITE', name: 'Web' });
       mockPrisma.onlineOrder.count.mockResolvedValue(0);
       mockPrisma.onlineOrder.create.mockResolvedValue(baseOrder);
       mockPrisma.onlineOrderItem.create.mockResolvedValue({});
-      mockPrisma.onlineOrder.findFirst.mockResolvedValueOnce(baseOrder);
+      mockPrisma.onlineOrder.findFirst.mockResolvedValue(baseOrder);
 
       const result = await service.createOrder(TEST_TENANT_ID, TEST_USER_ID, {
         channelId: 'ch-1',

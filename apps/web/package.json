@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "clean": "rimraf .next"
+    "clean": "rimraf .next",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@caratflow/shared-types": "workspace:*",
@@ -24,13 +26,19 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.0",
+    "jsdom": "^25.0.0",
     "postcss": "^8.4.0",
     "rimraf": "^6.0.1",
     "tailwindcss": "^3.4.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
   }
 }

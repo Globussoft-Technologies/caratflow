@@ -50,6 +50,7 @@ export function createMockPrismaService() {
     $connect: vi.fn(),
     $disconnect: vi.fn(),
     $queryRaw: vi.fn(),
+    $queryRawUnsafe: vi.fn(),
     _tx: mockTx,
   };
 }

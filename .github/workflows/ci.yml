@@ -72,7 +72,15 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @caratflow/shared-types build
-      - run: pnpm --filter @caratflow/utils test
+      - run: pnpm --filter @caratflow/utils test -- --coverage
+
+      - name: Upload utils coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-utils
+          path: packages/utils/coverage/
+          retention-days: 14
 
   test-api:
     name: Test API
@@ -125,7 +133,46 @@ jobs:
       - run: pnpm db:generate
       - run: pnpm --filter @caratflow/shared-types build
       - run: pnpm --filter @caratflow/utils build
-      - run: pnpm --filter @caratflow/api test
+      - run: pnpm --filter @caratflow/api test -- --coverage
+
+      - name: Upload API coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-api
+          path: apps/api/coverage/
+          retention-days: 14
+
+  coverage-report:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    needs: [test-utils, test-api]
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-utils
+          path: packages/utils/coverage/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-api
+          path: apps/api/coverage/
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - name: Generate coverage summary
+        run: npx tsx tools/coverage-report.ts
 
   build:
     name: Build

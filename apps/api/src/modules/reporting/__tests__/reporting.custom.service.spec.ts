@@ -110,8 +110,7 @@ describe('ReportingCustomService (Unit)', () => {
       mockPrisma.$queryRaw.mockResolvedValue([
         { saleNumber: 'SL-001', totalPaise: 500000n, status: 'COMPLETED' },
       ]);
-      // The service uses $queryRawUnsafe
-      (mockPrisma as any).$queryRawUnsafe = vi.fn().mockResolvedValue([
+      (mockPrisma as any).$queryRawUnsafe.mockResolvedValue([
         { saleNumber: 'SL-001', totalPaise: 500000n, status: 'COMPLETED' },
       ]);
 

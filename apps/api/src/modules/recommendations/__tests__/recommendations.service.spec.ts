@@ -25,7 +25,7 @@ describe('RecommendationsService', () => {
       (prisma as any).saleLineItem.groupBy.mockResolvedValue([]);
       prisma.product.findMany.mockResolvedValue([{ id: 'p1', sku: 'S', name: 'Ring', productType: 'GOLD', categoryId: 'c1', metalPurity: 916, sellingPricePaise: 50000n, currencyCode: 'INR', images: [], isActive: true, category: { name: 'Rings' } }] as any);
       const r = await service.getPersonalizedRecommendations(tenantId, 'c1');
-      expect(r.algorithm).toBe('fallback-newest');
+      expect(r.algorithm).toBe('fallback-trending');
     });
     it('should use behavior profile when available', async () => {
       (prisma as any).customerBehavior.findUnique.mockResolvedValue({ viewedCategories: { cat1: 5 }, preferredMetalType: 'GOLD' });

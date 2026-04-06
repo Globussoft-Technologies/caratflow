@@ -30,8 +30,9 @@ Thumbs.db
 # Prisma
 packages/db/prisma/migrations/
 
-# Coverage
+# Coverage reports
 coverage/
+*.lcov
 .nyc_output/
 
 # Debug

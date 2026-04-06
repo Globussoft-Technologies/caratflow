@@ -383,6 +383,10 @@ export class PlatformRoleService extends TenantAwareService {
     if (!permissionsJson || typeof permissionsJson !== 'object') return [];
     const result: string[] = [];
     for (const [key, value] of Object.entries(permissionsJson as Record<string, unknown>)) {
+      if (key === '*') {
+        result.push('*');
+        continue;
+      }
       if (Array.isArray(value)) {
         for (const action of value) {
           result.push(`${key}.${action}`);

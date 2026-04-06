@@ -9,9 +9,13 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "eslint . --ext .ts,.tsx",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "2.1.0",
+    "@tanstack/react-query": "^5.59.0",
     "expo": "~52.0.0",
     "expo-camera": "~16.0.0",
     "expo-constants": "~17.0.0",
@@ -21,24 +25,23 @@
     "expo-secure-store": "~14.0.0",
     "expo-splash-screen": "~0.29.0",
     "expo-status-bar": "~2.0.0",
+    "nativewind": "^4.1.0",
     "react": "18.3.1",
     "react-native": "0.76.3",
+    "react-native-css-interop": "~0.1.0",
     "react-native-gesture-handler": "~2.20.0",
     "react-native-reanimated": "~3.16.0",
     "react-native-safe-area-context": "~4.12.0",
     "react-native-screens": "~4.1.0",
     "react-native-svg": "~15.8.0",
-    "@react-native-async-storage/async-storage": "2.1.0",
-    "@tanstack/react-query": "^5.59.0",
-    "zustand": "^5.0.0",
-    "nativewind": "^4.1.0",
     "tailwindcss": "^3.4.0",
-    "react-native-css-interop": "~0.1.0"
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",
     "@types/react": "~18.3.0",
+    "eslint": "^8.57.0",
     "typescript": "~5.6.0",
-    "eslint": "^8.57.0"
+    "vitest": "^2.0.0"
   }
 }

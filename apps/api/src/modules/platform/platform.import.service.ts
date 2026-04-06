@@ -144,7 +144,7 @@ export class PlatformImportService extends TenantAwareService {
     }
 
     // Finalize
-    const finalStatus = errors.length === rows.length ? 'FAILED' : 'COMPLETED';
+    const finalStatus = (successCount === 0 && errors.length > 0) ? 'FAILED' : 'COMPLETED';
     await this.prisma.importJob.update({
       where: { id: importJobId },
       data: {

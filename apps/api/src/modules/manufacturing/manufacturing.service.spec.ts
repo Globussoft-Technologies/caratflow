@@ -128,7 +128,7 @@ describe('ManufacturingService (Unit)', () => {
     });
 
     it('allows valid transition: PLANNED -> MATERIAL_ISSUED', async () => {
-      mockPrisma.jobOrder.findFirst.mockResolvedValue(createMockJob(MfgJobOrderStatus.PLANNED));
+      mockPrisma.jobOrder.findFirst.mockResolvedValueOnce(createMockJob(MfgJobOrderStatus.PLANNED));
       mockPrisma.jobOrder.update.mockResolvedValue({
         ...createMockJob(MfgJobOrderStatus.MATERIAL_ISSUED),
         product: {},
@@ -184,7 +184,7 @@ describe('ManufacturingService (Unit)', () => {
     });
 
     it('allows QC_FAILED -> IN_PROGRESS (rework)', async () => {
-      mockPrisma.jobOrder.findFirst.mockResolvedValue(createMockJob(MfgJobOrderStatus.QC_FAILED));
+      mockPrisma.jobOrder.findFirst.mockResolvedValueOnce(createMockJob(MfgJobOrderStatus.QC_FAILED));
       mockPrisma.jobOrder.update.mockResolvedValue({
         ...createMockJob(MfgJobOrderStatus.IN_PROGRESS),
         product: {},
