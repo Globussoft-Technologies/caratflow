@@ -10,7 +10,7 @@
     "test": "turbo run test",
     "test:utils": "pnpm --filter @caratflow/utils test",
     "test:api": "pnpm --filter @caratflow/api test",
-    "test:e2e": "RUN_E2E=true vitest run tests/e2e/",
+    "test:e2e": "pnpm --filter @caratflow/api exec vitest run --config vitest.e2e.config.ts",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "db:generate": "pnpm --filter @caratflow/db generate",

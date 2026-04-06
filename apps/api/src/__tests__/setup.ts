@@ -180,6 +180,11 @@ export function createMockPrismaService() {
     },
     customer: {
       findFirst: vi.fn(),
+      findFirstOrThrow: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
     },
     discount: {
       findFirst: vi.fn(),
@@ -200,9 +205,11 @@ export function createMockPrismaService() {
       create: vi.fn(),
       update: vi.fn(),
       count: vi.fn(),
+      aggregate: vi.fn(),
     },
     taxTransaction: {
       createMany: vi.fn(),
+      groupBy: vi.fn(),
     },
     payment: {
       findFirst: vi.fn(),
@@ -236,6 +243,166 @@ export function createMockPrismaService() {
     },
     jobOrderItem: {
       createMany: vi.fn(),
+    },
+    jobCost: {
+      create: vi.fn(),
+      aggregate: vi.fn(),
+    },
+    productionPlan: {
+      findFirst: vi.fn(),
+    },
+    qualityCheckpoint: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+    },
+    karigar: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
+    karigarAttendance: {
+      findMany: vi.fn(),
+      upsert: vi.fn(),
+    },
+    karigarTransaction: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+    },
+    karigarMetalBalance: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      upsert: vi.fn(),
+      update: vi.fn(),
+    },
+    loyaltyProgram: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    loyaltyTransaction: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+      aggregate: vi.fn(),
+    },
+    notificationTemplate: {
+      findFirst: vi.fn(),
+      findFirstOrThrow: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    },
+    notificationLog: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
+    customerOccasion: {
+      findMany: vi.fn(),
+    },
+    lead: {
+      findFirst: vi.fn(),
+      findFirstOrThrow: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
+    leadActivity: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+    },
+    purchaseOrder: {
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
+    purchaseOrderItem: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    goodsReceipt: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
+    goodsReceiptItem: {
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    supplier: {
+      findFirst: vi.fn(),
+    },
+    consignmentOut: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
+    consignmentOutItem: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    consignmentIn: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
+    consignmentInItem: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    creditLimit: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
+    outstandingBalance: {
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+      aggregate: vi.fn(),
+    },
+    agentCommission: {
+      aggregate: vi.fn(),
+    },
+    bankAccount: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    bankTransaction: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      createMany: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
     },
   };
 }

@@ -8,6 +8,7 @@ export default defineConfig({
     include: [
       'src/__tests__/**/*.test.ts',
       'src/modules/**/*.spec.ts',
+      'src/auth/**/*.spec.ts',
     ],
     setupFiles: ['src/__tests__/setup.ts'],
     testTimeout: 30_000,
