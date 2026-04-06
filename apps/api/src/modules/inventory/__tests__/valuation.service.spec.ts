@@ -58,8 +58,8 @@ describe('InventoryValuationService', () => {
 
   beforeEach(() => {
     prisma = createMockPrismaService();
-    service = new InventoryValuationService(prisma as never);
     resetMocks(prisma);
+    service = new InventoryValuationService(prisma as never);
   });
 
   // ─── FIFO ──────────────────────────────────────────────────────

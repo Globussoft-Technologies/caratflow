@@ -22,10 +22,10 @@ describe('RetailReturnService', () => {
 
   beforeEach(() => {
     prisma = createMockPrismaService();
+    resetMocks(prisma);
     eventBus = createMockEventBusService();
     capturePublishedEvents(eventBus);
     service = new RetailReturnService(prisma as never, eventBus as never);
-    resetMocks(prisma);
     eventBus.publishedEvents = [];
   });
 

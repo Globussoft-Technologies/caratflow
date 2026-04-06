@@ -25,11 +25,12 @@ describe('RetailService', () => {
 
   beforeEach(() => {
     prisma = createMockPrismaService();
+    resetMocks(prisma);
     eventBus = createMockEventBusService();
     capturePublishedEvents(eventBus);
     pricingService = new RetailPricingService(prisma as never);
+    prisma.customer.findFirst = vi.fn() as any;
     service = new RetailService(prisma as never, eventBus as never, pricingService);
-    resetMocks(prisma);
     eventBus.publishedEvents = [];
   });
 

@@ -32,8 +32,8 @@ describe('AuthService', () => {
 
   beforeEach(() => {
     prisma = createMockPrismaService();
-    service = new AuthService(prisma as never);
     resetMocks(prisma);
+    service = new AuthService(prisma as never);
     vi.mocked(bcrypt.compare).mockReset();
     vi.mocked(bcrypt.hash).mockResolvedValue('$2a$12$mockedhashvalue' as never);
   });

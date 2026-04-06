@@ -24,10 +24,10 @@ describe('InventoryService', () => {
 
   beforeEach(() => {
     prisma = createMockPrismaService();
+    resetMocks(prisma);
     eventBus = createMockEventBusService();
     capturePublishedEvents(eventBus);
     service = new InventoryService(prisma as never, eventBus as never);
-    resetMocks(prisma);
     eventBus.publishedEvents = [];
   });
 

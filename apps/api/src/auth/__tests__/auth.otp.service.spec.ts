@@ -13,8 +13,8 @@ describe('OtpService', () => {
 
   beforeEach(() => {
     prisma = createMockPrismaService();
-    service = new OtpService(prisma as never);
     resetMocks(prisma);
+    service = new OtpService(prisma as never);
   });
 
   // ─── Generate OTP ──────────────────────────────────────────────

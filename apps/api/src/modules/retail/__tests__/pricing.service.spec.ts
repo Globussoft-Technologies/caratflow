@@ -8,8 +8,8 @@ describe('RetailPricingService', () => {
 
   beforeEach(() => {
     prisma = createMockPrismaService();
-    service = new RetailPricingService(prisma as never);
     resetMocks(prisma);
+    service = new RetailPricingService(prisma as never);
   });
 
   // ─── calculateLineItemPrice ────────────────────────────────────

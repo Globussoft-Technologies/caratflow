@@ -37,6 +37,7 @@ describe('B2CAuthService', () => {
 
   beforeEach(() => {
     prisma = createMockPrismaService();
+    resetMocks(prisma);
     otpService = {
       generateOtp: vi.fn().mockResolvedValue({ message: 'OTP sent', otp: '123456' }),
       verifyOtp: vi.fn().mockResolvedValue(true),
@@ -56,7 +57,6 @@ describe('B2CAuthService', () => {
       socialAuthService as never,
       twoFactorService as never,
     );
-    resetMocks(prisma);
   });
 
   // ─── Register with Email ───────────────────────────────────────
