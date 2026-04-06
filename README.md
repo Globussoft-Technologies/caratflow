@@ -405,7 +405,31 @@ RUN_E2E=true pnpm test:e2e
 
 ## Roadmap
 
-- [ ] Production hardening and performance optimization
+### Phase 2: B2C E-Commerce Storefront (In Progress)
+- [ ] B2C customer-facing storefront (browse, search, filter, product pages, cart, checkout)
+- [ ] Customer self-service portal (my orders, returns, address book, KYC, scheme dashboard)
+- [ ] Social login (Google, Facebook, Apple ID) + OTP-based mobile auth
+- [ ] Two-factor authentication (2FA) for high-value transactions
+- [ ] Digital Gold module (buy/sell/accumulate fractional gold, SIP auto-debit, redemption)
+- [ ] Wishlist & favorites with price drop alerts
+- [ ] Abandoned cart tracking & recovery (WhatsApp, email, push)
+- [ ] Coupon code system (separate from discount rules)
+- [ ] Product comparison
+- [ ] Pre-order / backorder management + back-in-stock notifications
+- [ ] CMS for admin (banners, homepage content, blog management)
+- [ ] Referral rewards program
+- [ ] AML compliance monitoring (suspicious transaction flagging)
+- [ ] AR Virtual Try-On (rings, necklaces, earrings)
+- [ ] 360-degree product view
+- [ ] Order modification before processing
+- [ ] BNPL / EMI payment options
+- [ ] Biometric payment security (Face ID / fingerprint) in mobile
+- [ ] AI-powered product recommendations
+- [ ] AI chatbot for personalized shopping assistance
+- [ ] Voice search integration
+- [ ] Live shopping & video consultation
+
+### Phase 3: Production & Integrations
 - [ ] Complete Shopify webhook handlers and inventory sync
 - [ ] Razorpay and Stripe payment gateway full integration
 - [ ] Shiprocket and Delhivery shipping API integration
@@ -414,6 +438,7 @@ RUN_E2E=true pnpm test:e2e
 - [ ] NIC E-Invoice API integration
 - [ ] WhatsApp Business API integration
 - [ ] Tally accounting software sync
+- [ ] Production hardening and performance optimization
 - [ ] Advanced AI analytics and demand forecasting
 - [ ] Multi-language UI translations
 - [ ] Mobile app beta release (iOS + Android)

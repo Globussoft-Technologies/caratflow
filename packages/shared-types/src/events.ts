@@ -171,6 +171,28 @@ export interface ExportDocumentIssuedEvent extends DomainEventBase {
   payload: { documentId: string; documentType: string; exportOrderId: string };
 }
 
+// ─── Pre-Order Events ─────────────────────────────────────────
+
+export interface PreOrderCreatedEvent extends DomainEventBase {
+  type: 'preorder.created';
+  payload: { preOrderId: string; customerId: string; productId: string; orderType: string };
+}
+
+export interface PreOrderFulfilledEvent extends DomainEventBase {
+  type: 'preorder.fulfilled';
+  payload: { preOrderId: string; customerId: string; productId: string; fulfilledOrderId: string };
+}
+
+export interface PreOrderCancelledEvent extends DomainEventBase {
+  type: 'preorder.cancelled';
+  payload: { preOrderId: string; customerId: string; productId: string; reason: string };
+}
+
+export interface PreOrderAvailableEvent extends DomainEventBase {
+  type: 'preorder.available';
+  payload: { preOrderId: string; customerId: string; productId: string };
+}
+
 // ─── E-Commerce Events ─────────────────────────────────────────
 
 export interface EcommerceOrderReceivedEvent extends DomainEventBase {
@@ -181,6 +203,69 @@ export interface EcommerceOrderReceivedEvent extends DomainEventBase {
 export interface EcommerceOrderSyncedEvent extends DomainEventBase {
   type: 'ecommerce.order.synced';
   payload: { orderId: string; externalOrderId: string; channel: string; status: string };
+}
+
+// ─── Storefront Events ────────────────────────────────────────
+
+export interface StorefrontOrderPlacedEvent extends DomainEventBase {
+  type: 'storefront.order.placed';
+  payload: { orderId: string; customerId: string; totalPaise: number; itemCount: number };
+}
+
+export interface StorefrontOrderCompletedEvent extends DomainEventBase {
+  type: 'storefront.order.completed';
+  payload: { orderId: string; customerId: string; totalPaise: number };
+}
+
+export interface StorefrontCartAbandonedEvent extends DomainEventBase {
+  type: 'storefront.cart.abandoned';
+  payload: { cartId: string; customerId: string | null; email: string | null; totalPaise: number; itemCount: number };
+}
+
+// ─── B2C Features Events ──────────────────────────────────────
+
+export interface B2cPriceAlertTriggeredEvent extends DomainEventBase {
+  type: 'b2c.price_alert.triggered';
+  payload: { customerId: string; productId: string; thresholdPaise: number; currentPricePaise: number };
+}
+
+export interface B2cBackInStockNotifiedEvent extends DomainEventBase {
+  type: 'b2c.back_in_stock.notified';
+  payload: { productId: string; subscriberCount: number };
+}
+
+export interface B2cAbandonedCartDetectedEvent extends DomainEventBase {
+  type: 'b2c.abandoned_cart.detected';
+  payload: { cartId: string; customerId: string | null; totalPaise: number; itemCount: number };
+}
+
+export interface B2cAbandonedCartRecoveredEvent extends DomainEventBase {
+  type: 'b2c.abandoned_cart.recovered';
+  payload: { cartId: string; orderId: string; totalPaise: number };
+}
+
+export interface B2cCouponUsedEvent extends DomainEventBase {
+  type: 'b2c.coupon.used';
+  payload: { couponId: string; couponCode: string; customerId: string; orderId: string; discountPaise: number };
+}
+
+// ─── Referral Events ──────────────────────────────────────────
+
+export interface CrmReferralCompletedEvent extends DomainEventBase {
+  type: 'crm.referral.completed';
+  payload: { referralId: string; referrerId: string; refereeId: string; referrerRewardPaise: number; refereeRewardPaise: number; orderId: string };
+}
+
+// ─── AML Events ───────────────────────────────────────────────
+
+export interface ComplianceAmlAlertCreatedEvent extends DomainEventBase {
+  type: 'compliance.aml.alert_created';
+  payload: { alertId: string; customerId: string; alertType: string; severity: string; amountPaise: number };
+}
+
+export interface ComplianceAmlAlertEscalatedEvent extends DomainEventBase {
+  type: 'compliance.aml.alert_escalated';
+  payload: { alertId: string; customerId: string; severity: string };
 }
 
 // ─── Platform Events ───────────────────────────────────────────
@@ -210,6 +295,16 @@ import type {
   IndiaSchemeInstallmentDueEvent,
   IndiaMetalRateUpdatedEvent,
 } from './india';
+
+// ─── Digital Gold Events (defined in digital-gold.ts, imported here for union) ──
+
+import type {
+  DigitalGoldBoughtEvent,
+  DigitalGoldSoldEvent,
+  DigitalGoldSipExecutedEvent,
+  DigitalGoldRedemptionRequestedEvent,
+  DigitalGoldPriceAlertTriggeredEvent,
+} from './digital-gold';
 
 // ─── Union Type ────────────────────────────────────────────────
 
@@ -251,18 +346,44 @@ export type DomainEvent =
   | ExportOrderDeliveredEvent
   | ExportInvoiceCreatedEvent
   | ExportDocumentIssuedEvent
+  // Pre-Order
+  | PreOrderCreatedEvent
+  | PreOrderFulfilledEvent
+  | PreOrderCancelledEvent
+  | PreOrderAvailableEvent
   // E-Commerce
   | EcommerceOrderReceivedEvent
   | EcommerceOrderSyncedEvent
+  // Storefront
+  | StorefrontOrderPlacedEvent
+  | StorefrontOrderCompletedEvent
+  | StorefrontCartAbandonedEvent
   // Platform
   | PlatformUserCreatedEvent
   | PlatformBranchCreatedEvent
   | PlatformSettingsUpdatedEvent
+  // B2C Features
+  | B2cPriceAlertTriggeredEvent
+  | B2cBackInStockNotifiedEvent
+  | B2cAbandonedCartDetectedEvent
+  | B2cAbandonedCartRecoveredEvent
+  | B2cCouponUsedEvent
   // India
   | IndiaGirviLoanCreatedEvent
   | IndiaGirviPaymentReceivedEvent
   | IndiaGirviLoanClosedEvent
   | IndiaSchemeInstallmentDueEvent
-  | IndiaMetalRateUpdatedEvent;
+  | IndiaMetalRateUpdatedEvent
+  // Digital Gold
+  | DigitalGoldBoughtEvent
+  | DigitalGoldSoldEvent
+  | DigitalGoldSipExecutedEvent
+  | DigitalGoldRedemptionRequestedEvent
+  | DigitalGoldPriceAlertTriggeredEvent
+  // Referral
+  | CrmReferralCompletedEvent
+  // AML
+  | ComplianceAmlAlertCreatedEvent
+  | ComplianceAmlAlertEscalatedEvent;
 
 export type DomainEventType = DomainEvent['type'];

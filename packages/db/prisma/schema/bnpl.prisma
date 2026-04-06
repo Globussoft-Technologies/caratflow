@@ -1,0 +1,205 @@
+// ─── CaratFlow BNPL & EMI Domain Schema ─────────────────────────
+// Buy Now Pay Later providers, EMI plans, BNPL transactions,
+// EMI schedules, and saved payment methods.
+
+// ─── Enums ────────────────────────────────────────────────────────
+
+enum BnplProviderName {
+  SIMPL
+  LAZYPAY
+  ZESTMONEY
+  BAJAJ_FINSERV
+  HDFC_FLEXIPAY
+  CUSTOM
+}
+
+enum BnplTransactionStatus {
+  INITIATED
+  APPROVED
+  ACTIVE
+  COMPLETED
+  DEFAULTED
+  CANCELLED
+}
+
+enum EmiInstallmentStatus {
+  UPCOMING
+  DUE
+  PAID
+  OVERDUE
+  WAIVED
+}
+
+enum SavedMethodType {
+  CARD
+  UPI
+  WALLET
+  NET_BANKING
+}
+
+enum SavedCardType {
+  CREDIT
+  DEBIT
+}
+
+enum EmiCardType {
+  CREDIT
+  DEBIT
+  BOTH
+}
+
+// ─── BnplProvider ─────────────────────────────────────────────────
+
+model BnplProvider {
+  id              String           @id @default(uuid()) @db.VarChar(36)
+  tenantId        String           @map("tenant_id") @db.VarChar(36)
+  providerName    BnplProviderName @map("provider_name")
+  displayName     String           @map("display_name") @db.VarChar(255)
+  apiKey          String?          @map("api_key") @db.VarChar(500)
+  apiSecret       String?          @map("api_secret") @db.VarChar(500)
+  webhookSecret   String?          @map("webhook_secret") @db.VarChar(500)
+  isActive        Boolean          @default(true) @map("is_active")
+  minOrderPaise   BigInt           @map("min_order_paise")
+  maxOrderPaise   BigInt           @map("max_order_paise")
+  supportedTenures Json            @map("supported_tenures") // e.g., [3,6,9,12,18,24]
+  processingFeePct Int             @default(0) @map("processing_fee_pct") // percent * 100
+  settings        Json?            @map("settings")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  createdBy       String?          @map("created_by") @db.VarChar(36)
+  updatedBy       String?          @map("updated_by") @db.VarChar(36)
+
+  emiPlans     EmiPlan[]
+  transactions BnplTransaction[]
+
+  @@unique([tenantId, providerName])
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("bnpl_providers")
+}
+
+// ─── EmiPlan ──────────────────────────────────────────────────────
+
+model EmiPlan {
+  id                 String       @id @default(uuid()) @db.VarChar(36)
+  tenantId           String       @map("tenant_id") @db.VarChar(36)
+  providerId         String?      @map("provider_id") @db.VarChar(36)
+  bankName           String?      @map("bank_name") @db.VarChar(255)
+  tenure             Int          // months
+  interestRatePct    Int          @map("interest_rate_pct") // percent * 100, 0 for no-cost EMI
+  processingFeePaise BigInt       @default(0) @map("processing_fee_paise")
+  minAmountPaise     BigInt       @map("min_amount_paise")
+  maxAmountPaise     BigInt       @map("max_amount_paise")
+  isNoCostEmi        Boolean      @default(false) @map("is_no_cost_emi")
+  subventionPct      Int          @default(0) @map("subvention_pct") // merchant bears this %
+  isActive           Boolean      @default(true) @map("is_active")
+  cardType           EmiCardType? @map("card_type")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  createdBy          String?      @map("created_by") @db.VarChar(36)
+  updatedBy          String?      @map("updated_by") @db.VarChar(36)
+
+  provider     BnplProvider?    @relation(fields: [providerId], references: [id])
+  transactions BnplTransaction[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([tenantId, providerId])
+  @@index([tenantId, bankName])
+  @@map("emi_plans")
+}
+
+// ─── BnplTransaction ──────────────────────────────────────────────
+
+model BnplTransaction {
+  id                    String                @id @default(uuid()) @db.VarChar(36)
+  tenantId              String                @map("tenant_id") @db.VarChar(36)
+  orderId               String                @map("order_id") @db.VarChar(36)
+  customerId            String                @map("customer_id") @db.VarChar(36)
+  providerName          BnplProviderName      @map("provider_name")
+  planId                String?               @map("plan_id") @db.VarChar(36)
+  orderAmountPaise      BigInt                @map("order_amount_paise")
+  emiAmountPaise        BigInt                @map("emi_amount_paise") // per installment
+  tenure                Int                   // months
+  interestPaise         BigInt                @map("interest_paise")
+  processingFeePaise    BigInt                @default(0) @map("processing_fee_paise")
+  totalPayablePaise     BigInt                @map("total_payable_paise")
+  status                BnplTransactionStatus @default(INITIATED)
+  externalTransactionId String?               @map("external_transaction_id") @db.VarChar(255)
+  providerResponse      Json?                 @map("provider_response")
+  approvedAt            DateTime?             @map("approved_at")
+  nextDueDate           DateTime?             @map("next_due_date") @db.Date
+  completedAt           DateTime?             @map("completed_at")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  createdBy             String?               @map("created_by") @db.VarChar(36)
+  updatedBy             String?               @map("updated_by") @db.VarChar(36)
+
+  customer    Customer     @relation(fields: [customerId], references: [id])
+  plan        EmiPlan?     @relation(fields: [planId], references: [id])
+  provider    BnplProvider @relation(fields: [tenantId, providerName], references: [tenantId, providerName])
+  emiSchedule EmiSchedule[]
+
+  @@index([tenantId])
+  @@index([tenantId, orderId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@index([tenantId, providerName])
+  @@index([tenantId, nextDueDate])
+  @@map("bnpl_transactions")
+}
+
+// ─── EmiSchedule ──────────────────────────────────────────────────
+
+model EmiSchedule {
+  id                 String               @id @default(uuid()) @db.VarChar(36)
+  tenantId           String               @map("tenant_id") @db.VarChar(36)
+  transactionId      String               @map("transaction_id") @db.VarChar(36)
+  installmentNumber  Int                  @map("installment_number")
+  dueDate            DateTime             @map("due_date") @db.Date
+  amountPaise        BigInt               @map("amount_paise")
+  principalPaise     BigInt               @map("principal_paise")
+  interestPaise      BigInt               @map("interest_paise")
+  status             EmiInstallmentStatus @default(UPCOMING)
+  paidAt             DateTime?            @map("paid_at")
+  paidAmountPaise    BigInt?              @map("paid_amount_paise")
+  lateFeePaise       BigInt               @default(0) @map("late_fee_paise")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+
+  transaction BnplTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@unique([transactionId, installmentNumber])
+  @@index([tenantId])
+  @@index([transactionId])
+  @@index([tenantId, status])
+  @@index([tenantId, dueDate])
+  @@map("emi_schedules")
+}
+
+// ─── SavedPaymentMethod ───────────────────────────────────────────
+
+model SavedPaymentMethod {
+  id              String         @id @default(uuid()) @db.VarChar(36)
+  tenantId        String         @map("tenant_id") @db.VarChar(36)
+  customerId      String         @map("customer_id") @db.VarChar(36)
+  methodType      SavedMethodType @map("method_type")
+  displayName     String         @map("display_name") @db.VarChar(255) // "HDFC ****4523"
+  last4           String?        @map("last4") @db.VarChar(4)
+  cardBrand       String?        @map("card_brand") @db.VarChar(50)
+  cardType        SavedCardType? @map("card_type")
+  upiId           String?        @map("upi_id") @db.VarChar(100)
+  walletProvider  String?        @map("wallet_provider") @db.VarChar(100)
+  tokenReference  String         @map("token_reference") @db.VarChar(500) // gateway token
+  isDefault       Boolean        @default(false) @map("is_default")
+  expiresAt       DateTime?      @map("expires_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, customerId, isDefault])
+  @@map("saved_payment_methods")
+}

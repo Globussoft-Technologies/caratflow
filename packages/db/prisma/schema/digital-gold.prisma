@@ -1,0 +1,231 @@
+// ─── CaratFlow Digital Gold Domain Schema ────────────────────────
+// Digital Gold: fractional gold ownership, buy/sell, SIP, redemption,
+// price alerts. B2C facing for online gold accumulation.
+
+// ─── Enums ────────────────────────────────────────────────────────
+
+enum GoldTransactionType {
+  BUY
+  SELL
+  REDEEM_PHYSICAL
+  REDEEM_JEWELRY
+  SIP_BUY
+  BONUS
+}
+
+enum GoldTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum GoldSipType {
+  FIXED_AMOUNT
+  FIXED_WEIGHT
+}
+
+enum GoldSipFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum GoldSipStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  COMPLETED
+}
+
+enum SipExecutionStatus {
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+enum GoldRedemptionType {
+  PHYSICAL_GOLD
+  JEWELRY
+  SELL_BACK
+}
+
+enum GoldRedemptionStatus {
+  REQUESTED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum GoldPriceAlertType {
+  PRICE_BELOW
+  PRICE_ABOVE
+}
+
+enum GoldPriceAlertStatus {
+  ACTIVE
+  TRIGGERED
+  CANCELLED
+}
+
+// ─── Gold Vault ───────────────────────────────────────────────────
+
+model GoldVault {
+  id                    String   @id @default(uuid()) @db.VarChar(36)
+  tenantId              String   @map("tenant_id") @db.VarChar(36)
+  customerId            String   @map("customer_id") @db.VarChar(36)
+  balanceMg             BigInt   @default(0) @map("balance_mg")
+  totalInvestedPaise    BigInt   @default(0) @map("total_invested_paise")
+  totalSoldPaise        BigInt   @default(0) @map("total_sold_paise")
+  avgBuyPricePer10gPaise BigInt  @default(0) @map("avg_buy_price_per_10g_paise")
+  kycVerified           Boolean  @default(false) @map("kyc_verified")
+  kycVerificationId     String?  @map("kyc_verification_id") @db.VarChar(36)
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  transactions GoldTransaction[]
+  sips         GoldSip[]
+  redemptions  GoldRedemption[]
+
+  @@unique([tenantId, customerId])
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@map("gold_vaults")
+}
+
+// ─── Gold Transaction ─────────────────────────────────────────────
+
+model GoldTransaction {
+  id                String                @id @default(uuid()) @db.VarChar(36)
+  tenantId          String                @map("tenant_id") @db.VarChar(36)
+  vaultId           String                @map("vault_id") @db.VarChar(36)
+  transactionType   GoldTransactionType   @map("transaction_type")
+  amountPaise       BigInt                @map("amount_paise")
+  goldWeightMg      BigInt                @map("gold_weight_mg")
+  pricePerGramPaise BigInt                @map("price_per_gram_paise")
+  pricePer10gPaise  BigInt                @map("price_per_10g_paise")
+  status            GoldTransactionStatus @default(PENDING)
+  paymentId         String?               @map("payment_id") @db.VarChar(255)
+  paymentMethod     String?               @map("payment_method") @db.VarChar(50)
+  reference         String?               @db.VarChar(255)
+  processedAt       DateTime?             @map("processed_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+
+  vault         GoldVault      @relation(fields: [vaultId], references: [id])
+  sipExecutions SipExecution[] @relation("SipExecutionTransaction")
+
+  @@index([tenantId])
+  @@index([vaultId])
+  @@index([tenantId, status])
+  @@index([tenantId, transactionType])
+  @@map("gold_transactions")
+}
+
+// ─── Gold SIP ─────────────────────────────────────────────────────
+
+model GoldSip {
+  id                 String           @id @default(uuid()) @db.VarChar(36)
+  tenantId           String           @map("tenant_id") @db.VarChar(36)
+  vaultId            String           @map("vault_id") @db.VarChar(36)
+  customerId         String           @map("customer_id") @db.VarChar(36)
+  sipType            GoldSipType      @map("sip_type")
+  amountPaise        BigInt?          @map("amount_paise")
+  weightMg           BigInt?          @map("weight_mg")
+  frequency          GoldSipFrequency
+  dayOfMonth         Int?             @map("day_of_month")
+  dayOfWeek          Int?             @map("day_of_week")
+  status             GoldSipStatus    @default(ACTIVE)
+  startDate          DateTime         @map("start_date") @db.Date
+  endDate            DateTime?        @map("end_date") @db.Date
+  nextDeductionDate  DateTime         @map("next_deduction_date") @db.Date
+  totalDeductions    Int              @default(0) @map("total_deductions")
+  failedDeductions   Int              @default(0) @map("failed_deductions")
+  paymentMethod      String           @map("payment_method") @db.VarChar(50)
+  autoDebitReference String?          @map("auto_debit_reference") @db.VarChar(255)
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  vault      GoldVault      @relation(fields: [vaultId], references: [id])
+  executions SipExecution[]
+
+  @@index([tenantId])
+  @@index([vaultId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@index([tenantId, nextDeductionDate])
+  @@map("gold_sips")
+}
+
+// ─── SIP Execution ────────────────────────────────────────────────
+
+model SipExecution {
+  id                String             @id @default(uuid()) @db.VarChar(36)
+  tenantId          String             @map("tenant_id") @db.VarChar(36)
+  sipId             String             @map("sip_id") @db.VarChar(36)
+  executionDate     DateTime           @map("execution_date") @db.Date
+  amountPaise       BigInt             @map("amount_paise")
+  goldWeightMg      BigInt             @map("gold_weight_mg")
+  pricePerGramPaise BigInt             @map("price_per_gram_paise")
+  status            SipExecutionStatus
+  failureReason     String?            @map("failure_reason") @db.VarChar(500)
+  transactionId     String?            @map("transaction_id") @db.VarChar(36)
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  sip         GoldSip          @relation(fields: [sipId], references: [id])
+  transaction GoldTransaction?  @relation("SipExecutionTransaction", fields: [transactionId], references: [id])
+
+  @@index([tenantId])
+  @@index([sipId])
+  @@index([tenantId, executionDate])
+  @@map("sip_executions")
+}
+
+// ─── Gold Redemption ──────────────────────────────────────────────
+
+model GoldRedemption {
+  id                String               @id @default(uuid()) @db.VarChar(36)
+  tenantId          String               @map("tenant_id") @db.VarChar(36)
+  vaultId           String               @map("vault_id") @db.VarChar(36)
+  redemptionType    GoldRedemptionType   @map("redemption_type")
+  goldWeightMg      BigInt               @map("gold_weight_mg")
+  valuePaise        BigInt               @map("value_paise")
+  status            GoldRedemptionStatus @default(REQUESTED)
+  productId         String?              @map("product_id") @db.VarChar(36)
+  deliveryAddressId String               @map("delivery_address_id") @db.VarChar(255)
+  trackingNumber    String?              @map("tracking_number") @db.VarChar(100)
+  shippedAt         DateTime?            @map("shipped_at")
+  deliveredAt       DateTime?            @map("delivered_at")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  vault GoldVault @relation(fields: [vaultId], references: [id])
+
+  @@index([tenantId])
+  @@index([vaultId])
+  @@index([tenantId, status])
+  @@map("gold_redemptions")
+}
+
+// ─── Gold Price Alert ─────────────────────────────────────────────
+
+model GoldPriceAlert {
+  id                     String               @id @default(uuid()) @db.VarChar(36)
+  tenantId               String               @map("tenant_id") @db.VarChar(36)
+  customerId             String               @map("customer_id") @db.VarChar(36)
+  alertType              GoldPriceAlertType   @map("alert_type")
+  targetPricePer10gPaise BigInt               @map("target_price_per_10g_paise")
+  currentPricePer10gPaise BigInt              @map("current_price_per_10g_paise")
+  status                 GoldPriceAlertStatus @default(ACTIVE)
+  triggeredAt            DateTime?            @map("triggered_at")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@map("gold_price_alerts")
+}

@@ -15,6 +15,14 @@ import { EcommerceModule } from './modules/ecommerce/ecommerce.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
 import { ReportingModule } from './modules/reporting/reporting.module';
 import { PlatformModule } from './modules/platform/platform.module';
+import { CmsModule } from './modules/cms/cms.module';
+import { DigitalGoldModule } from './modules/digital-gold/digital-gold.module';
+import { ReferralModule } from './modules/referral/referral.module';
+import { AmlModule } from './modules/aml/aml.module';
+import { StorefrontModule } from './modules/storefront/storefront.module';
+import { CustomerPortalModule } from './modules/customer-portal/customer-portal.module';
+import { BnplModule } from './modules/bnpl/bnpl.module';
+import { PreOrderModule } from './modules/preorder/preorder.module';
 
 @Module({
   imports: [
@@ -33,6 +41,14 @@ import { PlatformModule } from './modules/platform/platform.module';
     ComplianceModule,
     ReportingModule,
     PlatformModule,
+    CmsModule,
+    DigitalGoldModule,
+    ReferralModule,
+    AmlModule,
+    StorefrontModule,
+    CustomerPortalModule,
+    BnplModule,
+    PreOrderModule,
   ],
 })
 export class AppModule implements NestModule {

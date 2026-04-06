@@ -1,0 +1,136 @@
+// ─── CaratFlow Storefront Domain Schema ────────────────────────
+// B2C shopping: carts, addresses, search analytics, recently viewed,
+// price alerts.
+//
+// NOTE: Wishlist, CouponCode, and AbandonedCart models are defined
+// in b2c-features.prisma. This file adds storefront-specific models
+// that complement those.
+
+// ─── Enums ────────────────────────────────────────────────────────
+
+enum PriceAlertStatus {
+  ACTIVE
+  TRIGGERED
+  CANCELLED
+}
+
+// ─── Cart ─────────────────────────────────────────────────────────
+
+model Cart {
+  id           String    @id @default(uuid()) @db.VarChar(36)
+  tenantId     String    @map("tenant_id") @db.VarChar(36)
+  customerId   String?   @map("customer_id") @db.VarChar(36)
+  sessionId    String    @map("session_id") @db.VarChar(255)
+  locationId   String?   @map("location_id") @db.VarChar(36)
+  currencyCode String    @default("INR") @map("currency_code") @db.VarChar(3)
+  couponCode   String?   @map("coupon_code") @db.VarChar(100)
+  expiresAt    DateTime  @map("expires_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  items CartItem[]
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, sessionId])
+  @@index([expiresAt])
+  @@map("carts")
+}
+
+// ─── Cart Item ────────────────────────────────────────────────────
+
+model CartItem {
+  id                    String   @id @default(uuid()) @db.VarChar(36)
+  tenantId              String   @map("tenant_id") @db.VarChar(36)
+  cartId                String   @map("cart_id") @db.VarChar(36)
+  productId             String   @map("product_id") @db.VarChar(36)
+  quantity              Int      @default(1)
+  metalRatePaiseLocked  BigInt?  @map("metal_rate_paise_locked")
+  addedAt               DateTime @default(now()) @map("added_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  cart Cart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([cartId])
+  @@index([tenantId, productId])
+  @@map("cart_items")
+}
+
+// ─── Customer Address ─────────────────────────────────────────────
+
+model CustomerAddress {
+  id           String  @id @default(uuid()) @db.VarChar(36)
+  tenantId     String  @map("tenant_id") @db.VarChar(36)
+  customerId   String  @map("customer_id") @db.VarChar(36)
+  label        String  @default("Home") @db.VarChar(50)
+  firstName    String  @map("first_name") @db.VarChar(100)
+  lastName     String  @map("last_name") @db.VarChar(100)
+  phone        String  @db.VarChar(20)
+  addressLine1 String  @map("address_line_1") @db.VarChar(500)
+  addressLine2 String? @map("address_line_2") @db.VarChar(500)
+  city         String  @db.VarChar(100)
+  state        String  @db.VarChar(100)
+  country      String  @db.VarChar(2)
+  postalCode   String  @map("postal_code") @db.VarChar(20)
+  isDefault    Boolean @default(false) @map("is_default")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@map("customer_addresses")
+}
+
+// ─── Search Log ───────────────────────────────────────────────────
+
+model SearchLog {
+  id          String   @id @default(uuid()) @db.VarChar(36)
+  tenantId    String   @map("tenant_id") @db.VarChar(36)
+  query       String   @db.VarChar(500)
+  resultCount Int      @map("result_count")
+  customerId  String?  @map("customer_id") @db.VarChar(36)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, query(length: 100)])
+  @@map("search_logs")
+}
+
+// ─── Recently Viewed ──────────────────────────────────────────────
+
+model RecentlyViewed {
+  id         String   @id @default(uuid()) @db.VarChar(36)
+  tenantId   String   @map("tenant_id") @db.VarChar(36)
+  customerId String   @map("customer_id") @db.VarChar(36)
+  productId  String   @map("product_id") @db.VarChar(36)
+  viewedAt   DateTime @default(now()) @map("viewed_at")
+
+  @@unique([tenantId, customerId, productId])
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@map("recently_viewed")
+}
+
+// ─── Price Alert ──────────────────────────────────────────────────
+
+model PriceAlert {
+  id               String           @id @default(uuid()) @db.VarChar(36)
+  tenantId         String           @map("tenant_id") @db.VarChar(36)
+  customerId       String           @map("customer_id") @db.VarChar(36)
+  productId        String           @map("product_id") @db.VarChar(36)
+  targetPricePaise BigInt           @map("target_price_paise")
+  currentPricePaise BigInt          @map("current_price_paise")
+  status           PriceAlertStatus @default(ACTIVE)
+  triggeredAt      DateTime?        @map("triggered_at")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@index([tenantId, productId])
+  @@map("price_alerts")
+}

@@ -1,0 +1,298 @@
+// ─── CaratFlow Referral & AML Compliance Schema ────────────────
+// Referral rewards program and Anti-Money Laundering monitoring.
+// All IDs are UUID v4 strings (VARCHAR 36).
+// Money fields stored as BigInt in smallest unit (paise/cents).
+
+// ─── Referral Enums ───────────────────────────────────────────
+
+enum ReferralRewardType {
+  POINTS
+  DISCOUNT_COUPON
+  CASHBACK
+}
+
+enum ReferralStatus {
+  INVITED
+  REGISTERED
+  FIRST_ORDER
+  REWARDED
+  EXPIRED
+}
+
+enum ReferralInviteChannel {
+  WHATSAPP
+  EMAIL
+  SMS
+  LINK
+  SOCIAL
+}
+
+enum ReferralPayoutType {
+  LOYALTY_POINTS
+  COUPON_CODE
+  CASHBACK
+}
+
+enum ReferralPayoutStatus {
+  PENDING
+  CREDITED
+  FAILED
+}
+
+// ─── AML Enums ────────────────────────────────────────────────
+
+enum AmlRuleType {
+  TRANSACTION_AMOUNT_LIMIT
+  FREQUENCY_LIMIT
+  VELOCITY_CHECK
+  HIGH_VALUE_ALERT
+  COUNTRY_RESTRICTION
+  PEP_CHECK
+}
+
+enum AmlAlertType {
+  SUSPICIOUS_TRANSACTION
+  HIGH_VALUE
+  RAPID_TRANSACTIONS
+  UNUSUAL_PATTERN
+  STRUCTURING
+  COUNTRY_RISK
+}
+
+enum AmlSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AmlAlertStatus {
+  NEW
+  UNDER_REVIEW
+  ESCALATED
+  CLEARED
+  REPORTED
+}
+
+enum AmlRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}
+
+enum AmlReportType {
+  SAR
+  CTR
+  STR
+}
+
+enum AmlFilingStatus {
+  DRAFT
+  FILED
+  ACKNOWLEDGED
+}
+
+// ─── Referral Program ─────────────────────────────────────────
+
+model ReferralProgram {
+  id                      String             @id @default(uuid()) @db.VarChar(36)
+  tenantId                String             @map("tenant_id") @db.VarChar(36)
+  name                    String             @db.VarChar(255)
+  referrerRewardType      ReferralRewardType @map("referrer_reward_type")
+  referrerRewardValue     Int                @map("referrer_reward_value")
+  refereeRewardType       ReferralRewardType @map("referee_reward_type")
+  refereeRewardValue      Int                @map("referee_reward_value")
+  minOrderForRewardPaise  BigInt?            @map("min_order_for_reward_paise")
+  maxReferralsPerCustomer Int?               @map("max_referrals_per_customer")
+  isActive                Boolean            @default(true) @map("is_active")
+  validFrom               DateTime           @map("valid_from")
+  validTo                 DateTime?          @map("valid_to")
+  createdAt               DateTime           @default(now()) @map("created_at")
+  updatedAt               DateTime           @updatedAt @map("updated_at")
+  createdBy               String?            @map("created_by") @db.VarChar(36)
+  updatedBy               String?            @map("updated_by") @db.VarChar(36)
+
+  referralCodes ReferralCode[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("referral_programs")
+}
+
+// ─── Referral Code ────────────────────────────────────────────
+
+model ReferralCode {
+  id                      String   @id @default(uuid()) @db.VarChar(36)
+  tenantId                String   @map("tenant_id") @db.VarChar(36)
+  customerId              String   @map("customer_id") @db.VarChar(36)
+  programId               String   @map("program_id") @db.VarChar(36)
+  code                    String   @unique @db.VarChar(20)
+  usageCount              Int      @default(0) @map("usage_count")
+  totalRewardsEarnedPaise BigInt   @default(0) @map("total_rewards_earned_paise")
+  isActive                Boolean  @default(true) @map("is_active")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  program   ReferralProgram @relation(fields: [programId], references: [id])
+  referrals Referral[]
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([code])
+  @@map("referral_codes")
+}
+
+// ─── Referral ─────────────────────────────────────────────────
+
+model Referral {
+  id                String                @id @default(uuid()) @db.VarChar(36)
+  tenantId          String                @map("tenant_id") @db.VarChar(36)
+  referralCodeId    String                @map("referral_code_id") @db.VarChar(36)
+  referrerId        String                @map("referrer_id") @db.VarChar(36)
+  refereeId         String                @map("referee_id") @db.VarChar(36)
+  refereeOrderId    String?               @map("referee_order_id") @db.VarChar(36)
+  status            ReferralStatus        @default(INVITED)
+  referrerRewardPaise BigInt              @default(0) @map("referrer_reward_paise")
+  refereeRewardPaise  BigInt              @default(0) @map("referee_reward_paise")
+  rewardedAt        DateTime?             @map("rewarded_at")
+  invitedVia        ReferralInviteChannel @map("invited_via")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+
+  referralCode ReferralCode    @relation(fields: [referralCodeId], references: [id])
+  payouts      ReferralPayout[]
+
+  @@index([tenantId])
+  @@index([tenantId, referrerId])
+  @@index([tenantId, refereeId])
+  @@index([tenantId, status])
+  @@map("referrals")
+}
+
+// ─── Referral Payout ──────────────────────────────────────────
+
+model ReferralPayout {
+  id                   String              @id @default(uuid()) @db.VarChar(36)
+  tenantId             String              @map("tenant_id") @db.VarChar(36)
+  referralId           String              @map("referral_id") @db.VarChar(36)
+  customerId           String              @map("customer_id") @db.VarChar(36)
+  payoutType           ReferralPayoutType  @map("payout_type")
+  amount               Int
+  status               ReferralPayoutStatus @default(PENDING)
+  creditedAt           DateTime?           @map("credited_at")
+  couponCodeGenerated  String?             @map("coupon_code_generated") @db.VarChar(50)
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  referral Referral @relation(fields: [referralId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@map("referral_payouts")
+}
+
+// ─── AML Rule ─────────────────────────────────────────────────
+
+model AmlRule {
+  id         String      @id @default(uuid()) @db.VarChar(36)
+  tenantId   String      @map("tenant_id") @db.VarChar(36)
+  ruleName   String      @map("rule_name") @db.VarChar(255)
+  ruleType   AmlRuleType @map("rule_type")
+  parameters Json        @map("parameters")
+  severity   AmlSeverity
+  isActive   Boolean     @default(true) @map("is_active")
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+  createdBy  String?     @map("created_by") @db.VarChar(36)
+  updatedBy  String?     @map("updated_by") @db.VarChar(36)
+
+  alerts AmlAlert[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("aml_rules")
+}
+
+// ─── AML Alert ────────────────────────────────────────────────
+
+model AmlAlert {
+  id              String         @id @default(uuid()) @db.VarChar(36)
+  tenantId        String         @map("tenant_id") @db.VarChar(36)
+  customerId      String         @map("customer_id") @db.VarChar(36)
+  ruleId          String         @map("rule_id") @db.VarChar(36)
+  alertType       AmlAlertType   @map("alert_type")
+  severity        AmlSeverity
+  description     String         @db.Text
+  transactionIds  Json           @map("transaction_ids")
+  amountPaise     BigInt         @map("amount_paise")
+  status          AmlAlertStatus @default(NEW)
+  reviewedBy      String?        @map("reviewed_by") @db.VarChar(36)
+  reviewedAt      DateTime?      @map("reviewed_at")
+  reviewNotes     String?        @map("review_notes") @db.Text
+  reportedToFiu   Boolean        @default(false) @map("reported_to_fiu")
+  reportedAt      DateTime?      @map("reported_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  rule       AmlRule       @relation(fields: [ruleId], references: [id])
+  sarReports AmlSarReport[]
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@index([tenantId, severity])
+  @@index([createdAt])
+  @@map("aml_alerts")
+}
+
+// ─── AML Customer Risk ───────────────────────────────────────
+
+model AmlCustomerRisk {
+  id                    String       @id @default(uuid()) @db.VarChar(36)
+  tenantId              String       @map("tenant_id") @db.VarChar(36)
+  customerId            String       @map("customer_id") @db.VarChar(36)
+  riskScore             Int          @default(0) @map("risk_score")
+  riskLevel             AmlRiskLevel @default(LOW) @map("risk_level")
+  factors               Json         @map("factors")
+  lastAssessedAt        DateTime     @map("last_assessed_at")
+  nextReviewDate        DateTime?    @map("next_review_date")
+  kycStatus             String?      @map("kyc_status") @db.VarChar(50)
+  transactionVolumePaise BigInt      @default(0) @map("transaction_volume_paise")
+  transactionCount      Int          @default(0) @map("transaction_count")
+  flagCount             Int          @default(0) @map("flag_count")
+  createdAt             DateTime     @default(now()) @map("created_at")
+  updatedAt             DateTime     @updatedAt @map("updated_at")
+
+  @@unique([tenantId, customerId])
+  @@index([tenantId])
+  @@index([tenantId, riskLevel])
+  @@index([tenantId, riskScore])
+  @@map("aml_customer_risks")
+}
+
+// ─── AML SAR Report ───────────────────────────────────────────
+
+model AmlSarReport {
+  id              String          @id @default(uuid()) @db.VarChar(36)
+  tenantId        String          @map("tenant_id") @db.VarChar(36)
+  alertId         String          @map("alert_id") @db.VarChar(36)
+  customerId      String          @map("customer_id") @db.VarChar(36)
+  reportType      AmlReportType   @map("report_type")
+  filingStatus    AmlFilingStatus @default(DRAFT) @map("filing_status")
+  reportData      Json            @map("report_data")
+  filedAt         DateTime?       @map("filed_at")
+  filedBy         String?         @map("filed_by") @db.VarChar(36)
+  referenceNumber String?         @map("reference_number") @db.VarChar(100)
+  notes           String?         @db.Text
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  alert AmlAlert @relation(fields: [alertId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, filingStatus])
+  @@map("aml_sar_reports")
+}

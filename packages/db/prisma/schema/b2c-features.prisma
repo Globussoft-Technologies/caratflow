@@ -1,0 +1,177 @@
+// ─── CaratFlow B2C Features Schema ──────────────────────────────
+// Wishlist, Product Comparison, Coupon Codes, Abandoned Cart Recovery,
+// Back-in-Stock Alerts.
+
+// ─── Enums ────────────────────────────────────────────────────────
+
+enum CouponDiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_SHIPPING
+}
+
+enum AbandonedCartStatus {
+  DETECTED
+  REMINDER_1_SENT
+  REMINDER_2_SENT
+  REMINDER_3_SENT
+  RECOVERED
+  EXPIRED
+}
+
+enum BackInStockAlertStatus {
+  ACTIVE
+  NOTIFIED
+  CANCELLED
+}
+
+// ─── Wishlist ─────────────────────────────────────────────────────
+
+model Wishlist {
+  id                       String   @id @default(uuid()) @db.VarChar(36)
+  tenantId                 String   @map("tenant_id") @db.VarChar(36)
+  customerId               String   @map("customer_id") @db.VarChar(36)
+  productId                String   @map("product_id") @db.VarChar(36)
+  addedAt                  DateTime @default(now()) @map("added_at")
+  priceAtAddPaise          BigInt   @map("price_at_add_paise")
+  priceAlertEnabled        Boolean  @default(false) @map("price_alert_enabled")
+  priceAlertThresholdPaise BigInt?  @map("price_alert_threshold_paise")
+  priceAlertTriggered      Boolean  @default(false) @map("price_alert_triggered")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@unique([tenantId, customerId, productId])
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, priceAlertEnabled])
+  @@map("wishlists")
+}
+
+// ─── Compare List ─────────────────────────────────────────────────
+
+model CompareList {
+  id         String   @id @default(uuid()) @db.VarChar(36)
+  tenantId   String   @map("tenant_id") @db.VarChar(36)
+  customerId String?  @map("customer_id") @db.VarChar(36)
+  sessionId  String   @map("session_id") @db.VarChar(255)
+  productIds Json     @map("product_ids")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, sessionId])
+  @@map("compare_lists")
+}
+
+// ─── Coupon Code ──────────────────────────────────────────────────
+
+model CouponCode {
+  id                      String             @id @default(uuid()) @db.VarChar(36)
+  tenantId                String             @map("tenant_id") @db.VarChar(36)
+  code                    String             @db.VarChar(50)
+  description             String?            @db.VarChar(500)
+  discountType            CouponDiscountType @map("discount_type")
+  discountValue           Int                @map("discount_value")
+  minOrderPaise           BigInt?            @map("min_order_paise")
+  maxDiscountPaise        BigInt?            @map("max_discount_paise")
+  usageLimit              Int?               @map("usage_limit")
+  usageLimitPerCustomer   Int                @default(1) @map("usage_limit_per_customer")
+  usedCount               Int                @default(0) @map("used_count")
+  validFrom               DateTime           @map("valid_from")
+  validTo                 DateTime           @map("valid_to")
+  isActive                Boolean            @default(true) @map("is_active")
+  applicableCategories    Json?              @map("applicable_categories")
+  applicableProducts      Json?              @map("applicable_products")
+  excludedProducts        Json?              @map("excluded_products")
+  isFirstOrderOnly        Boolean            @default(false) @map("is_first_order_only")
+  isAutoApply             Boolean            @default(false) @map("is_auto_apply")
+  createdAt               DateTime           @default(now()) @map("created_at")
+  updatedAt               DateTime           @updatedAt @map("updated_at")
+  createdBy               String?            @map("created_by") @db.VarChar(36)
+  updatedBy               String?            @map("updated_by") @db.VarChar(36)
+
+  usages CouponUsage[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([tenantId, isAutoApply])
+  @@map("coupon_codes")
+}
+
+// ─── Coupon Usage ─────────────────────────────────────────────────
+
+model CouponUsage {
+  id                   String   @id @default(uuid()) @db.VarChar(36)
+  tenantId             String   @map("tenant_id") @db.VarChar(36)
+  couponId             String   @map("coupon_id") @db.VarChar(36)
+  customerId           String   @map("customer_id") @db.VarChar(36)
+  orderId              String   @map("order_id") @db.VarChar(36)
+  discountAppliedPaise BigInt   @map("discount_applied_paise")
+  usedAt               DateTime @default(now()) @map("used_at")
+
+  coupon   CouponCode @relation(fields: [couponId], references: [id])
+  customer Customer   @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, couponId])
+  @@index([tenantId, customerId])
+  @@index([couponId, customerId])
+  @@map("coupon_usages")
+}
+
+// ─── Abandoned Cart ───────────────────────────────────────────────
+
+model AbandonedCart {
+  id                   String              @id @default(uuid()) @db.VarChar(36)
+  tenantId             String              @map("tenant_id") @db.VarChar(36)
+  cartSessionId        String              @map("cart_session_id") @db.VarChar(255)
+  customerId           String?             @map("customer_id") @db.VarChar(36)
+  customerEmail        String?             @map("customer_email") @db.VarChar(255)
+  customerPhone        String?             @map("customer_phone") @db.VarChar(20)
+  items                Json                @map("items")
+  totalPaise           BigInt              @map("total_paise")
+  itemCount            Int                 @map("item_count")
+  abandonedAt          DateTime            @default(now()) @map("abandoned_at")
+  firstReminderSentAt  DateTime?           @map("first_reminder_sent_at")
+  secondReminderSentAt DateTime?           @map("second_reminder_sent_at")
+  thirdReminderSentAt  DateTime?           @map("third_reminder_sent_at")
+  recoveredAt          DateTime?           @map("recovered_at")
+  recoveredOrderId     String?             @map("recovered_order_id") @db.VarChar(36)
+  status               AbandonedCartStatus @default(DETECTED)
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([tenantId, cartSessionId])
+  @@index([abandonedAt])
+  @@map("abandoned_carts")
+}
+
+// ─── Back In Stock Alert ──────────────────────────────────────────
+
+model BackInStockAlert {
+  id         String                @id @default(uuid()) @db.VarChar(36)
+  tenantId   String                @map("tenant_id") @db.VarChar(36)
+  customerId String?               @map("customer_id") @db.VarChar(36)
+  email      String                @db.VarChar(255)
+  productId  String                @map("product_id") @db.VarChar(36)
+  status     BackInStockAlertStatus @default(ACTIVE)
+  notifiedAt DateTime?             @map("notified_at")
+  createdAt  DateTime              @default(now()) @map("created_at")
+  updatedAt  DateTime              @updatedAt @map("updated_at")
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+  product  Product   @relation(fields: [productId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, productId, status])
+  @@index([tenantId, customerId])
+  @@map("back_in_stock_alerts")
+}

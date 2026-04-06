@@ -1,0 +1,233 @@
+// ─── CaratFlow CMS Schema ──────────────────────────────────────
+// Content management: banners, collections, pages, blog, FAQ,
+// announcements, SEO metadata, homepage sections.
+
+// ─── Enums ─────────────────────────────────────────────────────
+
+enum BannerLinkType {
+  PRODUCT
+  CATEGORY
+  COLLECTION
+  EXTERNAL
+  NONE
+}
+
+enum BannerPosition {
+  HERO
+  SIDEBAR
+  POPUP
+  INLINE
+}
+
+enum TargetAudience {
+  ALL
+  NEW_CUSTOMERS
+  RETURNING
+  LOYALTY_MEMBERS
+}
+
+enum SeoPageType {
+  HOME
+  CATEGORY
+  PRODUCT
+  COLLECTION
+  BLOG
+}
+
+enum HomepageSectionType {
+  HERO_BANNER
+  CATEGORY_GRID
+  FEATURED_PRODUCTS
+  NEW_ARRIVALS
+  SHOP_BY_OCCASION
+  TESTIMONIALS
+  NEWSLETTER
+  PROMOTION_BANNER
+  CUSTOM_HTML
+}
+
+// ─── Banner ────────────────────────────────────────────────────
+
+model Banner {
+  id              String          @id @default(uuid()) @db.VarChar(36)
+  tenantId        String          @map("tenant_id") @db.VarChar(36)
+  title           String          @db.VarChar(255)
+  subtitle        String?         @db.VarChar(500)
+  imageUrl        String          @map("image_url") @db.VarChar(1000)
+  linkUrl         String?         @map("link_url") @db.VarChar(1000)
+  linkType        BannerLinkType  @default(NONE) @map("link_type")
+  position        BannerPosition  @default(HERO)
+  displayOrder    Int             @default(0) @map("display_order")
+  startDate       DateTime?       @map("start_date")
+  endDate         DateTime?       @map("end_date")
+  isActive        Boolean         @default(true) @map("is_active")
+  targetAudience  TargetAudience  @default(ALL) @map("target_audience")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  createdBy       String?         @map("created_by") @db.VarChar(36)
+  updatedBy       String?         @map("updated_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@index([tenantId, position, isActive])
+  @@map("cms_banners")
+}
+
+// ─── Collection ────────────────────────────────────────────────
+
+model Collection {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  tenantId     String   @map("tenant_id") @db.VarChar(36)
+  name         String   @db.VarChar(255)
+  slug         String   @db.VarChar(255)
+  description  String?  @db.Text
+  imageUrl     String?  @map("image_url") @db.VarChar(1000)
+  products     Json?    @map("products")
+  displayOrder Int      @default(0) @map("display_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  isFeatured   Boolean  @default(false) @map("is_featured")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdBy    String?  @map("created_by") @db.VarChar(36)
+  updatedBy    String?  @map("updated_by") @db.VarChar(36)
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("cms_collections")
+}
+
+// ─── Page ──────────────────────────────────────────────────────
+
+model Page {
+  id              String    @id @default(uuid()) @db.VarChar(36)
+  tenantId        String    @map("tenant_id") @db.VarChar(36)
+  title           String    @db.VarChar(255)
+  slug            String    @db.VarChar(255)
+  content         String    @db.Text
+  metaTitle       String?   @map("meta_title") @db.VarChar(255)
+  metaDescription String?   @map("meta_description") @db.VarChar(500)
+  isPublished     Boolean   @default(false) @map("is_published")
+  publishedAt     DateTime? @map("published_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdBy       String?   @map("created_by") @db.VarChar(36)
+  updatedBy       String?   @map("updated_by") @db.VarChar(36)
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@index([tenantId, isPublished])
+  @@map("cms_pages")
+}
+
+// ─── Blog Post ─────────────────────────────────────────────────
+
+model BlogPost {
+  id              String    @id @default(uuid()) @db.VarChar(36)
+  tenantId        String    @map("tenant_id") @db.VarChar(36)
+  title           String    @db.VarChar(255)
+  slug            String    @db.VarChar(255)
+  excerpt         String?   @db.Text
+  content         String    @db.Text
+  coverImageUrl   String?   @map("cover_image_url") @db.VarChar(1000)
+  author          String    @db.VarChar(255)
+  categoryTag     String?   @map("category_tag") @db.VarChar(100)
+  tags            Json?     @map("tags")
+  readTimeMinutes Int       @default(0) @map("read_time_minutes")
+  isPublished     Boolean   @default(false) @map("is_published")
+  publishedAt     DateTime? @map("published_at")
+  viewCount       Int       @default(0) @map("view_count")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdBy       String?   @map("created_by") @db.VarChar(36)
+  updatedBy       String?   @map("updated_by") @db.VarChar(36)
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@index([tenantId, isPublished])
+  @@index([tenantId, categoryTag])
+  @@map("cms_blog_posts")
+}
+
+// ─── FAQ Item ──────────────────────────────────────────────────
+
+model FaqItem {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  tenantId     String   @map("tenant_id") @db.VarChar(36)
+  question     String   @db.VarChar(500)
+  answer       String   @db.Text
+  category     String?  @db.VarChar(100)
+  displayOrder Int      @default(0) @map("display_order")
+  isPublished  Boolean  @default(true) @map("is_published")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdBy    String?  @map("created_by") @db.VarChar(36)
+  updatedBy    String?  @map("updated_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@index([tenantId, isPublished])
+  @@map("cms_faq_items")
+}
+
+// ─── Announcement ──────────────────────────────────────────────
+
+model Announcement {
+  id              String    @id @default(uuid()) @db.VarChar(36)
+  tenantId        String    @map("tenant_id") @db.VarChar(36)
+  message         String    @db.VarChar(500)
+  linkUrl         String?   @map("link_url") @db.VarChar(1000)
+  linkText        String?   @map("link_text") @db.VarChar(100)
+  backgroundColor String?   @map("background_color") @db.VarChar(20)
+  textColor       String?   @map("text_color") @db.VarChar(20)
+  isActive        Boolean   @default(true) @map("is_active")
+  startDate       DateTime? @map("start_date")
+  endDate         DateTime? @map("end_date")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdBy       String?   @map("created_by") @db.VarChar(36)
+  updatedBy       String?   @map("updated_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("cms_announcements")
+}
+
+// ─── SEO Metadata ──────────────────────────────────────────────
+
+model SeoMetadata {
+  id              String      @id @default(uuid()) @db.VarChar(36)
+  tenantId        String      @map("tenant_id") @db.VarChar(36)
+  pageType        SeoPageType @map("page_type")
+  pageIdentifier  String      @map("page_identifier") @db.VarChar(255)
+  metaTitle       String?     @map("meta_title") @db.VarChar(255)
+  metaDescription String?     @map("meta_description") @db.VarChar(500)
+  ogImage         String?     @map("og_image") @db.VarChar(1000)
+  canonicalUrl    String?     @map("canonical_url") @db.VarChar(1000)
+  structuredData  Json?       @map("structured_data")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  createdBy       String?     @map("created_by") @db.VarChar(36)
+  updatedBy       String?     @map("updated_by") @db.VarChar(36)
+
+  @@unique([tenantId, pageType, pageIdentifier])
+  @@index([tenantId])
+  @@map("cms_seo_metadata")
+}
+
+// ─── Homepage Section ──────────────────────────────────────────
+
+model HomepageSection {
+  id           String              @id @default(uuid()) @db.VarChar(36)
+  tenantId     String              @map("tenant_id") @db.VarChar(36)
+  sectionType  HomepageSectionType @map("section_type")
+  displayOrder Int                 @default(0) @map("display_order")
+  isActive     Boolean             @default(true) @map("is_active")
+  config       Json?               @map("config")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+  createdBy    String?             @map("created_by") @db.VarChar(36)
+  updatedBy    String?             @map("updated_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@index([tenantId, isActive, displayOrder])
+  @@map("cms_homepage_sections")
+}

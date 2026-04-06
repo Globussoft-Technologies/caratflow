@@ -1,6 +1,7 @@
 // ─── CaratFlow Shared Types ────────────────────────────────────
 // Central re-export of all shared types, schemas, and enums.
 
+export * from './auth';
 export * from './common';
 export * from './enums';
 export * from './events';
@@ -16,3 +17,11 @@ export * from './ecommerce';
 export * from './reporting';
 export * from './india';
 export * from './hardware';
+export * from './storefront';
+export * from './cms';
+export * from './b2c-features';
+export * from './referral-aml';
+export * from './preorder';
+export * from './customer-portal';
+export * from './digital-gold';
+export * from './bnpl';

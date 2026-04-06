@@ -191,6 +191,25 @@ model Customer {
   goldSavingsMemberships GoldSavingsMember[]
   kycVerifications       KycVerification[]
 
+  // B2C Auth relation
+  customerAuth CustomerAuth?
+
+  // B2C Features relations
+  wishlists          Wishlist[]
+  compareLists       CompareList[]
+  couponUsages       CouponUsage[]
+  abandonedCarts     AbandonedCart[]
+  backInStockAlerts  BackInStockAlert[]
+
+  // Pre-order relations
+  preOrders                PreOrder[]
+  orderModificationRequests OrderModificationRequest[]
+  reorderTemplates         ReorderTemplate[]
+
+  // BNPL & EMI relations
+  bnplTransactions     BnplTransaction[]
+  savedPaymentMethods  SavedPaymentMethod[]
+
   @@index([tenantId])
   @@index([tenantId, phone])
   @@index([tenantId, email])
@@ -331,6 +350,10 @@ model Product {
   onlineOrderItems  OnlineOrderItem[]
   productReviews    ProductReview[]
 
+  // B2C Features relations
+  wishlists              Wishlist[]
+  backInStockAlerts      BackInStockAlert[]
+
   // Compliance relations
   huidRecords             HuidRecord[]
   hallmarkSubmissionItems HallmarkSubmissionItem[]
@@ -340,6 +363,10 @@ model Product {
 
   // Export relations
   exportOrderItems ExportOrderItem[] @relation("ExportOrderItemProduct")
+
+  // Pre-order relations
+  preOrders       PreOrder[]
+  preOrderConfigs PreOrderConfig[]
 
   @@unique([tenantId, sku])
   @@index([tenantId])
@@ -489,6 +516,112 @@ model Country {
   currency Currency @relation(fields: [currencyCode], references: [code])
 
   @@map("countries")
+}
+
+// ─── Social Account ────────────────────────────────────────────
+
+enum SocialProvider {
+  GOOGLE
+  FACEBOOK
+  APPLE
+}
+
+model SocialAccount {
+  id                String         @id @default(uuid()) @db.VarChar(36)
+  customerId        String         @map("customer_id") @db.VarChar(36)
+  provider          SocialProvider
+  providerAccountId String         @map("provider_account_id") @db.VarChar(255)
+  email             String?        @db.VarChar(255)
+  name              String?        @db.VarChar(255)
+  avatarUrl         String?        @map("avatar_url") @db.VarChar(1000)
+  accessToken       String?        @map("access_token") @db.VarChar(2000)
+  refreshToken      String?        @map("refresh_token") @db.VarChar(2000)
+  expiresAt         DateTime?      @map("expires_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  customerAuth CustomerAuth @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([customerId])
+  @@map("social_accounts")
+}
+
+// ─── OTP Verification ──────────────────────────────────────────
+
+enum OtpPurpose {
+  LOGIN
+  REGISTRATION
+  PASSWORD_RESET
+  TRANSACTION_2FA
+}
+
+model OtpVerification {
+  id          String     @id @default(uuid()) @db.VarChar(36)
+  identifier  String     @db.VarChar(255)
+  otpCode     String     @map("otp_code") @db.VarChar(6)
+  purpose     OtpPurpose
+  expiresAt   DateTime   @map("expires_at")
+  verifiedAt  DateTime?  @map("verified_at")
+  attempts    Int        @default(0)
+  maxAttempts Int        @default(3) @map("max_attempts")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  @@index([identifier, purpose])
+  @@index([expiresAt])
+  @@map("otp_verifications")
+}
+
+// ─── Customer Auth (B2C) ───────────────────────────────────────
+
+enum LoginProvider {
+  EMAIL
+  PHONE
+  GOOGLE
+  FACEBOOK
+  APPLE
+}
+
+model CustomerAuth {
+  id               String        @id @default(uuid()) @db.VarChar(36)
+  customerId       String        @map("customer_id") @db.VarChar(36)
+  email            String?       @db.VarChar(255)
+  phone            String?       @db.VarChar(20)
+  passwordHash     String?       @map("password_hash") @db.VarChar(255)
+  isEmailVerified  Boolean       @default(false) @map("is_email_verified")
+  isPhoneVerified  Boolean       @default(false) @map("is_phone_verified")
+  twoFactorEnabled Boolean       @default(false) @map("two_factor_enabled")
+  twoFactorSecret  String?       @map("two_factor_secret") @db.VarChar(255)
+  lastLoginAt      DateTime?     @map("last_login_at")
+  loginProvider    LoginProvider @default(EMAIL) @map("login_provider")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  customer       Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  socialAccounts SocialAccount[]
+  refreshTokens  CustomerRefreshToken[]
+
+  @@unique([email])
+  @@unique([phone])
+  @@index([customerId])
+  @@map("customer_auth")
+}
+
+// ─── Customer Refresh Token ────────────────────────────────────
+
+model CustomerRefreshToken {
+  id             String    @id @default(uuid()) @db.VarChar(36)
+  customerAuthId String    @map("customer_auth_id") @db.VarChar(36)
+  token          String    @unique @db.VarChar(500)
+  expiresAt      DateTime  @map("expires_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  revokedAt      DateTime? @map("revoked_at")
+
+  customerAuth CustomerAuth @relation(fields: [customerAuthId], references: [id], onDelete: Cascade)
+
+  @@index([customerAuthId])
+  @@index([token])
+  @@map("customer_refresh_tokens")
 }
 
 // ─── AuditLog ──────────────────────────────────────────────────

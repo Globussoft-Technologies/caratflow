@@ -1,0 +1,148 @@
+// ─── CaratFlow Pre-Order / Backorder Domain Schema ─────────────
+// Pre-orders, backorders, made-to-order, order modifications,
+// and one-click reorder templates.
+
+// ─── Enums ────────────────────────────────────────────────────────
+
+enum PreOrderStatus {
+  PENDING
+  CONFIRMED
+  IN_PRODUCTION
+  AVAILABLE
+  FULFILLED
+  CANCELLED
+}
+
+enum PreOrderType {
+  PRE_ORDER
+  BACKORDER
+  MADE_TO_ORDER
+}
+
+enum ModificationType {
+  ADDRESS_CHANGE
+  ITEM_CHANGE
+  CANCEL_ITEM
+  ADD_ITEM
+  SIZE_CHANGE
+}
+
+enum ModificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  AUTO_APPLIED
+}
+
+// ─── PreOrder ─────────────────────────────────────────────────────
+
+model PreOrder {
+  id                     String         @id @default(uuid()) @db.VarChar(36)
+  tenantId               String         @map("tenant_id") @db.VarChar(36)
+  customerId             String         @map("customer_id") @db.VarChar(36)
+  productId              String         @map("product_id") @db.VarChar(36)
+  quantity               Int            @default(1)
+  status                 PreOrderStatus @default(PENDING)
+  orderType              PreOrderType   @map("order_type")
+  depositPaise           BigInt         @default(0) @map("deposit_paise")
+  estimatedAvailableDate DateTime?      @map("estimated_available_date") @db.Date
+  estimatedDeliveryDate  DateTime?      @map("estimated_delivery_date") @db.Date
+  actualAvailableDate    DateTime?      @map("actual_available_date")
+  notifiedAt             DateTime?      @map("notified_at")
+  fulfilledOrderId       String?        @map("fulfilled_order_id") @db.VarChar(36)
+  cancelReason           String?        @map("cancel_reason") @db.Text
+  notes                  String?        @db.Text
+  priceLockPaise         BigInt?        @map("price_lock_paise")
+  isPriceLocked          Boolean        @default(false) @map("is_price_locked")
+  createdAt              DateTime       @default(now()) @map("created_at")
+  updatedAt              DateTime       @updatedAt @map("updated_at")
+  createdBy              String?        @map("created_by") @db.VarChar(36)
+  updatedBy              String?        @map("updated_by") @db.VarChar(36)
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([tenantId, productId])
+  @@index([tenantId, orderType])
+  @@map("pre_orders")
+}
+
+// ─── PreOrderConfig ───────────────────────────────────────────────
+
+model PreOrderConfig {
+  id                  String   @id @default(uuid()) @db.VarChar(36)
+  tenantId            String   @map("tenant_id") @db.VarChar(36)
+  productId           String   @map("product_id") @db.VarChar(36)
+  isPreOrderEnabled   Boolean  @default(false) @map("is_pre_order_enabled")
+  isBackorderEnabled  Boolean  @default(false) @map("is_backorder_enabled")
+  maxPreOrderQty      Int      @default(0) @map("max_pre_order_qty")
+  depositPercentage   Int      @default(0) @map("deposit_percentage")
+  estimatedLeadDays   Int      @default(14) @map("estimated_lead_days")
+  autoConfirm         Boolean  @default(false) @map("auto_confirm")
+  customMessage       String?  @map("custom_message") @db.Text
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  createdBy           String?  @map("created_by") @db.VarChar(36)
+  updatedBy           String?  @map("updated_by") @db.VarChar(36)
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([tenantId, productId])
+  @@index([tenantId])
+  @@map("pre_order_configs")
+}
+
+// ─── OrderModificationRequest ─────────────────────────────────────
+
+model OrderModificationRequest {
+  id               String             @id @default(uuid()) @db.VarChar(36)
+  tenantId         String             @map("tenant_id") @db.VarChar(36)
+  orderId          String             @map("order_id") @db.VarChar(36)
+  customerId       String             @map("customer_id") @db.VarChar(36)
+  modificationType ModificationType   @map("modification_type")
+  originalData     Json               @map("original_data")
+  requestedData    Json               @map("requested_data")
+  status           ModificationStatus @default(PENDING)
+  reason           String?            @db.Text
+  reviewedBy       String?            @map("reviewed_by") @db.VarChar(36)
+  reviewedAt       DateTime?          @map("reviewed_at")
+  autoApplyWindow  Int                @default(30) @map("auto_apply_window")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  createdBy        String?            @map("created_by") @db.VarChar(36)
+  updatedBy        String?            @map("updated_by") @db.VarChar(36)
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, orderId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@map("order_modification_requests")
+}
+
+// ─── ReorderTemplate ──────────────────────────────────────────────
+
+model ReorderTemplate {
+  id            String    @id @default(uuid()) @db.VarChar(36)
+  tenantId      String    @map("tenant_id") @db.VarChar(36)
+  customerId    String    @map("customer_id") @db.VarChar(36)
+  name          String    @default("Previous Order") @db.VarChar(255)
+  sourceOrderId String    @map("source_order_id") @db.VarChar(36)
+  items         Json      @map("items")
+  lastUsedAt    DateTime? @map("last_used_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  createdBy     String?   @map("created_by") @db.VarChar(36)
+  updatedBy     String?   @map("updated_by") @db.VarChar(36)
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, sourceOrderId])
+  @@map("reorder_templates")
+}
