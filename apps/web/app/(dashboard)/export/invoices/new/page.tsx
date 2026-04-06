@@ -1,7 +1,7 @@
 'use client';
 
 import { PageHeader } from '@caratflow/ui';
-import { ExportInvoiceForm } from '../../../../../src/features/export/ExportInvoiceForm';
+import { ExportInvoiceForm } from '@/features/export/ExportInvoiceForm';
 
 export default function NewExportInvoicePage() {
   return (

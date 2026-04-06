@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { PageHeader, StatusBadge, getStatusVariant } from '@caratflow/ui';
 import { Printer, RotateCcw, Ban } from 'lucide-react';
-import { SaleInvoice } from '../../../../../src/features/retail/SaleInvoice';
+import { SaleInvoice } from '@/features/retail/SaleInvoice';
 
 // Mock sale detail -- in production from tRPC: retail.getSale
 const mockSale = {

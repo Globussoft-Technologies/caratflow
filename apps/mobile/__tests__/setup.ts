@@ -132,6 +132,12 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
 
 // ─── Expo Router ────────────────────────────────────────────────
 
+const createNavigator = (name: string) => {
+  const Navigator = mockComponent(name);
+  const Screen = mockComponent(`${name}.Screen`);
+  return Object.assign(Navigator, { Screen });
+};
+
 vi.mock('expo-router', () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -142,6 +148,8 @@ vi.mock('expo-router', () => ({
   useLocalSearchParams: () => ({}),
   useSegments: () => [],
   Link: mockComponent('Link'),
+  Stack: createNavigator('Stack'),
+  Tabs: createNavigator('Tabs'),
   router: {
     push: vi.fn(),
     replace: vi.fn(),

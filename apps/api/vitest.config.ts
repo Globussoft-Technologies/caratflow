@@ -10,6 +10,8 @@ export default defineConfig({
       'src/modules/**/*.spec.ts',
       'src/auth/**/*.spec.ts',
       'src/common/**/*.spec.ts',
+      'src/event-bus/**/*.spec.ts',
+      'src/trpc/**/*.spec.ts',
     ],
     setupFiles: ['src/__tests__/setup.ts'],
     testTimeout: 30_000,

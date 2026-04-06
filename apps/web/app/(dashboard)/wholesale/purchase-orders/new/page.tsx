@@ -1,7 +1,7 @@
 'use client';
 
 import { PageHeader } from '@caratflow/ui';
-import { PurchaseOrderForm } from '../../../../src/features/wholesale/PurchaseOrderForm';
+import { PurchaseOrderForm } from '@/features/wholesale/PurchaseOrderForm';
 
 export default function NewPurchaseOrderPage() {
   return (

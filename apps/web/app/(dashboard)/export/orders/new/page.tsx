@@ -1,7 +1,7 @@
 'use client';
 
 import { PageHeader } from '@caratflow/ui';
-import { ExportOrderForm } from '../../../../../src/features/export/ExportOrderForm';
+import { ExportOrderForm } from '@/features/export/ExportOrderForm';
 
 export default function NewExportOrderPage() {
   return (
