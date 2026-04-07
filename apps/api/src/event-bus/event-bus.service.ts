@@ -98,7 +98,7 @@ export class EventBusService implements OnModuleDestroy {
   }
 
   private startWorker(domain: DomainQueueName): void {
-    const queueName = `caratflow:${domain}`;
+    const queueName = `caratflow-${domain}`;
     const worker = new Worker(
       queueName,
       async (job: Job<DomainEvent>) => {
