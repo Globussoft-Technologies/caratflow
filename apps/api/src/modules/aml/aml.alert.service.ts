@@ -45,7 +45,7 @@ export class AmlAlertService extends TenantAwareService {
 
     const [items, total] = await Promise.all([
       this.prisma.amlAlert.findMany({
-        where: where as Parameters<typeof this.prisma.amlAlert.findMany>[0]['where'],
+        where,
         orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
@@ -54,7 +54,7 @@ export class AmlAlertService extends TenantAwareService {
         },
       }),
       this.prisma.amlAlert.count({
-        where: where as Parameters<typeof this.prisma.amlAlert.count>[0]['where'],
+        where,
       }),
     ]);
 
@@ -173,7 +173,7 @@ export class AmlAlertService extends TenantAwareService {
         alertId: input.alertId,
         customerId: input.customerId,
         reportType: input.reportType,
-        reportData: input.reportData as Record<string, unknown>,
+        reportData: input.reportData as any,
         notes: input.notes ?? null,
         filingStatus: 'DRAFT',
       },
@@ -213,7 +213,7 @@ export class AmlAlertService extends TenantAwareService {
 
     const [items, total] = await Promise.all([
       this.prisma.amlSarReport.findMany({
-        where: where as Parameters<typeof this.prisma.amlSarReport.findMany>[0]['where'],
+        where,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
@@ -222,7 +222,7 @@ export class AmlAlertService extends TenantAwareService {
         },
       }),
       this.prisma.amlSarReport.count({
-        where: where as Parameters<typeof this.prisma.amlSarReport.count>[0]['where'],
+        where,
       }),
     ]);
 

@@ -178,8 +178,8 @@ export class AuthService {
       permissions,
     };
 
-    const accessToken = jwt.sign(payload, this.jwtSecret, {
-      expiresIn: this.accessExpiry,
+    const accessToken = jwt.sign(payload as object, this.jwtSecret, {
+      expiresIn: this.accessExpiry as unknown as number,
     });
 
     const refreshTokenValue = uuid() + '-' + uuid();

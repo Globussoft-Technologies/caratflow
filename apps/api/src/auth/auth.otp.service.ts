@@ -129,7 +129,7 @@ export class OtpService {
     // Generate a cryptographically random 6-digit OTP
     const array = new Uint32Array(1);
     crypto.getRandomValues(array);
-    const otp = (array[0] % 900000) + 100000;
+    const otp = (array[0]! % 900000) + 100000;
     return otp.toString();
   }
 

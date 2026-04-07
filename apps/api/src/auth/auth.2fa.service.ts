@@ -165,7 +165,7 @@ export class TwoFactorAuthService {
     crypto.getRandomValues(bytes);
     let secret = '';
     for (let i = 0; i < length; i++) {
-      secret += base32Chars[bytes[i] % 32];
+      secret += base32Chars[bytes[i]! % 32];
     }
     return secret;
   }

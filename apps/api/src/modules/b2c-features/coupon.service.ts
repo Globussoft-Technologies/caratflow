@@ -10,7 +10,6 @@ import type {
   CouponCodeInput,
   CouponCodeUpdate,
   ValidateCouponInput,
-  CouponValidationResult,
   BulkCouponGenerateInput,
 } from '@caratflow/shared-types';
 import { v4 as uuidv4 } from 'uuid';
@@ -109,7 +108,7 @@ export class CouponService extends TenantAwareService {
 
     const [items, total] = await Promise.all([
       this.prisma.couponCode.findMany({
-        where: where as Parameters<typeof this.prisma.couponCode.findMany>[0]['where'],
+        where,
         include: {
           _count: { select: { usages: true } },
         },
@@ -118,7 +117,7 @@ export class CouponService extends TenantAwareService {
         take: limit,
       }),
       this.prisma.couponCode.count({
-        where: where as Parameters<typeof this.prisma.couponCode.count>[0]['where'],
+        where,
       }),
     ]);
 
@@ -152,7 +151,18 @@ export class CouponService extends TenantAwareService {
     tenantId: string,
     customerId: string,
     input: ValidateCouponInput,
-  ): Promise<CouponValidationResult> {
+  ): Promise<{
+    valid: boolean;
+    discountPaise: number;
+    errorMessage?: string;
+    coupon?: {
+      id: string;
+      code: string;
+      discountType: string;
+      discountValue: number;
+      description: string | null;
+    };
+  }> {
     const coupon = await this.prisma.couponCode.findUnique({
       where: { tenantId_code: { tenantId, code: input.code } },
     });

@@ -42,7 +42,7 @@ export class AmlMonitoringService extends TenantAwareService {
         id: true,
         customerId: true,
         amountPaise: true,
-        paymentMethod: true,
+        method: true,
       },
     });
 
@@ -57,7 +57,7 @@ export class AmlMonitoringService extends TenantAwareService {
           tenantId,
           payment.customerId,
           payment.amountPaise,
-          `payment.${payment.paymentMethod}`,
+          `payment.${payment.method}`,
           payment.id,
         );
 

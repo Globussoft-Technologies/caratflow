@@ -76,7 +76,7 @@ export class AmlRiskService extends TenantAwareService {
     const riskData = {
       riskScore,
       riskLevel,
-      factors: factors as unknown as Record<string, unknown>[],
+      factors: factors as any,
       lastAssessedAt: new Date(),
       nextReviewDate,
       kycStatus: this.getKycStatus(customer),
@@ -86,7 +86,7 @@ export class AmlRiskService extends TenantAwareService {
     if (existingRisk) {
       await this.prisma.amlCustomerRisk.update({
         where: { id: existingRisk.id },
-        data: riskData,
+        data: riskData as any,
       });
     } else {
       await this.prisma.amlCustomerRisk.create({
@@ -96,7 +96,7 @@ export class AmlRiskService extends TenantAwareService {
           ...riskData,
           transactionVolumePaise: BigInt(0),
           transactionCount: 0,
-        },
+        } as any,
       });
     }
 
@@ -131,7 +131,7 @@ export class AmlRiskService extends TenantAwareService {
       customerName: `${customer.firstName} ${customer.lastName}`,
       riskScore: risk.riskScore,
       riskLevel: risk.riskLevel,
-      factors: risk.factors as RiskFactor[],
+      factors: risk.factors as unknown as RiskFactor[],
       lastAssessedAt: risk.lastAssessedAt,
       nextReviewDate: risk.nextReviewDate,
       kycStatus: risk.kycStatus,

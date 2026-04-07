@@ -7,6 +7,9 @@ export {
   ProductType,
   LocationType,
   AccountType,
+  SocialProvider,
+  OtpPurpose,
+  LoginProvider,
 } from '@prisma/client';
 
 export type {

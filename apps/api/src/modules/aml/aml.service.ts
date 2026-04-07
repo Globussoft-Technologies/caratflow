@@ -38,7 +38,7 @@ export class AmlService extends TenantAwareService {
         tenantId,
         ruleName: input.ruleName,
         ruleType: input.ruleType,
-        parameters: input.parameters as Record<string, unknown>,
+        parameters: input.parameters as any,
         severity: input.severity,
         isActive: input.isActive,
         createdBy: userId,
@@ -55,7 +55,7 @@ export class AmlService extends TenantAwareService {
       where: { id: ruleId },
       data: {
         ...input,
-        parameters: input.parameters ? (input.parameters as Record<string, unknown>) : undefined,
+        parameters: input.parameters ? (input.parameters as any) : undefined,
         updatedBy: userId,
       },
     });
@@ -121,7 +121,7 @@ export class AmlService extends TenantAwareService {
             alertType: triggered.alertType as 'SUSPICIOUS_TRANSACTION' | 'HIGH_VALUE' | 'RAPID_TRANSACTIONS' | 'UNUSUAL_PATTERN' | 'STRUCTURING' | 'COUNTRY_RISK',
             severity: rule.severity,
             description: triggered.description,
-            transactionIds: transactionId ? [transactionId] : [],
+            transactionIds: (transactionId ? [transactionId] : []) as any,
             amountPaise,
             status: 'NEW',
           },
@@ -366,7 +366,7 @@ export class AmlService extends TenantAwareService {
     const match = period.match(/^(\d+)(h|d|w|m)$/);
     if (!match) return new Date(now - 24 * 60 * 60 * 1000); // default 24h
 
-    const value = parseInt(match[1], 10);
+    const value = parseInt(match[1]!, 10);
     switch (match[2]) {
       case 'h': return new Date(now - value * 60 * 60 * 1000);
       case 'd': return new Date(now - value * 24 * 60 * 60 * 1000);
