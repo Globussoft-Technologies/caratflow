@@ -23,7 +23,7 @@ describe("Contact Page", () => {
     expect(screen.getByText("Phone")).toBeInTheDocument();
     expect(screen.getByText(/\+91 22 4000 1234/)).toBeInTheDocument();
     expect(screen.getByText("Email")).toBeInTheDocument();
-    expect(screen.getByText(/sales@caratflow.com/)).toBeInTheDocument();
-    expect(screen.getByText(/support@caratflow.com/)).toBeInTheDocument();
+    expect(screen.getByText(/sales@globussoft.com/)).toBeInTheDocument();
+    expect(screen.getByText(/support@globussoft.com/)).toBeInTheDocument();
   });
 });

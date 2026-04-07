@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     title: "CaratFlow -- Premium Jewelry Online Store",
     description:
       "Shop BIS Hallmarked gold, IGI certified diamonds, and exquisite silver jewelry. Free shipping on all orders.",
-    url: "https://shop.caratflow.com",
+    url: "https://caratflow.globusdemos.com",
     siteName: "CaratFlow",
     type: "website",
     locale: "en_IN",

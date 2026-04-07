@@ -58,7 +58,7 @@ export default function Navbar() {
         {/* Desktop CTA */}
         <div className="hidden md:flex items-center gap-3">
           <a
-            href="https://app.caratflow.com"
+            href="https://caratflow.globusdemos.com/login"
             className={`text-sm font-medium transition-colors hover:text-gold ${
               scrolled ? "text-navy/70" : "text-white/80"
             }`}
@@ -107,7 +107,7 @@ export default function Navbar() {
               </a>
             ))}
             <hr className="border-gray-100" />
-            <a href="https://app.caratflow.com" className="block text-navy/70 py-2">
+            <a href="https://caratflow.globusdemos.com/login" className="block text-navy/70 py-2">
               Login
             </a>
             <Button variant="primary" size="md" href="/contact" className="w-full">

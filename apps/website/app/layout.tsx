@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     title: "CaratFlow -- The Complete Jewelry ERP Platform",
     description:
       "From inventory and manufacturing to retail POS and CRM -- one platform for your entire jewelry business.",
-    url: "https://www.caratflow.com",
+    url: "https://caratflow.globusdemos.com",
     siteName: "CaratFlow",
     type: "website",
     locale: "en_IN",

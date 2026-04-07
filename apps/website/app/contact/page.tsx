@@ -96,9 +96,9 @@ export default function ContactPage() {
                     <div>
                       <h3 className="font-semibold text-navy mb-1">Email</h3>
                       <p className="text-gray-600 text-sm">
-                        sales@caratflow.com
+                        sales@globussoft.com
                         <br />
-                        support@caratflow.com
+                        support@globussoft.com
                       </p>
                     </div>
                   </div>
@@ -115,7 +115,7 @@ export default function ContactPage() {
                   tailored to your business.
                 </p>
                 <a
-                  href="mailto:sales@caratflow.com?subject=Demo%20Request"
+                  href="mailto:sales@globussoft.com?subject=Demo%20Request"
                   className="inline-flex items-center justify-center bg-gold text-white font-semibold px-6 py-2.5 rounded-lg hover:bg-gold-dark transition-colors text-sm"
                 >
                   Book a Demo
