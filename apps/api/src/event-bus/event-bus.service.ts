@@ -34,12 +34,26 @@ export class EventBusService implements OnModuleDestroy {
   private readonly redisConnection = {
     host: process.env.REDIS_HOST ?? 'localhost',
     port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
+    password: process.env.REDIS_PASSWORD ?? undefined,
   };
 
   constructor() {
-    // Initialize queues for each domain
+    // Parse REDIS_URL if available (format: redis://:password@host:port)
+    const redisUrl = process.env.REDIS_URL;
+    if (redisUrl) {
+      try {
+        const url = new URL(redisUrl);
+        this.redisConnection.host = url.hostname || 'localhost';
+        this.redisConnection.port = parseInt(url.port || '6379', 10);
+        this.redisConnection.password = url.password || undefined;
+      } catch {
+        // fallback to env vars
+      }
+    }
+
+    // Initialize queues for each domain (use dash instead of colon -- BullMQ disallows colons)
     for (const domain of DOMAIN_QUEUES) {
-      const queueName = `caratflow:${domain}`;
+      const queueName = `caratflow-${domain}`;
       this.queues.set(
         domain,
         new Queue(queueName, { connection: this.redisConnection }),
