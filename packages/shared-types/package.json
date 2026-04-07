@@ -3,16 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "description": "Shared types, Zod schemas, and enums for CaratFlow",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./enums": "./src/enums.ts",
-    "./events": "./src/events.ts",
-    "./common": "./src/common.ts"
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./enums": { "types": "./dist/enums.d.ts", "default": "./dist/enums.js" },
+    "./events": { "types": "./dist/events.d.ts", "default": "./dist/events.js" },
+    "./common": { "types": "./dist/common.d.ts", "default": "./dist/common.js" }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "clean": "rimraf dist",
     "lint": "eslint src/"
   },
