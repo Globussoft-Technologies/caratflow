@@ -11,16 +11,17 @@ interface ScheduledReportJob {
   tenantId: string;
 }
 
-const QUEUE_NAME = 'caratflow:report-scheduler';
+const QUEUE_NAME = 'caratflow-report-scheduler';
 
 @Injectable()
 export class ReportingSchedulerService implements OnModuleInit, OnModuleDestroy {
   private queue: Queue;
   private worker: Worker | null = null;
 
-  private readonly redisConnection = {
+  private readonly redisConnection: { host: string; port: number; password?: string } = {
     host: process.env.REDIS_HOST ?? 'localhost',
     port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
+    password: process.env.REDIS_PASSWORD ?? undefined,
   };
 
   constructor(private readonly prisma: PrismaService) {
