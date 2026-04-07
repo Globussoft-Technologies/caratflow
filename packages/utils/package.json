@@ -3,17 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "description": "CaratFlow utility functions - money, weight, purity, tax, validation",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-    "./money": { "types": "./dist/money.d.ts", "default": "./dist/money.js" },
-    "./weight": { "types": "./dist/weight.d.ts", "default": "./dist/weight.js" },
-    "./purity": { "types": "./dist/purity.d.ts", "default": "./dist/purity.js" },
-    "./tax": { "types": "./dist/tax.d.ts", "default": "./dist/tax.js" },
-    "./validators": { "types": "./dist/validators.d.ts", "default": "./dist/validators.js" },
-    "./rates": { "types": "./dist/rates.d.ts", "default": "./dist/rates.js" },
-    "./date": { "types": "./dist/date.d.ts", "default": "./dist/date.js" }
+    ".": "./src/index.ts",
+    "./money": "./src/money.ts",
+    "./weight": "./src/weight.ts",
+    "./purity": "./src/purity.ts",
+    "./tax": "./src/tax.ts",
+    "./validators": "./src/validators.ts",
+    "./rates": "./src/rates.ts",
+    "./date": "./src/date.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
