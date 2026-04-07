@@ -589,7 +589,7 @@ enum LoginProvider {
 
 model CustomerAuth {
   id               String        @id @default(uuid()) @db.VarChar(36)
-  customerId       String        @map("customer_id") @db.VarChar(36)
+  customerId       String        @unique @map("customer_id") @db.VarChar(36)
   email            String?       @db.VarChar(255)
   phone            String?       @db.VarChar(20)
   passwordHash     String?       @map("password_hash") @db.VarChar(255)
