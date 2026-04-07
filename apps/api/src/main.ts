@@ -26,7 +26,7 @@ async function bootstrap() {
 
   // API prefix
   app.setGlobalPrefix('api/v1', {
-    exclude: ['health', 'trpc(.*)'],
+    exclude: ['health'],
   });
 
   // Swagger
