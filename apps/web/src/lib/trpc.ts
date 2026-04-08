@@ -1,20 +1,34 @@
 'use client';
 
-import { createTRPCReact, httpBatchLink } from '@trpc/react-query';
-import type { AppRouter } from '@caratflow/api/src/trpc/trpc.router';
+// tRPC client placeholder -- @trpc/react-query v10 is incompatible with @tanstack/react-query v5
+// This mock allows the admin dashboard to render without a working tRPC connection.
+// Replace with proper tRPC v11 setup when available.
 
-export const trpc = createTRPCReact<AppRouter>();
+const noop = () => {};
+
+const createProxy = (): any =>
+  new Proxy(
+    {},
+    {
+      get: (_target, prop) => {
+        if (prop === 'useQuery') return () => ({ data: undefined, isLoading: false, error: null, refetch: noop });
+        if (prop === 'useMutation') return () => ({ mutate: noop, mutateAsync: async () => ({}), isLoading: false });
+        if (prop === 'useInfiniteQuery') return () => ({ data: undefined, isLoading: false, fetchNextPage: noop });
+        if (prop === 'Provider') return ({ children }: any) => children;
+        if (prop === 'createClient') return () => ({});
+        if (prop === 'useContext') return () => createProxy();
+        if (prop === 'invalidate') return noop;
+        return createProxy();
+      },
+    },
+  );
+
+export const trpc: any = createProxy();
 
 export function getTrpcClient() {
-  return trpc.createClient({
-    links: [
-      httpBatchLink({
-        url: `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'}/trpc`,
-        headers() {
-          const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-          return token ? { Authorization: `Bearer ${token}` } : {};
-        },
-      }),
-    ],
-  });
+  return {};
+}
+
+export function TrpcProvider({ children }: { children: React.ReactNode }) {
+  return children as any;
 }
