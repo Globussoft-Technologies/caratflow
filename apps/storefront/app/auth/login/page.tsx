@@ -5,13 +5,37 @@ import Link from "next/link";
 
 export default function LoginPage() {
   const [loginMethod, setLoginMethod] = useState<"email" | "phone">("email");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState("admin@sharmajewellers.com");
   const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
+  const [password, setPassword] = useState("admin123");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    alert("Login integration pending. This is a UI placeholder.");
+    setLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, tenantSlug: "sharma-jewellers" }),
+      });
+      const data = await res.json();
+      if (data.success && data.data?.accessToken) {
+        setSuccess("Login successful! Token received.");
+        localStorage.setItem("accessToken", data.data.accessToken);
+        localStorage.setItem("refreshToken", data.data.refreshToken);
+      } else {
+        setError(data.message || "Login failed");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -50,6 +74,16 @@ export default function LoginPage() {
             <span className="text-xs text-navy/40">or</span>
             <div className="flex-1 h-px bg-gray-200" />
           </div>
+
+          {/* Demo credentials notice */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs">
+            <p className="font-semibold text-amber-800">Demo Credentials (pre-filled):</p>
+            <p className="text-amber-700 mt-0.5">Email: admin@sharmajewellers.com</p>
+            <p className="text-amber-700">Password: admin123</p>
+          </div>
+
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
+          {success && <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
           {/* Login method tabs */}
           <div className="flex gap-1 bg-warm-gray rounded-lg p-1 mb-5">
@@ -128,7 +162,7 @@ export default function LoginPage() {
               type="submit"
               className="w-full bg-gold text-white font-semibold py-3 rounded-lg hover:bg-gold-dark transition-colors"
             >
-              {loginMethod === "email" ? "Sign In" : "Send OTP"}
+              {loading ? "Signing in..." : loginMethod === "email" ? "Sign In" : "Send OTP"}
             </button>
           </form>
         </div>

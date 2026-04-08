@@ -8,8 +8,8 @@ import { api } from '@/lib/api';
 export default function LoginPage() {
   const router = useRouter();
   const { setTokens } = useAuthStore();
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
+  const [email, setEmail] = React.useState('admin@sharmajewellers.com');
+  const [password, setPassword] = React.useState('admin123');
   const [tenantSlug, setTenantSlug] = React.useState('sharma-jewellers');
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
@@ -45,6 +45,14 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-muted-foreground">
             Sign in to your jewelry management system
           </p>
+        </div>
+
+        {/* Demo credentials */}
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">
+          <p className="font-semibold text-amber-800">Demo Credentials (pre-filled):</p>
+          <p className="text-amber-700 mt-1">Business: sharma-jewellers</p>
+          <p className="text-amber-700">Email: admin@sharmajewellers.com</p>
+          <p className="text-amber-700">Password: admin123</p>
         </div>
 
         {/* Form */}
