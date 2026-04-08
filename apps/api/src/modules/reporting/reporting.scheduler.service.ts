@@ -31,6 +31,7 @@ export class ReportingSchedulerService implements OnModuleInit, OnModuleDestroy 
   }
 
   async onModuleInit() {
+    try {
     // Start the worker to process scheduled report jobs
     this.worker = new Worker(
       QUEUE_NAME,
@@ -80,6 +81,9 @@ export class ReportingSchedulerService implements OnModuleInit, OnModuleDestroy 
     checkWorker.on('failed', (job, err) => {
       console.error(`[ReportScheduler] Check job failed:`, err.message);
     });
+    } catch (err) {
+      console.warn('[ReportScheduler] Failed to initialize scheduler (non-fatal):', (err as Error).message);
+    }
   }
 
   async onModuleDestroy() {

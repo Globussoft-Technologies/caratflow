@@ -98,25 +98,33 @@ export class EventBusService implements OnModuleDestroy {
   }
 
   private startWorker(domain: DomainQueueName): void {
-    const queueName = `caratflow-${domain}`;
-    const worker = new Worker(
-      queueName,
-      async (job: Job<DomainEvent>) => {
-        const event = job.data;
-        const handlers = this.handlers.get(event.type) ?? [];
-        await Promise.all(handlers.map((h) => h(event)));
-      },
-      {
-        connection: this.redisConnection,
-        concurrency: 5,
-      },
-    );
+    try {
+      const queueName = `caratflow-${domain}`;
+      const worker = new Worker(
+        queueName,
+        async (job: Job<DomainEvent>) => {
+          const event = job.data;
+          const handlers = this.handlers.get(event.type) ?? [];
+          await Promise.all(handlers.map((h) => h(event)));
+        },
+        {
+          connection: this.redisConnection,
+          concurrency: 5,
+        },
+      );
 
-    worker.on('failed', (job, err) => {
-      console.error(`[EventBus] Job ${job?.id} failed:`, err.message);
-    });
+      worker.on('failed', (job, err) => {
+        console.error(`[EventBus] Job ${job?.id} failed:`, err.message);
+      });
 
-    this.workers.set(domain, worker);
+      worker.on('error', (err) => {
+        console.warn(`[EventBus] Worker ${domain} error (non-fatal):`, err.message);
+      });
+
+      this.workers.set(domain, worker);
+    } catch (err) {
+      console.warn(`[EventBus] Failed to start worker for ${domain} (non-fatal):`, (err as Error).message);
+    }
   }
 
   async onModuleDestroy() {
