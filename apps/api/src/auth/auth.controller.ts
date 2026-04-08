@@ -1,33 +1,85 @@
 import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBody, ApiProperty } from '@nestjs/swagger';
+import { IsEmail, IsNotEmpty, IsString, IsOptional, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
 
 class LoginDto {
+  @ApiProperty({ example: 'admin@sharmajewellers.com' })
+  @IsEmail()
+  @IsNotEmpty()
   email!: string;
+
+  @ApiProperty({ example: 'admin123' })
+  @IsString()
+  @IsNotEmpty()
   password!: string;
+
+  @ApiProperty({ example: 'sharma-jewellers' })
+  @IsString()
+  @IsNotEmpty()
   tenantSlug!: string;
 }
 
 class RegisterDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
   tenantId!: string;
+
+  @ApiProperty()
+  @IsEmail()
+  @IsNotEmpty()
   email!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(6)
   password!: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
   firstName!: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
   lastName!: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
   roleId?: string;
 }
 
 class RefreshDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
   refreshToken!: string;
 }
 
 class ForgotPasswordDto {
+  @ApiProperty()
+  @IsEmail()
+  @IsNotEmpty()
   email!: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
   tenantSlug!: string;
 }
 
 class ResetPasswordDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
   token!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(6)
   newPassword!: string;
 }
 
