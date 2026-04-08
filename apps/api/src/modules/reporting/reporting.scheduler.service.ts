@@ -36,7 +36,11 @@ export class ReportingSchedulerService implements OnModuleInit, OnModuleDestroy 
     this.worker = new Worker(
       QUEUE_NAME,
       async (job: Job<ScheduledReportJob>) => {
-        await this.processScheduledReport(job.data);
+        if (job.name === 'check-due-reports') {
+          await this.checkAndEnqueueDueReports();
+        } else if (job.data?.scheduledReportId) {
+          await this.processScheduledReport(job.data);
+        }
       },
       {
         connection: this.redisConnection,
