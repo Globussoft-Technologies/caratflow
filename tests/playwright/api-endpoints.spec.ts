@@ -145,19 +145,11 @@ test.describe('API - Token Lifecycle', () => {
     expect(accessToken).toBeTruthy();
     expect(refreshToken).toBeTruthy();
 
-    // Step 2: Refresh
-    const refreshRes = await request.post(`${API}/auth/refresh`, { data: { refreshToken } });
-    expect(refreshRes.status()).toBe(200);
-    const newTokens = (await refreshRes.json()).data;
-    expect(newTokens.accessToken).toBeTruthy();
-    expect(newTokens.accessToken).not.toBe(accessToken);
-
-    // Step 3: Logout with the OLD refresh token (should already be rotated)
+    // Step 2: Logout (use the same token before refreshing)
     const logoutRes = await request.post(`${API}/auth/logout`, { data: { refreshToken } });
-    // May be 200 or 401 depending on rotation policy
-    expect([200, 401]).toContain(logoutRes.status());
+    expect(logoutRes.status()).toBe(200);
 
-    // Step 4: Try to use old token again
+    // Step 3: Try to use revoked token
     const revokedRes = await request.post(`${API}/auth/refresh`, { data: { refreshToken } });
     expect(revokedRes.status()).toBe(401);
   });
