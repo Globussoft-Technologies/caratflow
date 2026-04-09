@@ -5,19 +5,18 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [loginMethod, setLoginMethod] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("admin@sharmajewellers.com");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("admin123");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    setSuccess("");
     try {
       const res = await fetch("/api/v1/auth/login", {
         method: "POST",
@@ -26,9 +25,9 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (data.success && data.data?.accessToken) {
-        setSuccess("Login successful! Token received.");
         localStorage.setItem("accessToken", data.data.accessToken);
         localStorage.setItem("refreshToken", data.data.refreshToken);
+        router.push("/account");
       } else {
         setError(data.message || "Login failed");
       }
@@ -84,7 +83,6 @@ export default function LoginPage() {
           </div>
 
           {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
-          {success && <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
 
           {/* Login method tabs */}
           <div className="flex gap-1 bg-warm-gray rounded-lg p-1 mb-5">

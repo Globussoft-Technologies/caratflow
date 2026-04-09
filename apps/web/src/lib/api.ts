@@ -1,11 +1,7 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+const API_BASE = typeof window !== 'undefined' ? '' : (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000');
 
-interface FetchOptions extends RequestInit {
-  json?: unknown;
-}
-
-async function fetchApi<T>(path: string, options: FetchOptions = {}): Promise<T> {
-  const { json, headers: customHeaders, ...rest } = options;
+async function fetchApi<T>(path: string, options: RequestInit & { data?: unknown } = {}): Promise<T> {
+  const { data, headers: customHeaders, ...rest } = options;
   const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
 
   const headers: Record<string, string> = {
@@ -17,25 +13,25 @@ async function fetchApi<T>(path: string, options: FetchOptions = {}): Promise<T>
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_URL}/api/v1${path}`, {
+  const response = await fetch(`${API_BASE}/api/v1${path}`, {
     headers,
-    body: json ? JSON.stringify(json) : undefined,
+    body: data ? JSON.stringify(data) : undefined,
     ...rest,
   });
 
-  const data = await response.json();
+  const json = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error?.message ?? 'Request failed');
+    throw new Error(json.message ?? json.error ?? 'Request failed');
   }
 
-  return data;
+  return json;
 }
 
 export const api = {
   get: <T>(path: string) => fetchApi<T>(path, { method: 'GET' }),
-  post: <T>(path: string, body: unknown) => fetchApi<T>(path, { method: 'POST', json: body }),
-  put: <T>(path: string, body: unknown) => fetchApi<T>(path, { method: 'PUT', json: body }),
-  patch: <T>(path: string, body: unknown) => fetchApi<T>(path, { method: 'PATCH', json: body }),
+  post: <T>(path: string, body: unknown) => fetchApi<T>(path, { method: 'POST', data: body }),
+  put: <T>(path: string, body: unknown) => fetchApi<T>(path, { method: 'PUT', data: body }),
+  patch: <T>(path: string, body: unknown) => fetchApi<T>(path, { method: 'PATCH', data: body }),
   delete: <T>(path: string) => fetchApi<T>(path, { method: 'DELETE' }),
 };
