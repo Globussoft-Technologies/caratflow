@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { mockProducts } from "@/lib/mock-data";
 import { cn, formatPrice, debounce } from "@/lib/utils";
-import VoiceSearch from "./VoiceSearch";
+import VoiceSearchButton from "./VoiceSearchButton";
+import { normalizeVoiceQuery } from "@/lib/voice-normalize";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -188,13 +189,11 @@ export default function SearchBar({ className, expanded = false }: SearchBarProp
     setIsOpen(false);
   }
 
-  function handleVoiceResult(transcript: string) {
-    setLocalQuery(transcript);
-    performSearch(transcript);
-  }
-
-  function handleVoiceInterim(transcript: string) {
-    setLocalQuery(transcript);
+  function handleVoiceTranscript(transcript: string) {
+    const normalized = normalizeVoiceQuery(transcript);
+    const query = normalized || transcript.trim();
+    setLocalQuery(query);
+    if (query) performSearch(query);
   }
 
   // Keyboard navigation
@@ -295,10 +294,7 @@ export default function SearchBar({ className, expanded = false }: SearchBarProp
               </svg>
             </button>
           )}
-          <VoiceSearch
-            onResult={handleVoiceResult}
-            onInterimResult={handleVoiceInterim}
-          />
+          <VoiceSearchButton onTranscript={handleVoiceTranscript} />
         </div>
       </form>
 

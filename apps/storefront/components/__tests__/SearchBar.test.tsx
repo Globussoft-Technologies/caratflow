@@ -72,7 +72,7 @@ describe("SearchBar", () => {
 
   it("renders voice search button", () => {
     renderWithStore(<SearchBar />);
-    expect(screen.getByLabelText("Start voice search")).toBeInTheDocument();
+    expect(screen.getByLabelText("Voice search")).toBeInTheDocument();
   });
 
   it("closes dropdown on escape", async () => {

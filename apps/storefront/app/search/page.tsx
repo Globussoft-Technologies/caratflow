@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useMemo, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { mockProducts } from "@/lib/mock-data";
 import { SORT_OPTIONS } from "@/lib/constants";
+import { normalizeVoiceQuery } from "@/lib/voice-normalize";
 import type { FilterState } from "@/lib/types";
 import ProductCard from "@/components/ProductCard";
 import FilterSidebar from "@/components/FilterSidebar";
+import VoiceSearchButton from "@/components/VoiceSearchButton";
 
 const defaultFilters: FilterState = {
   metalType: [],
@@ -22,9 +24,17 @@ const defaultFilters: FilterState = {
 };
 
 function SearchContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const query = searchParams.get("q") ?? "";
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
+
+  function handleVoiceTranscript(transcript: string) {
+    const normalized = normalizeVoiceQuery(transcript) || transcript.trim();
+    if (normalized) {
+      router.push(`/search?q=${encodeURIComponent(normalized)}`);
+    }
+  }
 
   const results = useMemo(() => {
     if (!query) return [];
@@ -49,13 +59,19 @@ function SearchContent() {
         <span className="text-navy font-medium">Search Results</span>
       </nav>
 
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-navy" style={{ fontFamily: "var(--font-serif)" }}>
-          {query ? `Results for "${query}"` : "Search"}
-        </h1>
-        <p className="text-sm text-navy/50 mt-1">
-          {results.length} {results.length === 1 ? "product" : "products"} found
-        </p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-navy" style={{ fontFamily: "var(--font-serif)" }}>
+            {query ? `Results for "${query}"` : "Search"}
+          </h1>
+          <p className="text-sm text-navy/50 mt-1">
+            {results.length} {results.length === 1 ? "product" : "products"} found
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-navy/50 hidden sm:inline">Search by voice</span>
+          <VoiceSearchButton onTranscript={handleVoiceTranscript} />
+        </div>
       </div>
 
       {results.length === 0 ? (
