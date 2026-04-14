@@ -10,6 +10,7 @@ import { CustomerPortalLoyaltyService } from './customer-portal.loyalty.service'
 import { CustomerPortalSchemesService } from './customer-portal.schemes.service';
 import { CustomerPortalKycService } from './customer-portal.kyc.service';
 import { CustomerPortalDashboardService } from './customer-portal.dashboard.service';
+import { CustomerPortalTrpcRouter } from './customer-portal.trpc';
 
 @Module({
   controllers: [CustomerPortalController],
@@ -20,6 +21,7 @@ import { CustomerPortalDashboardService } from './customer-portal.dashboard.serv
     CustomerPortalSchemesService,
     CustomerPortalKycService,
     CustomerPortalDashboardService,
+    CustomerPortalTrpcRouter,
   ],
   exports: [
     CustomerPortalProfileService,
@@ -28,6 +30,7 @@ import { CustomerPortalDashboardService } from './customer-portal.dashboard.serv
     CustomerPortalSchemesService,
     CustomerPortalKycService,
     CustomerPortalDashboardService,
+    CustomerPortalTrpcRouter,
   ],
 })
 export class CustomerPortalModule {}

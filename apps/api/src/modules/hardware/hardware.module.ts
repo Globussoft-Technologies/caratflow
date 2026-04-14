@@ -13,8 +13,10 @@ import { HardwareDisplayService } from './hardware.display.service';
 import { HardwareBiometricService } from './hardware.biometric.service';
 import { HardwareGateway } from './hardware.gateway';
 import { HardwareTrpcRouter } from './hardware.trpc';
+import { HardwareController } from './hardware.controller';
 
 @Module({
+  controllers: [HardwareController],
   providers: [
     TrpcService,
     HardwareDeviceService,

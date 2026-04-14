@@ -25,6 +25,12 @@ import { BnplModule } from './modules/bnpl/bnpl.module';
 import { PreOrderModule } from './modules/preorder/preorder.module';
 import { SearchModule } from './modules/search/search.module';
 import { ChatbotModule } from './modules/chatbot/chatbot.module';
+import { ArModule } from './modules/ar/ar.module';
+import { B2cFeaturesModule } from './modules/b2c-features/b2c-features.module';
+import { ExportModule } from './modules/export/export.module';
+import { HardwareModule } from './modules/hardware/hardware.module';
+import { IndiaModule } from './modules/india/india.module';
+import { RecommendationsModule } from './modules/recommendations/recommendations.module';
 
 @Module({
   imports: [
@@ -53,6 +59,12 @@ import { ChatbotModule } from './modules/chatbot/chatbot.module';
     PreOrderModule,
     SearchModule,
     ChatbotModule,
+    ArModule,
+    B2cFeaturesModule,
+    ExportModule,
+    HardwareModule,
+    IndiaModule,
+    RecommendationsModule,
   ],
 })
 export class AppModule implements NestModule {

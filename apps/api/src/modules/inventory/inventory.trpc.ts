@@ -26,6 +26,7 @@ import {
   UpdateSerialStatusSchema,
   SerialNumberListInputSchema,
   StockValuationRequestSchema,
+  ProductWithStockInputSchema,
 } from '@caratflow/shared-types';
 
 @Injectable()
@@ -227,6 +228,15 @@ export class InventoryTrpcRouter {
         get: this.trpc.authedProcedure.query(({ ctx }) =>
           this.inventoryService.getDashboard(ctx.tenantId),
         ),
+      }),
+
+      products: this.trpc.router({
+        // Product + stock-by-location aggregation for the mobile Sales app.
+        getWithStock: this.trpc.authedProcedure
+          .input(ProductWithStockInputSchema)
+          .query(({ ctx, input }) =>
+            this.inventoryService.getProductWithStock(ctx.tenantId, input.productId),
+          ),
       }),
     });
   }

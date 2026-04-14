@@ -6,7 +6,26 @@ import { ReferralTrpcRouter } from '../modules/referral/referral.trpc';
 import { AmlTrpcRouter } from '../modules/aml/aml.trpc';
 import { PreOrderTrpcRouter } from '../modules/preorder/preorder.trpc';
 import { SearchTrpcRouter } from '../modules/search/search.trpc';
-import { z } from 'zod';
+import { ManufacturingTrpc } from '../modules/manufacturing/manufacturing.trpc';
+import { FinancialTrpcRouter } from '../modules/financial/financial.trpc';
+import { RetailTrpcRouter } from '../modules/retail/retail.trpc';
+import { CrmTrpcRouter } from '../modules/crm/crm.trpc';
+import { WholesaleTrpcRouter } from '../modules/wholesale/wholesale.trpc';
+import { EcommerceTrpcRouter } from '../modules/ecommerce/ecommerce.trpc';
+import { ComplianceTrpcRouter } from '../modules/compliance/compliance.trpc';
+import { ReportingTrpcRouter } from '../modules/reporting/reporting.trpc';
+import { PlatformTrpc } from '../modules/platform/platform.trpc';
+import { ChatbotTrpcRouter } from '../modules/chatbot/chatbot.trpc';
+import { BnplTrpcRouter } from '../modules/bnpl/bnpl.trpc';
+import { DigitalGoldTrpcRouter } from '../modules/digital-gold/digital-gold.trpc';
+import { StorefrontTrpcRouter } from '../modules/storefront/storefront.trpc';
+import { CustomerPortalTrpcRouter } from '../modules/customer-portal/customer-portal.trpc';
+import { RecommendationsTrpcRouter } from '../modules/recommendations/recommendations.trpc';
+import { ArTrpcRouter } from '../modules/ar/ar.trpc';
+import { B2cFeaturesTrpcRouter } from '../modules/b2c-features/b2c-features.trpc';
+import { ExportTrpcRouter } from '../modules/export/export.trpc';
+import { HardwareTrpcRouter } from '../modules/hardware/hardware.trpc';
+import { IndiaTrpcRouter } from '../modules/india/india.trpc';
 
 @Injectable()
 export class TrpcRouter {
@@ -18,6 +37,26 @@ export class TrpcRouter {
     private readonly amlTrpc: AmlTrpcRouter,
     private readonly preOrderTrpc: PreOrderTrpcRouter,
     private readonly searchTrpc: SearchTrpcRouter,
+    private readonly manufacturingTrpc: ManufacturingTrpc,
+    private readonly financialTrpc: FinancialTrpcRouter,
+    private readonly retailTrpc: RetailTrpcRouter,
+    private readonly crmTrpc: CrmTrpcRouter,
+    private readonly wholesaleTrpc: WholesaleTrpcRouter,
+    private readonly ecommerceTrpc: EcommerceTrpcRouter,
+    private readonly complianceTrpc: ComplianceTrpcRouter,
+    private readonly reportingTrpc: ReportingTrpcRouter,
+    private readonly platformTrpc: PlatformTrpc,
+    private readonly chatbotTrpc: ChatbotTrpcRouter,
+    private readonly bnplTrpc: BnplTrpcRouter,
+    private readonly digitalGoldTrpc: DigitalGoldTrpcRouter,
+    private readonly storefrontTrpc: StorefrontTrpcRouter,
+    private readonly customerPortalTrpc: CustomerPortalTrpcRouter,
+    private readonly recommendationsTrpc: RecommendationsTrpcRouter,
+    private readonly arTrpc: ArTrpcRouter,
+    private readonly b2cFeaturesTrpc: B2cFeaturesTrpcRouter,
+    private readonly exportTrpc: ExportTrpcRouter,
+    private readonly hardwareTrpc: HardwareTrpcRouter,
+    private readonly indiaTrpc: IndiaTrpcRouter,
   ) {}
 
   get appRouter() {
@@ -28,62 +67,33 @@ export class TrpcRouter {
         timestamp: new Date().toISOString(),
       })),
 
-      // Inventory module (full implementation)
+      // Domain modules
       inventory: this.inventoryTrpc.router,
-
-      // CMS module (full implementation)
       cms: this.cmsTrpc.router,
-
-      manufacturing: this.trpc.router({
-        list: this.trpc.authedProcedure.query(() => ({ items: [], total: 0 })),
-      }),
-
-      financial: this.trpc.router({
-        list: this.trpc.authedProcedure.query(() => ({ items: [], total: 0 })),
-      }),
-
-      retail: this.trpc.router({
-        list: this.trpc.authedProcedure.query(() => ({ items: [], total: 0 })),
-      }),
-
-      crm: this.trpc.router({
-        customers: this.trpc.router({
-          list: this.trpc.authedProcedure.query(() => ({ items: [], total: 0 })),
-        }),
-      }),
-
-      wholesale: this.trpc.router({
-        list: this.trpc.authedProcedure.query(() => ({ items: [], total: 0 })),
-      }),
-
-      ecommerce: this.trpc.router({
-        list: this.trpc.authedProcedure.query(() => ({ items: [], total: 0 })),
-      }),
-
-      compliance: this.trpc.router({
-        list: this.trpc.authedProcedure.query(() => ({ items: [], total: 0 })),
-      }),
-
-      reporting: this.trpc.router({
-        list: this.trpc.authedProcedure.query(() => ({ items: [], total: 0 })),
-      }),
-
-      platform: this.trpc.router({
-        locations: this.trpc.authedProcedure.query(() => ({ items: [], total: 0 })),
-        settings: this.trpc.authedProcedure.query(() => ({})),
-      }),
-
-      // Referral rewards program
       referral: this.referralTrpc.router,
-
-      // AML compliance monitoring
       aml: this.amlTrpc.router,
-
-      // Pre-order, backorder, modifications, reorder
       preorder: this.preOrderTrpc.router,
-
-      // Search: synonyms, suggestions, analytics, reindex
       search: this.searchTrpc.router,
+      manufacturing: this.manufacturingTrpc.router,
+      financial: this.financialTrpc.router,
+      retail: this.retailTrpc.router,
+      crm: this.crmTrpc.router,
+      wholesale: this.wholesaleTrpc.router,
+      ecommerce: this.ecommerceTrpc.router,
+      compliance: this.complianceTrpc.router,
+      reporting: this.reportingTrpc.router,
+      platform: this.platformTrpc.router,
+      chatbot: this.chatbotTrpc.router,
+      bnpl: this.bnplTrpc.router,
+      digitalGold: this.digitalGoldTrpc.router,
+      storefront: this.storefrontTrpc.router,
+      customerPortal: this.customerPortalTrpc.router,
+      recommendations: this.recommendationsTrpc.router,
+      ar: this.arTrpc.router,
+      b2cFeatures: this.b2cFeaturesTrpc.router,
+      export: this.exportTrpc.router,
+      hardware: this.hardwareTrpc.router,
+      india: this.indiaTrpc.router,
     });
   }
 }

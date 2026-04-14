@@ -9,6 +9,7 @@ import { DigitalGoldRedemptionService } from './digital-gold.redemption.service'
 import { DigitalGoldAlertService } from './digital-gold.alert.service';
 import { DigitalGoldController } from './digital-gold.controller';
 import { DigitalGoldEventHandler } from './digital-gold.event-handler';
+import { DigitalGoldTrpcRouter } from './digital-gold.trpc';
 
 @Module({
   imports: [IndiaModule],
@@ -19,12 +20,14 @@ import { DigitalGoldEventHandler } from './digital-gold.event-handler';
     DigitalGoldRedemptionService,
     DigitalGoldAlertService,
     DigitalGoldEventHandler,
+    DigitalGoldTrpcRouter,
   ],
   exports: [
     DigitalGoldService,
     DigitalGoldSipService,
     DigitalGoldRedemptionService,
     DigitalGoldAlertService,
+    DigitalGoldTrpcRouter,
   ],
 })
 export class DigitalGoldModule {}

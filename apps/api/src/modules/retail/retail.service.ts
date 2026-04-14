@@ -9,6 +9,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { TenantAwareService } from '../../common/base.service';
 import { EventBusService } from '../../event-bus/event-bus.service';
 import { RetailPricingService } from './retail.pricing.service';
+import { IndiaRatesService } from '../india/india.rates.service';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -17,6 +18,7 @@ export class RetailService extends TenantAwareService {
     prisma: PrismaService,
     private readonly eventBus: EventBusService,
     private readonly pricingService: RetailPricingService,
+    private readonly ratesService: IndiaRatesService,
   ) {
     super(prisma);
   }
@@ -437,6 +439,123 @@ export class RetailService extends TenantAwareService {
         count: data.count,
       })),
       recentSales,
+    };
+  }
+
+  /**
+   * Staff (sales associate) dashboard used by the mobile Sales app.
+   * Aggregates sales the given user rang up on the given date (defaults to today),
+   * pending repair orders, recent transactions, and current metal rates.
+   *
+   * Note: RepairOrder has no `staffUserId` column in the current schema, so
+   * "pending repairs" is scoped to the tenant (active statuses) until an
+   * assignee relation is added to the schema.
+   */
+  async getStaffDashboard(
+    tenantId: string,
+    userId: string,
+    date?: Date,
+  ): Promise<{
+    mySalesCount: number;
+    myRevenuePaise: number;
+    pendingRepairs: Array<{
+      id: string;
+      repairNumber: string;
+      customerName: string;
+      status: string;
+      itemDescription: string;
+    }>;
+    recentTransactions: Array<{
+      id: string;
+      saleNumber: string;
+      customerName: string | null;
+      totalPaise: number;
+      createdAt: Date;
+    }>;
+    goldRatePer10g: number;
+    silverRatePer10g: number;
+  }> {
+    const start = date ? new Date(date) : new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+
+    const [mySales, pendingRepairs] = await Promise.all([
+      this.prisma.sale.findMany({
+        where: {
+          tenantId,
+          userId,
+          status: 'COMPLETED',
+          createdAt: { gte: start, lt: end },
+        },
+        include: {
+          customer: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.repairOrder.findMany({
+        where: {
+          tenantId,
+          staffUserId: userId,
+          status: { in: ['RECEIVED', 'DIAGNOSED', 'QUOTED', 'APPROVED', 'IN_PROGRESS'] },
+        },
+        include: {
+          customer: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }),
+    ]);
+
+    const mySalesCount = mySales.length;
+    const myRevenuePaise = mySales.reduce(
+      (sum, s) => sum + Number(s.totalPaise),
+      0,
+    );
+
+    const recentTransactions = mySales.slice(0, 10).map((s) => ({
+      id: s.id,
+      saleNumber: s.saleNumber,
+      customerName: s.customer
+        ? `${s.customer.firstName} ${s.customer.lastName}`
+        : null,
+      totalPaise: Number(s.totalPaise),
+      createdAt: s.createdAt,
+    }));
+
+    const pendingRepairsMapped = pendingRepairs.map((r) => ({
+      id: r.id,
+      repairNumber: r.repairNumber,
+      customerName: `${r.customer.firstName} ${r.customer.lastName}`,
+      status: r.status as string,
+      itemDescription: r.itemDescription,
+    }));
+
+    // Metal rates: try 22K gold (fineness 916) + .999 silver (fineness 999).
+    // IndiaRatesService.getCurrentRate throws NotFoundException when no rates
+    // exist — degrade gracefully to 0.
+    let goldRatePer10g = 0;
+    let silverRatePer10g = 0;
+    try {
+      const gold = await this.ratesService.getCurrentRate('GOLD', 916);
+      goldRatePer10g = gold.ratePer10gPaise;
+    } catch {
+      // No gold rate recorded yet — leave at 0.
+    }
+    try {
+      const silver = await this.ratesService.getCurrentRate('SILVER', 999);
+      silverRatePer10g = silver.ratePer10gPaise;
+    } catch {
+      // No silver rate recorded yet — leave at 0.
+    }
+
+    return {
+      mySalesCount,
+      myRevenuePaise,
+      pendingRepairs: pendingRepairsMapped,
+      recentTransactions,
+      goldRatePer10g,
+      silverRatePer10g,
     };
   }
 

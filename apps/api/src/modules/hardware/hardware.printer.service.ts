@@ -1,9 +1,14 @@
 // ─── Hardware Label Printer Service ───────────────────────────
-// Label template management, print data generation, bulk printing.
+// Label template CRUD plus ZPL/TSPL command generation for
+// jewelry tags. Templates live in the dedicated
+// `HardwareLabelTemplate` table. Actual transmission to the
+// printer is the responsibility of a local print agent that
+// picks up the raw command string returned by these endpoints.
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { EventBusService } from '../../event-bus/event-bus.service';
 import type {
   CreateLabelTemplate,
   UpdateLabelTemplate,
@@ -12,241 +17,181 @@ import type {
   PrintBulkLabelRequest,
   PrintPreviewResponse,
   LabelField,
+  LabelPrintCommandResponse,
 } from '@caratflow/shared-types';
-import type { PaginatedResult } from '@caratflow/shared-types';
 import { v4 as uuid } from 'uuid';
 
-/** Setting key prefix for label templates */
-const TEMPLATE_SETTING_CATEGORY = 'hardware';
-const TEMPLATE_KEY_PREFIX = 'label-template:';
+interface TemplateRow {
+  id: string;
+  tenantId: string;
+  name: string;
+  width: number;
+  height: number;
+  fields: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 @Injectable()
 export class HardwarePrinterService extends TenantAwareService {
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    private readonly eventBus: EventBusService,
+  ) {
     super(prisma);
   }
 
   // ─── Template Management ────────────────────────────────────
 
-  /**
-   * Create a label template.
-   */
+  private toResponse(row: TemplateRow): LabelTemplateResponse {
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      name: row.name,
+      width: row.width,
+      height: row.height,
+      fields: (row.fields as LabelField[]) ?? [],
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
   async createTemplate(
     tenantId: string,
     userId: string,
     input: CreateLabelTemplate,
   ): Promise<LabelTemplateResponse> {
-    const templateId = uuid();
-    const now = new Date();
-
-    const template: LabelTemplateResponse = {
-      id: templateId,
-      tenantId,
-      name: input.name,
-      width: input.width,
-      height: input.height,
-      fields: input.fields,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await this.prisma.setting.create({
+    const created = (await this.prisma.hardwareLabelTemplate.create({
       data: {
         id: uuid(),
         tenantId,
-        category: TEMPLATE_SETTING_CATEGORY,
-        key: `${TEMPLATE_KEY_PREFIX}${templateId}`,
-        value: JSON.stringify(template),
+        name: input.name,
+        width: input.width,
+        height: input.height,
+        fields: input.fields as unknown as object,
         createdBy: userId,
         updatedBy: userId,
       },
-    });
-
-    return template;
+    })) as unknown as TemplateRow;
+    return this.toResponse(created);
   }
 
-  /**
-   * List all label templates for a tenant.
-   */
   async listTemplates(tenantId: string): Promise<LabelTemplateResponse[]> {
-    const settings = await this.prisma.setting.findMany({
-      where: {
-        tenantId,
-        category: TEMPLATE_SETTING_CATEGORY,
-        key: { startsWith: TEMPLATE_KEY_PREFIX },
-      },
+    const rows = (await this.prisma.hardwareLabelTemplate.findMany({
+      where: { tenantId },
       orderBy: { updatedAt: 'desc' },
-    });
-
-    return settings.map((s) => JSON.parse(s.value as string) as LabelTemplateResponse);
+    })) as unknown as TemplateRow[];
+    return rows.map((r) => this.toResponse(r));
   }
 
-  /**
-   * Get a single template by ID.
-   */
   async getTemplate(tenantId: string, templateId: string): Promise<LabelTemplateResponse> {
-    const setting = await this.prisma.setting.findFirst({
-      where: {
-        tenantId,
-        category: TEMPLATE_SETTING_CATEGORY,
-        key: `${TEMPLATE_KEY_PREFIX}${templateId}`,
-      },
+    const row = await this.prisma.hardwareLabelTemplate.findFirst({
+      where: { tenantId, id: templateId },
     });
-
-    if (!setting) {
-      throw new NotFoundException(`Label template ${templateId} not found`);
-    }
-
-    return JSON.parse(setting.value as string) as LabelTemplateResponse;
+    if (!row) throw new NotFoundException(`Label template ${templateId} not found`);
+    return this.toResponse(row as unknown as TemplateRow);
   }
 
-  /**
-   * Update a label template.
-   */
   async updateTemplate(
     tenantId: string,
     userId: string,
     templateId: string,
     input: UpdateLabelTemplate,
   ): Promise<LabelTemplateResponse> {
-    const existing = await this.getTemplate(tenantId, templateId);
+    await this.getTemplate(tenantId, templateId);
+    const data: Record<string, unknown> = { updatedBy: userId };
+    if (input.name !== undefined) data.name = input.name;
+    if (input.width !== undefined) data.width = input.width;
+    if (input.height !== undefined) data.height = input.height;
+    if (input.fields !== undefined) data.fields = input.fields as unknown as object;
 
-    const updated: LabelTemplateResponse = {
-      ...existing,
-      ...input,
-      id: templateId,
-      tenantId,
-      updatedAt: new Date(),
-    };
-
-    await this.prisma.setting.updateMany({
-      where: {
-        tenantId,
-        category: TEMPLATE_SETTING_CATEGORY,
-        key: `${TEMPLATE_KEY_PREFIX}${templateId}`,
-      },
-      data: {
-        value: JSON.stringify(updated),
-        updatedBy: userId,
-      },
-    });
-
-    return updated;
+    const updated = (await this.prisma.hardwareLabelTemplate.update({
+      where: { id: templateId },
+      data: data as never,
+    })) as unknown as TemplateRow;
+    return this.toResponse(updated);
   }
 
-  /**
-   * Delete a label template.
-   */
   async deleteTemplate(tenantId: string, templateId: string): Promise<void> {
-    const setting = await this.prisma.setting.findFirst({
-      where: {
-        tenantId,
-        category: TEMPLATE_SETTING_CATEGORY,
-        key: `${TEMPLATE_KEY_PREFIX}${templateId}`,
-      },
-    });
-
-    if (!setting) {
-      throw new NotFoundException(`Label template ${templateId} not found`);
-    }
-
-    await this.prisma.setting.delete({
-      where: { id: setting.id },
-    });
+    await this.getTemplate(tenantId, templateId);
+    await this.prisma.hardwareLabelTemplate.delete({ where: { id: templateId } });
   }
 
   // ─── Print Operations ───────────────────────────────────────
 
-  /**
-   * Generate print data from template + product data (populate fields).
-   * Returns rendered field data that can be sent to the printer.
-   */
   async generatePrintData(
     tenantId: string,
     input: PrintLabelRequest,
   ): Promise<PrintPreviewResponse> {
     const template = await this.getTemplate(tenantId, input.templateId);
-
-    const renderedFields = template.fields.map((field) => ({
-      ...field,
-      resolvedValue: this.resolveFieldValue(field, input.data),
-    }));
-
-    return {
-      templateId: template.id,
-      templateName: template.name,
-      width: template.width,
-      height: template.height,
-      renderedFields,
-    };
+    return this.renderTemplate(template, input.data);
   }
 
-  /**
-   * Generate print preview with product data filled in.
-   */
   async preview(
     tenantId: string,
     templateId: string,
     data: Record<string, string>,
   ): Promise<PrintPreviewResponse> {
     const template = await this.getTemplate(tenantId, templateId);
-
-    const renderedFields = template.fields.map((field) => ({
-      ...field,
-      resolvedValue: this.resolveFieldValue(field, data),
-    }));
-
-    return {
-      templateId: template.id,
-      templateName: template.name,
-      width: template.width,
-      height: template.height,
-      renderedFields,
-    };
+    return this.renderTemplate(template, data);
   }
 
-  /**
-   * Bulk print: generate labels for multiple products.
-   * Returns an array of rendered print data for each item.
-   */
   async generateBulkPrintData(
     tenantId: string,
     input: PrintBulkLabelRequest,
   ): Promise<PrintPreviewResponse[]> {
     const template = await this.getTemplate(tenantId, input.templateId);
-
-    return input.items.map((item) => ({
-      templateId: template.id,
-      templateName: template.name,
-      width: template.width,
-      height: template.height,
-      renderedFields: template.fields.map((field) => ({
-        ...field,
-        resolvedValue: this.resolveFieldValue(field, item.data),
-      })),
-    }));
+    return input.items.map((item) => this.renderTemplate(template, item.data));
   }
 
   /**
-   * Generate a standard jewelry label for a product.
-   * Fetches product data and populates standard jewelry label fields.
+   * Build a ready-to-print ZPL or TSPL command stream for a
+   * specific product. Used by POST /api/v1/hardware/label/print.
    */
+  async printJewelryLabel(
+    tenantId: string,
+    templateId: string,
+    productId: string,
+    copies: number,
+    language: 'ZPL' | 'TSPL',
+  ): Promise<LabelPrintCommandResponse> {
+    const preview = await this.generateJewelryLabel(tenantId, templateId, productId);
+    const command =
+      language === 'TSPL' ? this.generateTspl(preview, copies) : this.generateZpl(preview, copies);
+
+    await this.eventBus.publish({
+      id: uuid(),
+      type: 'hardware.label.printed',
+      tenantId,
+      userId: 'system',
+      timestamp: new Date().toISOString(),
+      payload: { templateId, productId, copies },
+    });
+
+    return {
+      productId,
+      templateId,
+      printerLanguage: language,
+      command,
+      copies,
+    };
+  }
+
   async generateJewelryLabel(
     tenantId: string,
     templateId: string,
     productId: string,
   ): Promise<PrintPreviewResponse> {
     const product = await this.prisma.product.findFirst({
-      where: this.tenantWhere(tenantId, { id: productId }),
+      where: { tenantId, id: productId },
       select: {
         sku: true,
         name: true,
         grossWeightMg: true,
         netWeightMg: true,
-        purityFineness: true,
-        huid: true,
+        metalPurity: true,
+        huidNumber: true,
         sellingPricePaise: true,
-        barcode: true,
       },
     });
 
@@ -263,17 +208,15 @@ export class HardwarePrinterService extends TenantAwareService {
       netWeight: product.netWeightMg
         ? `${(Number(product.netWeightMg) / 1000).toFixed(3)}g`
         : '',
-      purity: product.purityFineness
-        ? this.formatPurity(product.purityFineness)
-        : '',
-      huid: product.huid ?? '',
+      purity: product.metalPurity ? this.formatPurity(product.metalPurity) : '',
+      huid: product.huidNumber ?? '',
       price: product.sellingPricePaise
         ? this.formatPrice(Number(product.sellingPricePaise))
         : '',
-      barcode: product.barcode ?? product.sku,
+      barcode: product.sku,
       qrCode: JSON.stringify({
         sku: product.sku,
-        huid: product.huid,
+        huid: product.huidNumber,
         wt: product.grossWeightMg ? Number(product.grossWeightMg) : undefined,
       }),
     };
@@ -282,11 +225,15 @@ export class HardwarePrinterService extends TenantAwareService {
   }
 
   /**
-   * Generate ZPL (Zebra Programming Language) placeholder for label.
-   * This is a simplified placeholder; real implementation would build full ZPL.
+   * Build a ZPL command string for the rendered label.
    */
-  generateZpl(preview: PrintPreviewResponse): string {
-    const lines: string[] = [`^XA`, `^PW${Math.round(preview.width * 8)}`, `^LL${Math.round(preview.height * 8)}`];
+  generateZpl(preview: PrintPreviewResponse, copies = 1): string {
+    const lines: string[] = [
+      `^XA`,
+      `^PW${Math.round(preview.width * 8)}`,
+      `^LL${Math.round(preview.height * 8)}`,
+      `^PQ${copies}`,
+    ];
 
     for (const field of preview.renderedFields) {
       const x = Math.round(field.x * 8);
@@ -294,10 +241,14 @@ export class HardwarePrinterService extends TenantAwareService {
 
       switch (field.type) {
         case 'text':
-          lines.push(`^FO${x},${y}^A0N,${field.fontSize ?? 24},${field.fontSize ?? 24}^FD${field.resolvedValue}^FS`);
+          lines.push(
+            `^FO${x},${y}^A0N,${field.fontSize ?? 24},${field.fontSize ?? 24}^FD${field.resolvedValue}^FS`,
+          );
           break;
         case 'barcode':
-          lines.push(`^FO${x},${y}^BCN,${Math.round(field.height * 8)},Y,N,N^FD${field.resolvedValue}^FS`);
+          lines.push(
+            `^FO${x},${y}^BCN,${Math.round(field.height * 8)},Y,N,N^FD${field.resolvedValue}^FS`,
+          );
           break;
         case 'qr':
           lines.push(`^FO${x},${y}^BQN,2,5^FDHA,${field.resolvedValue}^FS`);
@@ -311,19 +262,63 @@ export class HardwarePrinterService extends TenantAwareService {
     return lines.join('\n');
   }
 
+  /**
+   * Build a TSPL command string for the rendered label.
+   */
+  generateTspl(preview: PrintPreviewResponse, copies = 1): string {
+    const out: string[] = [
+      `SIZE ${preview.width} mm,${preview.height} mm`,
+      `GAP 2 mm,0`,
+      `CLS`,
+    ];
+
+    for (const field of preview.renderedFields) {
+      const x = Math.round(field.x * 8);
+      const y = Math.round(field.y * 8);
+      const value = field.resolvedValue.replace(/"/g, '\\"');
+
+      switch (field.type) {
+        case 'text':
+          out.push(`TEXT ${x},${y},"3",0,1,1,"${value}"`);
+          break;
+        case 'barcode':
+          out.push(`BARCODE ${x},${y},"128",${Math.round(field.height * 8)},1,0,2,2,"${value}"`);
+          break;
+        case 'qr':
+          out.push(`QRCODE ${x},${y},M,5,A,0,"${value}"`);
+          break;
+        default:
+          break;
+      }
+    }
+
+    out.push(`PRINT ${copies},1`);
+    return out.join('\r\n');
+  }
+
   // ─── Private Helpers ────────────────────────────────────────
 
-  /**
-   * Resolve a field's value using the provided data map.
-   * Field value can contain placeholders like {{sku}}, {{productName}}, etc.
-   */
+  private renderTemplate(
+    template: LabelTemplateResponse,
+    data: Record<string, string>,
+  ): PrintPreviewResponse {
+    return {
+      templateId: template.id,
+      templateName: template.name,
+      width: template.width,
+      height: template.height,
+      renderedFields: template.fields.map((field) => ({
+        ...field,
+        resolvedValue: this.resolveFieldValue(field, data),
+      })),
+    };
+  }
+
   private resolveFieldValue(field: LabelField, data: Record<string, string>): string {
     let resolved = field.value;
-
     for (const [key, value] of Object.entries(data)) {
       resolved = resolved.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
     }
-
     return resolved;
   }
 

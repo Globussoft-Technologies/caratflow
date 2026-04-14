@@ -28,6 +28,7 @@ import {
   DiscountInputSchema,
   GiftCardInputSchema,
   PaginationSchema,
+  StaffDashboardInputSchema,
 } from '@caratflow/shared-types';
 
 @Injectable()
@@ -87,6 +88,13 @@ export class RetailTrpcRouter {
         .input(z.object({ locationId: z.string().uuid().optional() }).optional())
         .query(({ ctx, input }) =>
           this.retailService.getDashboard(ctx.tenantId, input?.locationId),
+        ),
+
+      // Per-user dashboard for the mobile Sales app.
+      staffDashboard: this.trpc.authedProcedure
+        .input(StaffDashboardInputSchema)
+        .query(({ ctx, input }) =>
+          this.retailService.getStaffDashboard(ctx.tenantId, ctx.userId, input?.date),
         ),
 
       // ─── Pricing ──────────────────────────────────────────────

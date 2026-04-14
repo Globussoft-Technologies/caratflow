@@ -1124,6 +1124,84 @@ export class InventoryService extends TenantAwareService {
     };
   }
 
+  /**
+   * Fetch a product together with its stock aggregated across all
+   * locations for the tenant. Used by the mobile Sales app
+   * product-detail screen.
+   */
+  async getProductWithStock(tenantId: string, productId: string) {
+    const product = await this.prisma.product.findFirst({
+      where: this.tenantWhere(tenantId, { id: productId }) as {
+        tenantId: string;
+        id: string;
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const stockItems = await this.prisma.stockItem.findMany({
+      where: this.tenantWhere(tenantId, { productId }) as {
+        tenantId: string;
+        productId: string;
+      },
+      include: { location: { select: { id: true, name: true } } },
+    });
+
+    const productType = product.productType as unknown as string;
+    const metalType =
+      productType === 'GOLD_JEWELRY'
+        ? 'GOLD'
+        : productType === 'SILVER_JEWELRY'
+          ? 'SILVER'
+          : productType === 'PLATINUM_JEWELRY'
+            ? 'PLATINUM'
+            : null;
+
+    // Product has no hsnCode column today — 7113 is the default HSN for
+    // articles of jewellery in India.
+    const hsnCode = '7113';
+
+    const images = Array.isArray(product.images)
+      ? (product.images as unknown[]).filter(
+          (v): v is string => typeof v === 'string',
+        )
+      : [];
+
+    return {
+      product: {
+        id: product.id,
+        sku: product.sku,
+        name: product.name,
+        productType,
+        description: product.description ?? null,
+        metalType,
+        purityFineness: product.metalPurity ?? 0,
+        weightMg: product.metalWeightMg ? Number(product.metalWeightMg) : 0,
+        costPricePaise: product.costPricePaise
+          ? Number(product.costPricePaise)
+          : 0,
+        sellingPricePaise: product.sellingPricePaise
+          ? Number(product.sellingPricePaise)
+          : 0,
+        hsnCode,
+        images,
+      },
+      stockByLocation: stockItems.map((si) => {
+        const quantityAvailable = si.quantityOnHand - si.quantityReserved;
+        return {
+          locationId: si.locationId,
+          locationName: si.location.name,
+          quantity: si.quantityOnHand,
+          reservedQuantity: si.quantityReserved,
+          quantityOnHand: si.quantityOnHand,
+          quantityAvailable,
+        };
+      }),
+    };
+  }
+
   // ─── Helpers ──────────────────────────────────────────────────
 
   private mapStockItemResponse(item: Record<string, unknown>) {

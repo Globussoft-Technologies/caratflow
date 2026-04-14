@@ -21,6 +21,7 @@ const DOMAIN_QUEUES = [
   'preorder',
   'digital-gold',
   'b2c',
+  'hardware',
 ] as const;
 
 type DomainQueueName = (typeof DOMAIN_QUEUES)[number];

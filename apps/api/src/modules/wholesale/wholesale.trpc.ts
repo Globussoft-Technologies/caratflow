@@ -9,6 +9,7 @@ import { WholesaleConsignmentService } from './wholesale.consignment.service';
 import { WholesaleAgentService } from './wholesale.agent.service';
 import { WholesaleCreditService } from './wholesale.credit.service';
 import { WholesaleRateContractService } from './wholesale.rate-contract.service';
+import { WholesaleSupplierService } from './wholesale.supplier.service';
 import {
   PurchaseOrderInputSchema,
   PurchaseOrderListFilterSchema,
@@ -19,6 +20,8 @@ import {
   AgentBrokerInputSchema,
   CommissionInputSchema,
   CreditLimitInputSchema,
+  SupplierInputSchema,
+  SupplierListFilterSchema,
   WholesaleCreditEntityType,
   PaginationSchema,
 } from '@caratflow/shared-types';
@@ -32,6 +35,7 @@ export class WholesaleTrpcRouter {
     private readonly agentService: WholesaleAgentService,
     private readonly creditService: WholesaleCreditService,
     private readonly rateContractService: WholesaleRateContractService,
+    private readonly supplierService: WholesaleSupplierService,
   ) {}
 
   get router() {
@@ -455,6 +459,63 @@ export class WholesaleTrpcRouter {
         }).optional())
         .query(({ ctx, input }) =>
           this.creditService.getAgingSummary(ctx.tenantId, input?.entityType),
+        ),
+
+      // ─── Suppliers ────────────────────────────────────────────
+      listSuppliers: this.trpc.authedProcedure
+        .input(z.object({
+          filters: SupplierListFilterSchema.optional(),
+          pagination: PaginationSchema.optional(),
+        }))
+        .query(({ ctx, input }) =>
+          this.supplierService.listSuppliers(
+            ctx.tenantId,
+            input.filters ?? {},
+            input.pagination ?? { page: 1, limit: 20, sortOrder: 'asc' },
+          ),
+        ),
+
+      getSupplier: this.trpc.authedProcedure
+        .input(z.object({ id: z.string().uuid() }))
+        .query(({ ctx, input }) =>
+          this.supplierService.getSupplier(ctx.tenantId, input.id),
+        ),
+
+      createSupplier: this.trpc.authedProcedure
+        .input(SupplierInputSchema)
+        .mutation(({ ctx, input }) =>
+          this.supplierService.createSupplier(ctx.tenantId, ctx.userId, input),
+        ),
+
+      updateSupplier: this.trpc.authedProcedure
+        .input(z.object({ id: z.string().uuid(), data: SupplierInputSchema.partial() }))
+        .mutation(({ ctx, input }) =>
+          this.supplierService.updateSupplier(ctx.tenantId, ctx.userId, input.id, input.data),
+        ),
+
+      deactivateSupplier: this.trpc.authedProcedure
+        .input(z.object({ id: z.string().uuid() }))
+        .mutation(({ ctx, input }) =>
+          this.supplierService.deactivateSupplier(ctx.tenantId, ctx.userId, input.id),
+        ),
+
+      getSupplierPerformance: this.trpc.authedProcedure
+        .input(z.object({ id: z.string().uuid() }))
+        .query(({ ctx, input }) =>
+          this.supplierService.getSupplierPerformance(ctx.tenantId, input.id),
+        ),
+
+      listSuppliersWithPerformance: this.trpc.authedProcedure
+        .input(z.object({
+          filters: SupplierListFilterSchema.optional(),
+          pagination: PaginationSchema.optional(),
+        }))
+        .query(({ ctx, input }) =>
+          this.supplierService.listSuppliersWithPerformance(
+            ctx.tenantId,
+            input.filters ?? {},
+            input.pagination ?? { page: 1, limit: 20, sortOrder: 'asc' },
+          ),
         ),
     });
   }

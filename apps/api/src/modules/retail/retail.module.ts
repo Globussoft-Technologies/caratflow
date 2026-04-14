@@ -3,6 +3,7 @@
 // old gold purchases, appraisals, discounts.
 
 import { Module } from '@nestjs/common';
+import { IndiaModule } from '../india/india.module';
 import { RetailService } from './retail.service';
 import { RetailPricingService } from './retail.pricing.service';
 import { RetailReturnService } from './retail.return.service';
@@ -16,6 +17,7 @@ import { RetailTrpcRouter } from './retail.trpc';
 import { RetailEventHandler } from './retail.event-handler';
 
 @Module({
+  imports: [IndiaModule],
   controllers: [],
   providers: [
     RetailService,

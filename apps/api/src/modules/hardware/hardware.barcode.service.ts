@@ -1,9 +1,12 @@
 // ─── Hardware Barcode/QR Service ──────────────────────────────
-// Barcode scan processing, product lookup, barcode/QR generation.
+// Barcode validation, product lookup, barcode/QR generation.
+// HID keyboard-wedge scanners are passthrough at the OS level so
+// the API only needs to validate + look up scanned codes.
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { EventBusService } from '../../event-bus/event-bus.service';
 import type {
   BarcodeProductLookup,
   BarcodeGenerateRequest,
@@ -11,25 +14,41 @@ import type {
   BarcodeBulkGenerateRequest,
   ProductSummary,
 } from '@caratflow/shared-types';
+import { v4 as uuid } from 'uuid';
+
+interface ProductLike {
+  id: string;
+  sku: string;
+  name: string;
+  productType: string | null;
+  sellingPricePaise: bigint | null;
+  grossWeightMg: bigint | null;
+  netWeightMg: bigint | null;
+  metalPurity: number | null;
+  huidNumber: string | null;
+}
 
 @Injectable()
 export class HardwareBarcodeService extends TenantAwareService {
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    private readonly eventBus: EventBusService,
+  ) {
     super(prisma);
   }
 
   /**
-   * Process a barcode scan: look up product by SKU barcode or serial number barcode.
+   * Look up a scanned barcode against serial numbers (with embedded
+   * `barcodeData`) first, then against product SKU. Always emits a
+   * hardware.barcode.scanned event.
    */
   async lookup(tenantId: string, barcode: string): Promise<BarcodeProductLookup> {
-    // First try to match by serial number barcode
+    let result: BarcodeProductLookup;
+
     const serial = await this.prisma.serialNumber.findFirst({
       where: {
         tenantId,
-        OR: [
-          { barcodeData: barcode },
-          { serialNumber: barcode },
-        ],
+        OR: [{ barcodeData: barcode }, { serialNumber: barcode }],
       },
       include: {
         product: {
@@ -41,73 +60,70 @@ export class HardwareBarcodeService extends TenantAwareService {
             sellingPricePaise: true,
             grossWeightMg: true,
             netWeightMg: true,
-            purityFineness: true,
-            huid: true,
+            metalPurity: true,
+            huidNumber: true,
           },
         },
       },
     });
 
     if (serial) {
-      return {
+      result = {
         barcode,
-        product: this.mapProductSummary(serial.product),
+        product: this.toSummary(serial.product as unknown as ProductLike),
         serialNumber: serial.serialNumber,
       };
+    } else {
+      const product = await this.prisma.product.findFirst({
+        where: { tenantId, sku: barcode },
+        select: {
+          id: true,
+          sku: true,
+          name: true,
+          productType: true,
+          sellingPricePaise: true,
+          grossWeightMg: true,
+          netWeightMg: true,
+          metalPurity: true,
+          huidNumber: true,
+        },
+      });
+
+      result = product
+        ? {
+            barcode,
+            product: this.toSummary(product as unknown as ProductLike),
+            serialNumber: null,
+          }
+        : { barcode, product: null, serialNumber: null };
     }
 
-    // Then try to match by product SKU
-    const product = await this.prisma.product.findFirst({
-      where: {
-        tenantId,
-        OR: [
-          { sku: barcode },
-          { barcode: barcode },
-        ],
-      },
-      select: {
-        id: true,
-        sku: true,
-        name: true,
-        productType: true,
-        sellingPricePaise: true,
-        grossWeightMg: true,
-        netWeightMg: true,
-        purityFineness: true,
-        huid: true,
-      },
+    await this.eventBus.publish({
+      id: uuid(),
+      type: 'hardware.barcode.scanned',
+      tenantId,
+      userId: 'system',
+      timestamp: new Date().toISOString(),
+      payload: { barcode, productId: result.product?.id ?? null },
     });
 
-    if (product) {
-      return {
-        barcode,
-        product: this.mapProductSummary(product),
-        serialNumber: null,
-      };
-    }
-
-    return {
-      barcode,
-      product: null,
-      serialNumber: null,
-    };
+    return result;
   }
 
-  /**
-   * Generate barcode data for a product (SKU-based, serial-based, or custom format).
-   */
-  async generate(tenantId: string, input: BarcodeGenerateRequest): Promise<BarcodeGenerateResponse> {
+  async generate(
+    tenantId: string,
+    input: BarcodeGenerateRequest,
+  ): Promise<BarcodeGenerateResponse> {
     const product = await this.prisma.product.findFirst({
-      where: this.tenantWhere(tenantId, { id: input.productId }),
+      where: { tenantId, id: input.productId },
       select: {
         id: true,
         sku: true,
         name: true,
         sellingPricePaise: true,
         grossWeightMg: true,
-        netWeightMg: true,
-        purityFineness: true,
-        huid: true,
+        metalPurity: true,
+        huidNumber: true,
       },
     });
 
@@ -116,10 +132,8 @@ export class HardwareBarcodeService extends TenantAwareService {
     }
 
     let barcodeValue: string;
-
     switch (input.format) {
       case 'SERIAL': {
-        // Find the latest serial number for this product
         const serial = await this.prisma.serialNumber.findFirst({
           where: { tenantId, productId: input.productId },
           orderBy: { createdAt: 'desc' },
@@ -133,18 +147,16 @@ export class HardwareBarcodeService extends TenantAwareService {
       case 'SKU':
       default:
         barcodeValue = product.sku;
-        break;
     }
 
-    // Build QR data with product details for quick lookup
     const qrData = JSON.stringify({
       id: product.id,
       sku: product.sku,
       name: product.name,
       weight: product.grossWeightMg ? Number(product.grossWeightMg) : undefined,
-      purity: product.purityFineness ?? undefined,
+      purity: product.metalPurity ?? undefined,
       price: product.sellingPricePaise ? Number(product.sellingPricePaise) : undefined,
-      huid: product.huid ?? undefined,
+      huid: product.huidNumber ?? undefined,
     });
 
     return {
@@ -155,47 +167,38 @@ export class HardwareBarcodeService extends TenantAwareService {
     };
   }
 
-  /**
-   * Batch barcode generation for multiple products.
-   */
   async generateBulk(
     tenantId: string,
     input: BarcodeBulkGenerateRequest,
   ): Promise<BarcodeGenerateResponse[]> {
     const results: BarcodeGenerateResponse[] = [];
-
     for (const productId of input.productIds) {
       try {
-        const result = await this.generate(tenantId, {
-          productId,
-          format: input.format,
-          customPrefix: input.customPrefix,
-        });
-        results.push(result);
+        results.push(
+          await this.generate(tenantId, {
+            productId,
+            format: input.format,
+            customPrefix: input.customPrefix,
+          }),
+        );
       } catch {
-        // Skip products that can't be found
-        results.push({
-          productId,
-          barcode: '',
-          format: input.format,
-        });
+        results.push({ productId, barcode: '', format: input.format });
       }
     }
-
     return results;
   }
 
-  private mapProductSummary(product: Record<string, unknown>): ProductSummary {
+  private toSummary(p: ProductLike): ProductSummary {
     return {
-      id: product.id as string,
-      sku: product.sku as string,
-      name: product.name as string,
-      productType: (product.productType as string) ?? null,
-      sellingPricePaise: product.sellingPricePaise ? Number(product.sellingPricePaise) : null,
-      grossWeightMg: product.grossWeightMg ? Number(product.grossWeightMg) : null,
-      netWeightMg: product.netWeightMg ? Number(product.netWeightMg) : null,
-      purityFineness: (product.purityFineness as number) ?? null,
-      huid: (product.huid as string) ?? null,
+      id: p.id,
+      sku: p.sku,
+      name: p.name,
+      productType: p.productType ?? null,
+      sellingPricePaise: p.sellingPricePaise !== null ? Number(p.sellingPricePaise) : null,
+      grossWeightMg: p.grossWeightMg !== null ? Number(p.grossWeightMg) : null,
+      netWeightMg: p.netWeightMg !== null ? Number(p.netWeightMg) : null,
+      purityFineness: p.metalPurity ?? null,
+      huid: p.huidNumber ?? null,
     };
   }
 }

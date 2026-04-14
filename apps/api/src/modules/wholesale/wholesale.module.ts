@@ -8,6 +8,7 @@ import { WholesaleConsignmentService } from './wholesale.consignment.service';
 import { WholesaleAgentService } from './wholesale.agent.service';
 import { WholesaleCreditService } from './wholesale.credit.service';
 import { WholesaleRateContractService } from './wholesale.rate-contract.service';
+import { WholesaleSupplierService } from './wholesale.supplier.service';
 import { WholesaleTrpcRouter } from './wholesale.trpc';
 import { WholesaleEventHandler } from './wholesale.event-handler';
 
@@ -19,6 +20,7 @@ import { WholesaleEventHandler } from './wholesale.event-handler';
     WholesaleAgentService,
     WholesaleCreditService,
     WholesaleRateContractService,
+    WholesaleSupplierService,
     WholesaleTrpcRouter,
     WholesaleEventHandler,
   ],
@@ -28,6 +30,7 @@ import { WholesaleEventHandler } from './wholesale.event-handler';
     WholesaleAgentService,
     WholesaleCreditService,
     WholesaleRateContractService,
+    WholesaleSupplierService,
     WholesaleTrpcRouter,
   ],
 })

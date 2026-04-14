@@ -1,112 +1,130 @@
 // ─── Hardware Device Management Service ───────────────────────
 // Register, configure, and manage hardware devices.
-// Device configs stored in the platform Settings table (category: 'hardware').
+// Devices are persisted in the dedicated `HardwareDevice` table
+// in the platform schema.
 
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { EventBusService } from '../../event-bus/event-bus.service';
 import type {
   CreateDeviceConfig,
   UpdateDeviceConfig,
   DeviceConfigResponse,
   DeviceListInput,
   DeviceStatus,
+  DeviceType,
+  ConnectionType,
 } from '@caratflow/shared-types';
 import type { PaginatedResult } from '@caratflow/shared-types';
 import { v4 as uuid } from 'uuid';
 
-/** Setting key prefix for hardware devices */
-const DEVICE_SETTING_CATEGORY = 'hardware';
-const DEVICE_KEY_PREFIX = 'device:';
+type HardwareDeviceRow = {
+  id: string;
+  tenantId: string;
+  locationId: string;
+  name: string;
+  deviceType: string;
+  connectionType: string;
+  port: string | null;
+  baudRate: number | null;
+  ipAddress: string | null;
+  tcpPort: number | null;
+  vendorId: string | null;
+  productId: string | null;
+  settings: unknown;
+  status: string;
+  isActive: boolean;
+  lastSeenAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 @Injectable()
 export class HardwareDeviceService extends TenantAwareService {
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    private readonly eventBus: EventBusService,
+  ) {
     super(prisma);
   }
 
-  /**
-   * Register a new hardware device by persisting its config to the Settings table.
-   */
+  private toResponse(row: HardwareDeviceRow): DeviceConfigResponse {
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      name: row.name,
+      deviceType: row.deviceType as DeviceType,
+      connectionType: row.connectionType as ConnectionType,
+      port: row.port ?? undefined,
+      baudRate: row.baudRate ?? undefined,
+      ipAddress: row.ipAddress ?? undefined,
+      tcpPort: row.tcpPort ?? undefined,
+      vendorId: row.vendorId ?? undefined,
+      productId: row.productId ?? undefined,
+      settings: (row.settings as Record<string, unknown>) ?? {},
+      isActive: row.isActive,
+      locationId: row.locationId,
+      status: row.status as DeviceStatus,
+      lastSeenAt: row.lastSeenAt,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
   async registerDevice(
     tenantId: string,
     userId: string,
     input: CreateDeviceConfig,
   ): Promise<DeviceConfigResponse> {
-    const deviceId = uuid();
-    const now = new Date();
-
-    const config: DeviceConfigResponse = {
-      id: deviceId,
-      tenantId,
-      name: input.name,
-      deviceType: input.deviceType,
-      connectionType: input.connectionType,
-      port: input.port,
-      baudRate: input.baudRate,
-      ipAddress: input.ipAddress,
-      tcpPort: input.tcpPort,
-      vendorId: input.vendorId,
-      productId: input.productId,
-      settings: input.settings ?? {},
-      isActive: input.isActive ?? true,
-      locationId: input.locationId,
-      status: undefined,
-      lastSeenAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await this.prisma.setting.create({
+    const created = (await this.prisma.hardwareDevice.create({
       data: {
         id: uuid(),
         tenantId,
-        category: DEVICE_SETTING_CATEGORY,
-        key: `${DEVICE_KEY_PREFIX}${deviceId}`,
-        value: JSON.stringify(config),
+        locationId: input.locationId,
+        name: input.name,
+        deviceType: input.deviceType as never,
+        connectionType: input.connectionType as never,
+        port: input.port ?? null,
+        baudRate: input.baudRate ?? null,
+        ipAddress: input.ipAddress ?? null,
+        tcpPort: input.tcpPort ?? null,
+        vendorId: input.vendorId ?? null,
+        productId: input.productId ?? null,
+        settings: (input.settings ?? {}) as object,
+        isActive: input.isActive ?? true,
+        status: 'DISCONNECTED' as never,
         createdBy: userId,
         updatedBy: userId,
       },
-    });
+    })) as unknown as HardwareDeviceRow;
 
-    return config;
+    return this.toResponse(created);
   }
 
-  /**
-   * List all devices for a tenant, optionally filtered by location or type.
-   */
   async listDevices(
     tenantId: string,
     input: DeviceListInput,
   ): Promise<PaginatedResult<DeviceConfigResponse>> {
     const { page, limit, locationId, deviceType, isActive } = input;
 
-    const settings = await this.prisma.setting.findMany({
-      where: {
-        tenantId,
-        category: DEVICE_SETTING_CATEGORY,
-        key: { startsWith: DEVICE_KEY_PREFIX },
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
+    const where: Record<string, unknown> = { tenantId };
+    if (locationId) where.locationId = locationId;
+    if (deviceType) where.deviceType = deviceType;
+    if (isActive !== undefined) where.isActive = isActive;
 
-    let devices = settings.map((s) => JSON.parse(s.value as string) as DeviceConfigResponse);
+    const [total, rows] = await Promise.all([
+      this.prisma.hardwareDevice.count({ where: where as never }),
+      this.prisma.hardwareDevice.findMany({
+        where: where as never,
+        orderBy: { updatedAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
 
-    // Apply filters
-    if (locationId) {
-      devices = devices.filter((d) => d.locationId === locationId);
-    }
-    if (deviceType) {
-      devices = devices.filter((d) => d.deviceType === deviceType);
-    }
-    if (isActive !== undefined) {
-      devices = devices.filter((d) => d.isActive === isActive);
-    }
-
-    const total = devices.length;
+    const items = (rows as unknown as HardwareDeviceRow[]).map((r) => this.toResponse(r));
     const totalPages = Math.ceil(total / limit);
-    const skip = (page - 1) * limit;
-    const items = devices.slice(skip, skip + limit);
 
     return {
       items,
@@ -119,118 +137,80 @@ export class HardwareDeviceService extends TenantAwareService {
     };
   }
 
-  /**
-   * Get a single device by ID.
-   */
   async getDevice(tenantId: string, deviceId: string): Promise<DeviceConfigResponse> {
-    const setting = await this.prisma.setting.findFirst({
-      where: {
-        tenantId,
-        category: DEVICE_SETTING_CATEGORY,
-        key: `${DEVICE_KEY_PREFIX}${deviceId}`,
-      },
+    const row = await this.prisma.hardwareDevice.findFirst({
+      where: { tenantId, id: deviceId },
     });
-
-    if (!setting) {
-      throw new NotFoundException(`Device ${deviceId} not found`);
-    }
-
-    return JSON.parse(setting.value as string) as DeviceConfigResponse;
+    if (!row) throw new NotFoundException(`Device ${deviceId} not found`);
+    return this.toResponse(row as unknown as HardwareDeviceRow);
   }
 
-  /**
-   * Update device configuration.
-   */
   async updateDevice(
     tenantId: string,
     userId: string,
     deviceId: string,
     input: UpdateDeviceConfig,
   ): Promise<DeviceConfigResponse> {
-    const existing = await this.getDevice(tenantId, deviceId);
+    await this.getDevice(tenantId, deviceId);
 
-    const updated: DeviceConfigResponse = {
-      ...existing,
-      ...input,
-      id: deviceId,
-      tenantId,
-      updatedAt: new Date(),
-    };
+    const data: Record<string, unknown> = { updatedBy: userId };
+    if (input.name !== undefined) data.name = input.name;
+    if (input.deviceType !== undefined) data.deviceType = input.deviceType;
+    if (input.connectionType !== undefined) data.connectionType = input.connectionType;
+    if (input.port !== undefined) data.port = input.port;
+    if (input.baudRate !== undefined) data.baudRate = input.baudRate;
+    if (input.ipAddress !== undefined) data.ipAddress = input.ipAddress;
+    if (input.tcpPort !== undefined) data.tcpPort = input.tcpPort;
+    if (input.vendorId !== undefined) data.vendorId = input.vendorId;
+    if (input.productId !== undefined) data.productId = input.productId;
+    if (input.settings !== undefined) data.settings = input.settings as object;
+    if (input.isActive !== undefined) data.isActive = input.isActive;
+    if (input.locationId !== undefined) data.locationId = input.locationId;
 
-    await this.prisma.setting.updateMany({
-      where: {
-        tenantId,
-        category: DEVICE_SETTING_CATEGORY,
-        key: `${DEVICE_KEY_PREFIX}${deviceId}`,
-      },
-      data: {
-        value: JSON.stringify(updated),
-        updatedBy: userId,
-      },
-    });
-
-    return updated;
+    const updated = (await this.prisma.hardwareDevice.update({
+      where: { id: deviceId },
+      data: data as never,
+    })) as unknown as HardwareDeviceRow;
+    return this.toResponse(updated);
   }
 
-  /**
-   * Remove a device.
-   */
   async removeDevice(tenantId: string, deviceId: string): Promise<void> {
-    const setting = await this.prisma.setting.findFirst({
-      where: {
-        tenantId,
-        category: DEVICE_SETTING_CATEGORY,
-        key: `${DEVICE_KEY_PREFIX}${deviceId}`,
-      },
-    });
-
-    if (!setting) {
-      throw new NotFoundException(`Device ${deviceId} not found`);
-    }
-
-    await this.prisma.setting.delete({
-      where: { id: setting.id },
-    });
+    await this.getDevice(tenantId, deviceId);
+    await this.prisma.hardwareDevice.delete({ where: { id: deviceId } });
   }
 
-  /**
-   * Get device status. In a real deployment, this would ping the device
-   * or check last heartbeat. For now, returns stored status or DISCONNECTED.
-   */
-  async getDeviceStatus(tenantId: string, deviceId: string): Promise<{ deviceId: string; status: DeviceStatus }> {
+  async getDeviceStatus(
+    tenantId: string,
+    deviceId: string,
+  ): Promise<{ deviceId: string; status: DeviceStatus }> {
     const device = await this.getDevice(tenantId, deviceId);
     return {
       deviceId,
-      status: (device.status as DeviceStatus) ?? 'DISCONNECTED',
+      status: (device.status as DeviceStatus) ?? ('DISCONNECTED' as DeviceStatus),
     };
   }
 
-  /**
-   * Update device status (called internally by gateway or health checks).
-   */
   async updateDeviceStatus(
     tenantId: string,
     deviceId: string,
     status: DeviceStatus,
   ): Promise<void> {
-    const existing = await this.getDevice(tenantId, deviceId);
-
-    const updated: DeviceConfigResponse = {
-      ...existing,
-      status,
-      lastSeenAt: status === 'CONNECTED' ? new Date() : existing.lastSeenAt,
-      updatedAt: new Date(),
-    };
-
-    await this.prisma.setting.updateMany({
-      where: {
-        tenantId,
-        category: DEVICE_SETTING_CATEGORY,
-        key: `${DEVICE_KEY_PREFIX}${deviceId}`,
-      },
+    await this.getDevice(tenantId, deviceId);
+    await this.prisma.hardwareDevice.update({
+      where: { id: deviceId },
       data: {
-        value: JSON.stringify(updated),
+        status: status as never,
+        lastSeenAt: status === 'CONNECTED' ? new Date() : undefined,
       },
+    });
+
+    await this.eventBus.publish({
+      id: uuid(),
+      type: 'hardware.device.status_changed',
+      tenantId,
+      userId: 'system',
+      timestamp: new Date().toISOString(),
+      payload: { deviceId, status: String(status) },
     });
   }
 }

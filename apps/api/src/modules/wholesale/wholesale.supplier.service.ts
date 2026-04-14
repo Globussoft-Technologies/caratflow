@@ -1,13 +1,16 @@
 // ─── Wholesale Supplier Service ────────────────────────────────
-// Rate contracts CRUD, supplier performance metrics.
+// Supplier CRUD + aggregated performance metrics (on-time delivery,
+// quality rejection, avg lead time, total purchase value).
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type {
-  RateContractInput,
-  RateContractResponse,
+  SupplierInput,
+  SupplierListFilter,
+  SupplierResponse,
   SupplierPerformance,
+  PaginatedResult,
+  Pagination,
 } from '@caratflow/shared-types';
-import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
 import { PrismaService } from '../../common/prisma.service';
 import { TenantAwareService } from '../../common/base.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -18,72 +21,75 @@ export class WholesaleSupplierService extends TenantAwareService {
     super(prisma);
   }
 
-  // ─── Rate Contracts ────────────────────────────────────────────
+  // ─── CRUD ──────────────────────────────────────────────────────
 
-  async createRateContract(
+  async createSupplier(
     tenantId: string,
     userId: string,
-    input: RateContractInput,
-  ): Promise<RateContractResponse> {
-    const supplier = await this.prisma.supplier.findFirst({
-      where: this.tenantWhere(tenantId, { id: input.supplierId }) as { tenantId: string; id: string },
-    });
-    if (!supplier) throw new NotFoundException('Supplier not found');
-
-    const contract = await this.prisma.supplierRateContract.create({
+    input: SupplierInput,
+  ): Promise<SupplierResponse> {
+    const supplier = await this.prisma.supplier.create({
       data: {
         id: uuidv4(),
         tenantId,
-        supplierId: input.supplierId,
-        metalType: input.metalType,
-        purityFineness: input.purityFineness,
-        ratePaisePer10g: BigInt(input.ratePaisePer10g),
-        validFrom: input.validFrom,
-        validTo: input.validTo,
+        name: input.name,
+        contactPerson: input.contactPerson ?? null,
+        email: input.email ?? null,
+        phone: input.phone ?? null,
+        address: input.address ?? null,
+        city: input.city ?? null,
+        state: input.state ?? null,
+        country: input.country ?? null,
+        postalCode: input.postalCode ?? null,
+        gstinNumber: input.gstinNumber ?? null,
+        panNumber: input.panNumber ?? null,
+        supplierType: input.supplierType ?? null,
+        rating: input.rating ?? 0,
         isActive: input.isActive ?? true,
-        notes: input.notes ?? null,
         createdBy: userId,
         updatedBy: userId,
       },
-      include: { supplier: { select: { name: true } } },
     });
-
-    return this.mapRateContractToResponse(contract);
+    return this.mapToResponse(supplier);
   }
 
-  async getRateContract(tenantId: string, id: string): Promise<RateContractResponse> {
-    const contract = await this.prisma.supplierRateContract.findFirst({
+  async getSupplier(tenantId: string, id: string): Promise<SupplierResponse> {
+    const supplier = await this.prisma.supplier.findFirst({
       where: this.tenantWhere(tenantId, { id }) as { tenantId: string; id: string },
-      include: { supplier: { select: { name: true } } },
     });
-    if (!contract) throw new NotFoundException('Rate contract not found');
-    return this.mapRateContractToResponse(contract);
+    if (!supplier) throw new NotFoundException('Supplier not found');
+    return this.mapToResponse(supplier);
   }
 
-  async listRateContracts(
+  async listSuppliers(
     tenantId: string,
-    filters: { supplierId?: string; isActive?: boolean; metalType?: string },
+    filters: SupplierListFilter,
     pagination: Pagination,
-  ): Promise<PaginatedResult<RateContractResponse>> {
+  ): Promise<PaginatedResult<SupplierResponse>> {
     const where: Record<string, unknown> = { tenantId };
-    if (filters.supplierId) where.supplierId = filters.supplierId;
     if (filters.isActive !== undefined) where.isActive = filters.isActive;
-    if (filters.metalType) where.metalType = filters.metalType;
+    if (filters.supplierType) where.supplierType = filters.supplierType;
+    if (filters.search) {
+      where.OR = [
+        { name: { contains: filters.search } },
+        { gstinNumber: { contains: filters.search } },
+        { panNumber: { contains: filters.search } },
+      ];
+    }
 
     const [items, total] = await Promise.all([
-      this.prisma.supplierRateContract.findMany({
+      this.prisma.supplier.findMany({
         where,
-        include: { supplier: { select: { name: true } } },
-        orderBy: { validFrom: 'desc' },
+        orderBy: { name: pagination.sortOrder ?? 'asc' },
         skip: (pagination.page - 1) * pagination.limit,
         take: pagination.limit,
       }),
-      this.prisma.supplierRateContract.count({ where }),
+      this.prisma.supplier.count({ where }),
     ]);
 
     const totalPages = Math.ceil(total / pagination.limit);
     return {
-      items: items.map((c) => this.mapRateContractToResponse(c)),
+      items: items.map((s) => this.mapToResponse(s)),
       total,
       page: pagination.page,
       limit: pagination.limit,
@@ -93,69 +99,50 @@ export class WholesaleSupplierService extends TenantAwareService {
     };
   }
 
-  async updateRateContract(
+  async updateSupplier(
     tenantId: string,
     userId: string,
     id: string,
-    data: Partial<RateContractInput>,
-  ): Promise<RateContractResponse> {
-    const existing = await this.prisma.supplierRateContract.findFirst({
+    data: Partial<SupplierInput>,
+  ): Promise<SupplierResponse> {
+    const existing = await this.prisma.supplier.findFirst({
       where: this.tenantWhere(tenantId, { id }) as { tenantId: string; id: string },
     });
-    if (!existing) throw new NotFoundException('Rate contract not found');
+    if (!existing) throw new NotFoundException('Supplier not found');
 
-    await this.prisma.supplierRateContract.update({
+    await this.prisma.supplier.update({
       where: { id },
       data: {
-        ...(data.metalType !== undefined && { metalType: data.metalType }),
-        ...(data.purityFineness !== undefined && { purityFineness: data.purityFineness }),
-        ...(data.ratePaisePer10g !== undefined && { ratePaisePer10g: BigInt(data.ratePaisePer10g) }),
-        ...(data.validFrom !== undefined && { validFrom: data.validFrom }),
-        ...(data.validTo !== undefined && { validTo: data.validTo }),
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.contactPerson !== undefined && { contactPerson: data.contactPerson }),
+        ...(data.email !== undefined && { email: data.email }),
+        ...(data.phone !== undefined && { phone: data.phone }),
+        ...(data.address !== undefined && { address: data.address }),
+        ...(data.city !== undefined && { city: data.city }),
+        ...(data.state !== undefined && { state: data.state }),
+        ...(data.country !== undefined && { country: data.country }),
+        ...(data.postalCode !== undefined && { postalCode: data.postalCode }),
+        ...(data.gstinNumber !== undefined && { gstinNumber: data.gstinNumber }),
+        ...(data.panNumber !== undefined && { panNumber: data.panNumber }),
+        ...(data.supplierType !== undefined && { supplierType: data.supplierType }),
+        ...(data.rating !== undefined && { rating: data.rating }),
         ...(data.isActive !== undefined && { isActive: data.isActive }),
-        ...(data.notes !== undefined && { notes: data.notes }),
         updatedBy: userId,
       },
     });
 
-    return this.getRateContract(tenantId, id);
+    return this.getSupplier(tenantId, id);
   }
 
-  async deactivateRateContract(
+  async deactivateSupplier(
     tenantId: string,
     userId: string,
     id: string,
-  ): Promise<RateContractResponse> {
-    return this.updateRateContract(tenantId, userId, id, { isActive: false });
+  ): Promise<SupplierResponse> {
+    return this.updateSupplier(tenantId, userId, id, { isActive: false });
   }
 
-  // ─── Active Rate Lookup ────────────────────────────────────────
-
-  async getActiveRate(
-    tenantId: string,
-    supplierId: string,
-    metalType: string,
-    purityFineness: number,
-  ): Promise<RateContractResponse | null> {
-    const now = new Date();
-    const contract = await this.prisma.supplierRateContract.findFirst({
-      where: {
-        tenantId,
-        supplierId,
-        metalType,
-        purityFineness,
-        isActive: true,
-        validFrom: { lte: now },
-        validTo: { gte: now },
-      },
-      include: { supplier: { select: { name: true } } },
-      orderBy: { validFrom: 'desc' },
-    });
-
-    return contract ? this.mapRateContractToResponse(contract) : null;
-  }
-
-  // ─── Supplier Performance ──────────────────────────────────────
+  // ─── Performance Metrics ───────────────────────────────────────
 
   async getSupplierPerformance(
     tenantId: string,
@@ -180,30 +167,39 @@ export class WholesaleSupplierService extends TenantAwareService {
     });
 
     const totalOrders = purchaseOrders.length;
-    const completedOrders = purchaseOrders.filter((po) => po.status === 'RECEIVED').length;
+    const completedOrders = purchaseOrders.filter(
+      (po: { status: string }) => po.status === 'RECEIVED',
+    ).length;
 
-    // On-time delivery: received before expected date
     let onTimeCount = 0;
     let deliveredWithDateCount = 0;
     for (const po of purchaseOrders) {
-      if (po.status === 'RECEIVED' && po.expectedDate) {
+      const poAny = po as unknown as {
+        status: string;
+        expectedDate: Date | null;
+        approvedAt: Date | null;
+        items: Array<{ goodsReceiptItems: Array<{ goodsReceipt: { createdAt: Date } }> }>;
+      };
+      if (poAny.status === 'RECEIVED' && poAny.expectedDate) {
         deliveredWithDateCount++;
-        const lastReceipt = po.items
+        const receipts = poAny.items
           .flatMap((i) => i.goodsReceiptItems)
           .map((gri) => gri.goodsReceipt.createdAt)
-          .sort((a, b) => b.getTime() - a.getTime())[0];
-
-        if (lastReceipt && lastReceipt <= po.expectedDate) {
-          onTimeCount++;
-        }
+          .sort((a, b) => b.getTime() - a.getTime());
+        const lastReceipt = receipts[0];
+        if (lastReceipt && lastReceipt <= poAny.expectedDate) onTimeCount++;
       }
     }
 
-    // Quality rejection rate
     let totalReceived = 0;
     let totalRejected = 0;
     for (const po of purchaseOrders) {
-      for (const item of po.items) {
+      const poAny = po as unknown as {
+        items: Array<{
+          goodsReceiptItems: Array<{ receivedQuantity: number; rejectedQuantity: number }>;
+        }>;
+      };
+      for (const item of poAny.items) {
         for (const gri of item.goodsReceiptItems) {
           totalReceived += gri.receivedQuantity;
           totalRejected += gri.rejectedQuantity;
@@ -211,25 +207,28 @@ export class WholesaleSupplierService extends TenantAwareService {
       }
     }
 
-    // Total purchase value
     const totalPurchaseValuePaise = purchaseOrders.reduce(
-      (sum, po) => sum + Number(po.totalPaise),
+      (sum: number, po) => sum + Number((po as unknown as { totalPaise: bigint }).totalPaise),
       0,
     );
 
-    // Average lead time (days between PO sent and receipt)
     let totalLeadDays = 0;
     let leadTimeCount = 0;
     for (const po of purchaseOrders) {
-      if (po.status === 'RECEIVED' && po.approvedAt) {
-        const lastReceipt = po.items
+      const poAny = po as unknown as {
+        status: string;
+        approvedAt: Date | null;
+        items: Array<{ goodsReceiptItems: Array<{ goodsReceipt: { createdAt: Date } }> }>;
+      };
+      if (poAny.status === 'RECEIVED' && poAny.approvedAt) {
+        const receipts = poAny.items
           .flatMap((i) => i.goodsReceiptItems)
           .map((gri) => gri.goodsReceipt.createdAt)
-          .sort((a, b) => b.getTime() - a.getTime())[0];
-
+          .sort((a, b) => b.getTime() - a.getTime());
+        const lastReceipt = receipts[0];
         if (lastReceipt) {
           const days = Math.ceil(
-            (lastReceipt.getTime() - po.approvedAt.getTime()) / (1000 * 60 * 60 * 24),
+            (lastReceipt.getTime() - poAny.approvedAt.getTime()) / (1000 * 60 * 60 * 24),
           );
           totalLeadDays += days;
           leadTimeCount++;
@@ -242,36 +241,45 @@ export class WholesaleSupplierService extends TenantAwareService {
       supplierName: supplier.name,
       totalOrders,
       completedOrders,
-      onTimeDeliveryPercent: deliveredWithDateCount > 0
-        ? Math.round((onTimeCount / deliveredWithDateCount) * 100)
-        : 0,
-      qualityRejectionPercent: totalReceived > 0
-        ? Math.round((totalRejected / totalReceived) * 100)
-        : 0,
-      priceCompliancePercent: 100, // Would compare PO prices against rate contracts
-      averageLeadTimeDays: leadTimeCount > 0
-        ? Math.round(totalLeadDays / leadTimeCount)
-        : 0,
+      onTimeDeliveryPercent:
+        deliveredWithDateCount > 0
+          ? Math.round((onTimeCount / deliveredWithDateCount) * 100)
+          : 0,
+      qualityRejectionPercent:
+        totalReceived > 0 ? Math.round((totalRejected / totalReceived) * 100) : 0,
+      priceCompliancePercent: 100,
+      averageLeadTimeDays: leadTimeCount > 0 ? Math.round(totalLeadDays / leadTimeCount) : 0,
       totalPurchaseValuePaise,
     };
   }
 
   async listSuppliersWithPerformance(
     tenantId: string,
+    filters: SupplierListFilter,
     pagination: Pagination,
   ): Promise<PaginatedResult<SupplierPerformance>> {
+    const where: Record<string, unknown> = { tenantId };
+    if (filters.isActive !== undefined) where.isActive = filters.isActive;
+    if (filters.supplierType) where.supplierType = filters.supplierType;
+    if (filters.search) {
+      where.OR = [
+        { name: { contains: filters.search } },
+        { gstinNumber: { contains: filters.search } },
+      ];
+    }
+
     const [suppliers, total] = await Promise.all([
       this.prisma.supplier.findMany({
-        where: { tenantId, isActive: true },
+        where,
         orderBy: { name: 'asc' },
         skip: (pagination.page - 1) * pagination.limit,
         take: pagination.limit,
       }),
-      this.prisma.supplier.count({ where: { tenantId, isActive: true } }),
+      this.prisma.supplier.count({ where }),
     ]);
 
     const items = await Promise.all(
-      suppliers.map((s) => this.getSupplierPerformance(tenantId, s.id)),
+      suppliers.map((s: { id: string }) => this.getSupplierPerformance(tenantId, s.id)),
     );
 
     const totalPages = Math.ceil(total / pagination.limit);
@@ -288,24 +296,27 @@ export class WholesaleSupplierService extends TenantAwareService {
 
   // ─── Mapper ────────────────────────────────────────────────────
 
-  private mapRateContractToResponse(contract: Record<string, unknown>): RateContractResponse {
-    const c = contract as Record<string, unknown>;
-    const supplier = c.supplier as Record<string, unknown> | undefined;
-
+  private mapToResponse(supplier: Record<string, unknown>): SupplierResponse {
+    const s = supplier;
     return {
-      id: c.id as string,
-      tenantId: c.tenantId as string,
-      supplierId: c.supplierId as string,
-      supplierName: supplier?.name as string | undefined,
-      metalType: c.metalType as string,
-      purityFineness: c.purityFineness as number,
-      ratePaisePer10g: Number(c.ratePaisePer10g),
-      validFrom: new Date(c.validFrom as string).toISOString(),
-      validTo: new Date(c.validTo as string).toISOString(),
-      isActive: c.isActive as boolean,
-      notes: (c.notes as string) ?? null,
-      createdAt: new Date(c.createdAt as string).toISOString(),
-      updatedAt: new Date(c.updatedAt as string).toISOString(),
+      id: s.id as string,
+      tenantId: s.tenantId as string,
+      name: s.name as string,
+      contactPerson: (s.contactPerson as string) ?? null,
+      email: (s.email as string) ?? null,
+      phone: (s.phone as string) ?? null,
+      address: (s.address as string) ?? null,
+      city: (s.city as string) ?? null,
+      state: (s.state as string) ?? null,
+      country: (s.country as string) ?? null,
+      postalCode: (s.postalCode as string) ?? null,
+      gstinNumber: (s.gstinNumber as string) ?? null,
+      panNumber: (s.panNumber as string) ?? null,
+      supplierType: (s.supplierType as string) ?? null,
+      rating: (s.rating as number) ?? null,
+      isActive: s.isActive as boolean,
+      createdAt: new Date(s.createdAt as string).toISOString(),
+      updatedAt: new Date(s.updatedAt as string).toISOString(),
     };
   }
 }

@@ -10,6 +10,7 @@ import { RecommendationsSimilarityService } from './recommendations.similarity.s
 import { RecommendationsScoringService } from './recommendations.scoring.service';
 import { RecommendationsController } from './recommendations.controller';
 import { RecommendationsEventHandler } from './recommendations.event-handler';
+import { RecommendationsTrpcRouter } from './recommendations.trpc';
 
 @Module({
   controllers: [RecommendationsController],
@@ -19,12 +20,14 @@ import { RecommendationsEventHandler } from './recommendations.event-handler';
     RecommendationsSimilarityService,
     RecommendationsScoringService,
     RecommendationsEventHandler,
+    RecommendationsTrpcRouter,
   ],
   exports: [
     RecommendationsService,
     RecommendationsBehaviorService,
     RecommendationsSimilarityService,
     RecommendationsScoringService,
+    RecommendationsTrpcRouter,
   ],
 })
 export class RecommendationsModule {}

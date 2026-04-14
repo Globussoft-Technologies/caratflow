@@ -4,6 +4,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { EventBusService } from '../../event-bus/event-bus.service';
 import type {
   RfidTagData,
   RfidScanResult,
@@ -13,11 +14,70 @@ import type {
   RfidAntiTheftCheck,
   RfidAntiTheftResult,
   RfidWriteRequest,
+  IDevice,
+  DeviceType,
+  DeviceStatus,
+  DeviceStatusInfo,
 } from '@caratflow/shared-types';
+import { v4 as uuid } from 'uuid';
+
+/**
+ * Stub driver for UHF RFID readers (Impinj Speedway, Zebra FX9600,
+ * etc.). Real implementations would speak LLRP / Impinj IoT REST
+ * over TCP — this skeleton implements the IDevice contract so the
+ * service can register it, fan tag-read events through the same
+ * pipeline as other device types, and be swapped for a real
+ * driver later.
+ */
+export class RfidReaderStubDevice implements IDevice<RfidTagData[], string> {
+  readonly deviceType: DeviceType = 'RFID_READER' as DeviceType;
+  private connected = false;
+
+  constructor(
+    public readonly deviceId: string,
+    private readonly host: string,
+    private readonly port: number,
+    private readonly onTags: (tags: RfidTagData[]) => void,
+  ) {}
+
+  async connect(): Promise<void> {
+    this.connected = true;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+  }
+
+  /** Real implementation: pull tag inventory once. Stub returns []. */
+  async read(): Promise<RfidTagData[] | null> {
+    return [];
+  }
+
+  /** Real implementation: push a control command (start/stop/tune). */
+  async write(_payload: string): Promise<void> {
+    // no-op
+  }
+
+  async status(): Promise<DeviceStatusInfo> {
+    return {
+      deviceId: this.deviceId,
+      status: (this.connected ? 'CONNECTED' : 'DISCONNECTED') as DeviceStatus,
+      message: `${this.host}:${this.port}`,
+    };
+  }
+
+  /** Inject a tag read (used by tests / WebSocket relay) */
+  pushTags(tags: RfidTagData[]): void {
+    this.onTags(tags);
+  }
+}
 
 @Injectable()
 export class HardwareRfidService extends TenantAwareService {
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    private readonly eventBus: EventBusService,
+  ) {
     super(prisma);
   }
 
@@ -67,7 +127,7 @@ export class HardwareRfidService extends TenantAwareService {
       };
     }
 
-    return {
+    const result: RfidTagLookupResponse = {
       tagId: epc,
       epc,
       serialNumber: serial.serialNumber,
@@ -77,6 +137,17 @@ export class HardwareRfidService extends TenantAwareService {
       locationId: serial.location?.id ?? null,
       status: serial.status,
     };
+
+    await this.eventBus.publish({
+      id: uuid(),
+      type: 'hardware.rfid.scanned',
+      tenantId,
+      userId: 'system',
+      timestamp: new Date().toISOString(),
+      payload: { deviceId: 'rfid-reader', epc, serialNumberId: serial.id },
+    });
+
+    return result;
   }
 
   /**

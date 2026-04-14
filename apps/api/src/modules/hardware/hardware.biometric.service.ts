@@ -1,109 +1,150 @@
 // ─── Hardware Biometric Attendance Service ────────────────────
-// Process biometric events, record attendance, query summaries.
+// Receives raw biometric events from ZKTeco / ESSL terminals,
+// persists them to the dedicated `HardwareBiometricEvent` table,
+// reconciles them to karigar attendance records, and exposes
+// query helpers used by the REST controller and tRPC router.
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { EventBusService } from '../../event-bus/event-bus.service';
 import type {
   BiometricEvent,
   BiometricEventResponse,
   BiometricAttendanceQuery,
+  BiometricWebhookPayload,
 } from '@caratflow/shared-types';
 import { v4 as uuid } from 'uuid';
 
-/** Setting key prefix for biometric events */
-const BIOMETRIC_SETTING_CATEGORY = 'hardware';
-const BIOMETRIC_KEY_PREFIX = 'biometric-event:';
+interface BiometricEventRow {
+  id: string;
+  tenantId: string;
+  deviceId: string;
+  employeeCode: string;
+  employeeName: string | null;
+  eventType: string;
+  eventAt: Date;
+  processed: boolean;
+  rawPayload: unknown;
+  createdAt: Date;
+}
 
 @Injectable()
 export class HardwareBiometricService extends TenantAwareService {
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    private readonly eventBus: EventBusService,
+  ) {
     super(prisma);
   }
 
   /**
-   * Process a biometric check-in/check-out event.
-   * Looks up employee by code, records the attendance event.
+   * Process a biometric check-in/check-out event coming from the
+   * tRPC layer (already validated against `BiometricEventSchema`).
    */
   async processEvent(
     tenantId: string,
     input: BiometricEvent,
   ): Promise<BiometricEventResponse> {
-    // Look up employee by code (using User or Karigar table)
-    const employee = await this.findEmployee(tenantId, input.employeeCode);
-
-    const eventId = uuid();
-    const now = new Date();
-
-    const eventRecord: BiometricEventResponse = {
-      id: eventId,
-      tenantId,
+    return this.persistEvent(tenantId, {
+      deviceId: input.deviceId,
       employeeCode: input.employeeCode,
       eventType: input.eventType,
       timestamp: input.timestamp,
-      deviceId: input.deviceId,
-      employeeName: employee?.name ?? null,
-      processed: true,
-    };
-
-    // Store event in Settings table
-    await this.prisma.setting.create({
-      data: {
-        id: uuid(),
-        tenantId,
-        category: BIOMETRIC_SETTING_CATEGORY,
-        key: `${BIOMETRIC_KEY_PREFIX}${eventId}`,
-        value: JSON.stringify(eventRecord),
-        createdBy: 'system',
-        updatedBy: 'system',
-      },
     });
-
-    // If karigarAttendance model exists, try to record attendance there
-    await this.recordKarigarAttendance(tenantId, input, employee);
-
-    return eventRecord;
   }
 
   /**
-   * Get attendance events based on filters.
+   * Process a webhook payload posted by a ZKTeco/ESSL terminal.
+   * The terminal payload format is loose so this method accepts
+   * any pre-parsed `BiometricWebhookPayload` and stores the raw
+   * body alongside it for audit.
    */
+  async processWebhook(
+    tenantId: string,
+    payload: BiometricWebhookPayload,
+  ): Promise<BiometricEventResponse> {
+    return this.persistEvent(
+      tenantId,
+      {
+        deviceId: payload.deviceId ?? payload.deviceSerial ?? 'unknown',
+        employeeCode: payload.employeeCode,
+        eventType: payload.eventType,
+        timestamp: payload.timestamp,
+      },
+      payload.raw ?? null,
+    );
+  }
+
+  private async persistEvent(
+    tenantId: string,
+    input: {
+      deviceId: string;
+      employeeCode: string;
+      eventType: 'CHECK_IN' | 'CHECK_OUT';
+      timestamp: string;
+    },
+    rawPayload: Record<string, unknown> | null = null,
+  ): Promise<BiometricEventResponse> {
+    const employee = await this.findEmployee(tenantId, input.employeeCode);
+    const eventId = uuid();
+    const eventAt = new Date(input.timestamp);
+
+    const created = (await this.prisma.hardwareBiometricEvent.create({
+      data: {
+        id: eventId,
+        tenantId,
+        deviceId: input.deviceId,
+        employeeCode: input.employeeCode,
+        employeeName: employee?.name ?? null,
+        eventType: input.eventType as never,
+        eventAt,
+        processed: true,
+        rawPayload: (rawPayload ?? undefined) as never,
+      },
+    })) as unknown as BiometricEventRow;
+
+    await this.recordKarigarAttendance(tenantId, eventAt, input.eventType, employee?.id ?? null);
+
+    await this.eventBus.publish({
+      id: uuid(),
+      type: 'hardware.biometric.received',
+      tenantId,
+      userId: 'system',
+      timestamp: new Date().toISOString(),
+      payload: {
+        deviceId: input.deviceId,
+        employeeCode: input.employeeCode,
+        eventType: input.eventType,
+      },
+    });
+
+    return this.toResponse(created);
+  }
+
   async getAttendance(
     tenantId: string,
     query: BiometricAttendanceQuery,
   ): Promise<BiometricEventResponse[]> {
-    const settings = await this.prisma.setting.findMany({
-      where: {
-        tenantId,
-        category: BIOMETRIC_SETTING_CATEGORY,
-        key: { startsWith: BIOMETRIC_KEY_PREFIX },
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 500,
-    });
-
-    let events = settings.map(
-      (s) => JSON.parse(s.value as string) as BiometricEventResponse,
-    );
-
-    // Apply filters
-    if (query.deviceId) {
-      events = events.filter((e) => e.deviceId === query.deviceId);
-    }
-    if (query.employeeCode) {
-      events = events.filter((e) => e.employeeCode === query.employeeCode);
-    }
+    const where: Record<string, unknown> = { tenantId };
+    if (query.deviceId) where.deviceId = query.deviceId;
+    if (query.employeeCode) where.employeeCode = query.employeeCode;
     if (query.date) {
-      const datePrefix = query.date; // Expected format: YYYY-MM-DD
-      events = events.filter((e) => e.timestamp.startsWith(datePrefix));
+      const start = new Date(query.date);
+      const end = new Date(query.date);
+      end.setDate(end.getDate() + 1);
+      where.eventAt = { gte: start, lt: end };
     }
 
-    return events;
+    const rows = (await this.prisma.hardwareBiometricEvent.findMany({
+      where: where as never,
+      orderBy: { eventAt: 'desc' },
+      take: 500,
+    })) as unknown as BiometricEventRow[];
+
+    return rows.map((r) => this.toResponse(r));
   }
 
-  /**
-   * Get attendance summary for a specific date and device.
-   */
   async getAttendanceSummary(
     tenantId: string,
     date: string,
@@ -121,38 +162,38 @@ export class HardwareBiometricService extends TenantAwareService {
   }> {
     const events = await this.getAttendance(tenantId, { date, deviceId });
 
-    const employeeMap = new Map<string, {
-      employeeCode: string;
-      employeeName: string | null;
-      checkIn: string | null;
-      checkOut: string | null;
-    }>();
-
+    const employeeMap = new Map<
+      string,
+      {
+        employeeCode: string;
+        employeeName: string | null;
+        checkIn: string | null;
+        checkOut: string | null;
+      }
+    >();
     let totalCheckIns = 0;
     let totalCheckOuts = 0;
 
     for (const event of events) {
-      const existing = employeeMap.get(event.employeeCode) ?? {
-        employeeCode: event.employeeCode,
-        employeeName: event.employeeName,
-        checkIn: null,
-        checkOut: null,
-      };
+      const existing =
+        employeeMap.get(event.employeeCode) ?? {
+          employeeCode: event.employeeCode,
+          employeeName: event.employeeName,
+          checkIn: null,
+          checkOut: null,
+        };
 
       if (event.eventType === 'CHECK_IN') {
-        // Use the earliest check-in
         if (!existing.checkIn || event.timestamp < existing.checkIn) {
           existing.checkIn = event.timestamp;
         }
         totalCheckIns++;
       } else {
-        // Use the latest check-out
         if (!existing.checkOut || event.timestamp > existing.checkOut) {
           existing.checkOut = event.timestamp;
         }
         totalCheckOuts++;
       }
-
       employeeMap.set(event.employeeCode, existing);
     }
 
@@ -166,85 +207,103 @@ export class HardwareBiometricService extends TenantAwareService {
 
   // ─── Private Helpers ────────────────────────────────────────
 
+  private toResponse(row: BiometricEventRow): BiometricEventResponse {
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      deviceId: row.deviceId,
+      employeeCode: row.employeeCode,
+      employeeName: row.employeeName,
+      eventType: row.eventType as 'CHECK_IN' | 'CHECK_OUT',
+      timestamp: row.eventAt.toISOString(),
+      processed: row.processed,
+    };
+  }
+
   private async findEmployee(
     tenantId: string,
     employeeCode: string,
   ): Promise<{ id: string; name: string } | null> {
-    // Try finding in User table first
+    // Look up by Karigar employeeCode (manufacturing schema)
+    try {
+      const karigar = await this.prisma.karigar.findFirst({
+        where: { tenantId, employeeCode },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      if (karigar) {
+        return {
+          id: karigar.id,
+          name: `${karigar.firstName} ${karigar.lastName}`.trim(),
+        };
+      }
+    } catch {
+      // Karigar table may be unreachable in some environments
+    }
+
+    // Fall back to platform User by email (employee code = email)
     const user = await this.prisma.user.findFirst({
-      where: {
-        tenantId,
-        OR: [
-          { employeeCode },
-          { email: employeeCode },
-        ],
-      },
+      where: { tenantId, email: employeeCode },
       select: { id: true, firstName: true, lastName: true },
     });
-
     if (user) {
       return { id: user.id, name: `${user.firstName} ${user.lastName}`.trim() };
     }
-
-    // Try Karigar table
-    try {
-      const karigar = await (this.prisma as Record<string, unknown>).karigar?.findFirst?.({
-        where: { tenantId, karigarCode: employeeCode },
-        select: { id: true, name: true },
-      });
-      if (karigar) {
-        return karigar as { id: string; name: string };
-      }
-    } catch {
-      // Karigar model may not exist
-    }
-
     return null;
   }
 
   private async recordKarigarAttendance(
     tenantId: string,
-    input: BiometricEvent,
-    employee: { id: string; name: string } | null,
+    eventAt: Date,
+    eventType: 'CHECK_IN' | 'CHECK_OUT',
+    karigarId: string | null,
   ): Promise<void> {
-    if (!employee) return;
-
+    if (!karigarId) return;
     try {
-      // Attempt to record in KarigarAttendance if the model exists
-      const prismaAny = this.prisma as Record<string, unknown>;
-      if (typeof prismaAny.karigarAttendance?.create === 'function') {
-        const today = new Date(input.timestamp);
-        today.setHours(0, 0, 0, 0);
+      const day = new Date(eventAt);
+      day.setHours(0, 0, 0, 0);
 
-        if (input.eventType === 'CHECK_IN') {
-          await prismaAny.karigarAttendance.create({
-            data: {
-              id: uuid(),
-              tenantId,
-              karigarId: employee.id,
-              date: today,
-              checkIn: new Date(input.timestamp),
-              createdBy: 'biometric',
-              updatedBy: 'biometric',
-            },
-          });
-        } else {
-          // Update existing attendance record with check-out time
-          await prismaAny.karigarAttendance.updateMany({
-            where: {
-              tenantId,
-              karigarId: employee.id,
-              date: today,
-            },
-            data: {
-              checkOut: new Date(input.timestamp),
-              updatedBy: 'biometric',
-            },
-          });
-        }
+      if (eventType === 'CHECK_IN') {
+        // Upsert: create if missing, otherwise update earliest check-in
+        await this.prisma.karigarAttendance.upsert({
+          where: {
+            tenantId_karigarId_date: { tenantId, karigarId, date: day },
+          },
+          create: {
+            id: uuid(),
+            tenantId,
+            karigarId,
+            date: day,
+            checkInTime: eventAt,
+            createdBy: 'biometric',
+            updatedBy: 'biometric',
+          },
+          update: {
+            checkInTime: eventAt,
+            updatedBy: 'biometric',
+          },
+        });
+      } else {
+        await this.prisma.karigarAttendance.upsert({
+          where: {
+            tenantId_karigarId_date: { tenantId, karigarId, date: day },
+          },
+          create: {
+            id: uuid(),
+            tenantId,
+            karigarId,
+            date: day,
+            checkOutTime: eventAt,
+            createdBy: 'biometric',
+            updatedBy: 'biometric',
+          },
+          update: {
+            checkOutTime: eventAt,
+            updatedBy: 'biometric',
+          },
+        });
       }
     } catch {
-      // Silently fail if karigar attendance tracking is not set up
+      // Best-effort: don't fail biometric ingest if attendance reconciliation fails
     }
   }
 }

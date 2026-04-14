@@ -16,6 +16,7 @@ import { StorefrontAbandonedCartService } from './storefront.abandoned-cart.serv
 import { StorefrontHomeService } from './storefront.home.service';
 import { StorefrontCouponService } from './storefront.coupon.service';
 import { StorefrontEventHandler } from './storefront.event-handler';
+import { StorefrontTrpcRouter } from './storefront.trpc';
 
 @Module({
   controllers: [StorefrontController],
@@ -32,6 +33,7 @@ import { StorefrontEventHandler } from './storefront.event-handler';
     StorefrontHomeService,
     StorefrontCouponService,
     StorefrontEventHandler,
+    StorefrontTrpcRouter,
   ],
   exports: [
     StorefrontCatalogService,
@@ -45,6 +47,7 @@ import { StorefrontEventHandler } from './storefront.event-handler';
     StorefrontAbandonedCartService,
     StorefrontHomeService,
     StorefrontCouponService,
+    StorefrontTrpcRouter,
   ],
 })
 export class StorefrontModule {}
