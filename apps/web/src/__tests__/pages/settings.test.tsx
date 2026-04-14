@@ -74,10 +74,11 @@ describe('Settings Pages', () => {
   });
 
   describe('Import Page', () => {
-    it('renders with page header title "Import Data"', async () => {
+    it('renders with page header title "Data Import"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/settings/import/page');
       render(<Page />);
-      expect(screen.getByText('Import Data')).toBeInTheDocument();
+      // title is "Data Import" (was "Import Data" earlier)
+      expect(screen.getByText('Data Import')).toBeInTheDocument();
     });
   });
 

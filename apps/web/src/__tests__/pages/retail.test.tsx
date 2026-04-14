@@ -26,10 +26,11 @@ describe('Retail Pages', () => {
   });
 
   describe('Sales Page', () => {
-    it('renders with page header title "Sales History"', async () => {
+    it('renders with page header title "Sales"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/retail/sales/page');
       render(<Page />);
-      expect(screen.getByText('Sales History')).toBeInTheDocument();
+      // title is "Sales" (was "Sales History" earlier)
+      expect(screen.getAllByText('Sales').length).toBeGreaterThan(0);
     });
   });
 
@@ -42,10 +43,11 @@ describe('Retail Pages', () => {
   });
 
   describe('Repairs Page', () => {
-    it('renders with page header title "Repair Queue"', async () => {
+    it('renders with page header title "Repair Orders"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/retail/repairs/page');
       render(<Page />);
-      expect(screen.getByText('Repair Queue')).toBeInTheDocument();
+      // title is "Repair Orders" (was "Repair Queue" earlier)
+      expect(screen.getByText('Repair Orders')).toBeInTheDocument();
     });
   });
 

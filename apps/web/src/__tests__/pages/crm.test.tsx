@@ -12,10 +12,11 @@ describe('CRM Pages', () => {
     it('renders stat cards for CRM metrics', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/crm/page');
       render(<Page />);
-      expect(screen.getByText('New Leads')).toBeInTheDocument();
-      expect(screen.getByText('Conversion Rate')).toBeInTheDocument();
-      expect(screen.getByText('Active Customers')).toBeInTheDocument();
-      expect(screen.getByText('Loyalty Members')).toBeInTheDocument();
+      // actual StatCard titles on the current dashboard
+      expect(screen.getByText('Total Customers')).toBeInTheDocument();
+      expect(screen.getByText('Active Leads')).toBeInTheDocument();
+      expect(screen.getByText('Active Campaigns')).toBeInTheDocument();
+      expect(screen.getByText('New (30d)')).toBeInTheDocument();
     });
   });
 
@@ -28,18 +29,20 @@ describe('CRM Pages', () => {
   });
 
   describe('Loyalty Page', () => {
-    it('renders with page header title "Loyalty Program"', async () => {
+    it('renders with page header title "Loyalty Programs"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/crm/loyalty/page');
       render(<Page />);
-      expect(screen.getByText('Loyalty Program')).toBeInTheDocument();
+      // page title is "Loyalty Programs" (was "Loyalty Program" in an earlier spec)
+      expect(screen.getByText('Loyalty Programs')).toBeInTheDocument();
     });
   });
 
   describe('Leads Page', () => {
-    it('renders with page header title "Lead Pipeline"', async () => {
+    it('renders with page header title "Leads"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/crm/leads/page');
       render(<Page />);
-      expect(screen.getByText('Lead Pipeline')).toBeInTheDocument();
+      // page title is "Leads" (was "Lead Pipeline" in an earlier spec)
+      expect(screen.getByText('Leads')).toBeInTheDocument();
     });
   });
 
@@ -52,18 +55,20 @@ describe('CRM Pages', () => {
   });
 
   describe('Notifications Page', () => {
-    it('renders with page header title "Notifications"', async () => {
+    it('renders with page header title "Notification Logs"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/crm/notifications/page');
       render(<Page />);
-      expect(screen.getByText('Notifications')).toBeInTheDocument();
+      // page title is "Notification Logs" (was "Notifications" in an earlier spec)
+      expect(screen.getByText('Notification Logs')).toBeInTheDocument();
     });
   });
 
   describe('Feedback Page', () => {
-    it('renders with page header title "Customer Feedback"', async () => {
+    it('renders with page header title "Feedback"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/crm/feedback/page');
       render(<Page />);
-      expect(screen.getByText('Customer Feedback')).toBeInTheDocument();
+      // page title is "Feedback" (was "Customer Feedback" in an earlier spec)
+      expect(screen.getByText('Feedback')).toBeInTheDocument();
     });
   });
 

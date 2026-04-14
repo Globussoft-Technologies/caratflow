@@ -23,7 +23,8 @@ vi.mock('next/link', () => ({
   },
 }));
 
-// Mock @/lib/trpc - creates a deep proxy that returns mock query/mutation hooks
+// Mock @/lib/trpc - creates a deep proxy that returns mock query/mutation hooks.
+// Default `data` is undefined; individual tests can re-mock with richer shapes.
 function createRecursiveProxy(): unknown {
   const handler: ProxyHandler<Record<string, unknown>> = {
     get(_target, prop: string) {
@@ -32,6 +33,12 @@ function createRecursiveProxy(): unknown {
       }
       if (prop === 'useMutation') {
         return () => ({ mutate: vi.fn(), isPending: false, error: null, isSuccess: false });
+      }
+      if (prop === 'useUtils') {
+        return () => createRecursiveProxy();
+      }
+      if (prop === 'useInfiniteQuery') {
+        return () => ({ data: { pages: [] }, isLoading: false, error: null, fetchNextPage: vi.fn(), hasNextPage: false });
       }
       return createRecursiveProxy();
     },

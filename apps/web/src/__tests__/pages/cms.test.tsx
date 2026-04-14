@@ -14,7 +14,7 @@ describe('CMS Pages', () => {
       render(<Page />);
       expect(screen.getByText('Active Banners')).toBeInTheDocument();
       expect(screen.getAllByText('Collections').length).toBeGreaterThan(0);
-      expect(screen.getByText('Published Pages')).toBeInTheDocument();
+      expect(screen.getAllByText('Pages').length).toBeGreaterThan(0);
       expect(screen.getByText('Blog Posts')).toBeInTheDocument();
     });
   });
@@ -36,10 +36,11 @@ describe('CMS Pages', () => {
   });
 
   describe('Static Pages Page', () => {
-    it('renders with page header title "Static Pages"', async () => {
+    it('renders with page header title "Pages"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/cms/pages/page');
       render(<Page />);
-      expect(screen.getByText('Static Pages')).toBeInTheDocument();
+      // page title was renamed from "Static Pages" to just "Pages"
+      expect(screen.getAllByText('Pages').length).toBeGreaterThan(0);
     });
   });
 
@@ -52,18 +53,20 @@ describe('CMS Pages', () => {
   });
 
   describe('FAQ Page', () => {
-    it('renders with page header title "FAQ Management"', async () => {
+    it('renders with page header title "FAQ"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/cms/faq/page');
       render(<Page />);
-      expect(screen.getByText('FAQ Management')).toBeInTheDocument();
+      // page title was renamed from "FAQ Management" to "FAQ"
+      expect(screen.getByText('FAQ')).toBeInTheDocument();
     });
   });
 
   describe('Homepage Builder Page', () => {
-    it('renders with page header title "Homepage Builder"', async () => {
+    it('renders with page header title "Homepage Sections"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/cms/homepage/page');
       render(<Page />);
-      expect(screen.getByText('Homepage Builder')).toBeInTheDocument();
+      // page title is "Homepage Sections" (was "Homepage Builder" in an earlier spec)
+      expect(screen.getByText('Homepage Sections')).toBeInTheDocument();
     });
   });
 

@@ -31,6 +31,41 @@ export enum JobPriority {
   URGENT = 'URGENT',
 }
 
+export enum InventoryMetalType {
+  GOLD = 'GOLD',
+  SILVER = 'SILVER',
+  PLATINUM = 'PLATINUM',
+  PALLADIUM = 'PALLADIUM',
+}
+
+export enum ValuationMethod {
+  AVG = 'AVG',
+  FIFO = 'FIFO',
+  LIFO = 'LIFO',
+  WEIGHTED_AVG = 'WEIGHTED_AVG',
+}
+
+export enum MovementType {
+  IN = 'IN',
+  OUT = 'OUT',
+  TRANSFER = 'TRANSFER',
+  ADJUSTMENT = 'ADJUSTMENT',
+}
+
+export enum TransferStatus {
+  DRAFT = 'DRAFT',
+  IN_TRANSIT = 'IN_TRANSIT',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum StockTakeStatus {
+  DRAFT = 'DRAFT',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
 export enum SalePaymentMethod {
   CASH = 'CASH',
   CARD = 'CARD',

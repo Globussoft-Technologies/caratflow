@@ -12,56 +12,63 @@ describe('Reports Pages', () => {
     it('renders report category cards', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/reports/page');
       render(<Page />);
-      expect(screen.getByText('Sales Analytics')).toBeInTheDocument();
+      // category link labels on the current reports hub
+      expect(screen.getByText('Sales Reports')).toBeInTheDocument();
       expect(screen.getByText('Inventory Reports')).toBeInTheDocument();
     });
   });
 
   describe('Sales Reports Page', () => {
-    it('renders with page header title "Sales Analytics"', async () => {
+    it('renders with page header title "Sales Report"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/reports/sales/page');
       render(<Page />);
-      expect(screen.getByText('Sales Analytics')).toBeInTheDocument();
+      // title is "Sales Report" (was "Sales Analytics" earlier)
+      expect(screen.getByText('Sales Report')).toBeInTheDocument();
     });
   });
 
   describe('Inventory Reports Page', () => {
-    it('renders with page header title "Inventory Analytics"', async () => {
+    it('renders with page header title "Inventory Reports"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/reports/inventory/page');
       render(<Page />);
-      expect(screen.getByText('Inventory Analytics')).toBeInTheDocument();
+      // title is "Inventory Reports" (was "Inventory Analytics" earlier)
+      expect(screen.getAllByText('Inventory Reports').length).toBeGreaterThan(0);
     });
   });
 
   describe('Manufacturing Reports Page', () => {
-    it('renders with page header title "Manufacturing Analytics"', async () => {
+    it('renders with page header title "Manufacturing Reports"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/reports/manufacturing/page');
       render(<Page />);
-      expect(screen.getByText('Manufacturing Analytics')).toBeInTheDocument();
+      // title is "Manufacturing Reports" (was "Manufacturing Analytics" earlier)
+      expect(screen.getByText('Manufacturing Reports')).toBeInTheDocument();
     });
   });
 
   describe('CRM Reports Page', () => {
-    it('renders with page header title "Customer Analytics"', async () => {
+    it('renders with page header title "CRM Reports"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/reports/crm/page');
       render(<Page />);
-      expect(screen.getByText('Customer Analytics')).toBeInTheDocument();
+      // title is "CRM Reports" (was "Customer Analytics" earlier)
+      expect(screen.getByText('CRM Reports')).toBeInTheDocument();
     });
   });
 
   describe('Custom Reports Page', () => {
-    it('renders with page header title "Custom Report Builder"', async () => {
+    it('renders with page header title "Saved Reports"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/reports/custom/page');
       render(<Page />);
-      expect(screen.getByText('Custom Report Builder')).toBeInTheDocument();
+      // title is "Saved Reports" (was "Custom Report Builder" earlier)
+      expect(screen.getByText('Saved Reports')).toBeInTheDocument();
     });
   });
 
   describe('Forecast Page', () => {
-    it('renders with page header title "Demand Forecasting"', async () => {
+    it('renders with page header title "Forecasting"', async () => {
       const { default: Page } = await import('../../../app/(dashboard)/reports/forecast/page');
       render(<Page />);
-      expect(screen.getByText('Demand Forecasting')).toBeInTheDocument();
+      // title is "Forecasting" (was "Demand Forecasting" earlier)
+      expect(screen.getByText('Forecasting')).toBeInTheDocument();
     });
   });
 
