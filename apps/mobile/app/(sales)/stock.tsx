@@ -9,7 +9,7 @@ import { Badge, getStatusVariant } from '@/components/Badge';
 import { MoneyDisplay } from '@/components/MoneyDisplay';
 import { WeightDisplay } from '@/components/WeightDisplay';
 import { Button } from '@/components/Button';
-import { useApiQuery } from '@/hooks/useApi';
+import { trpc } from '@/lib/trpc';
 import { useAuthStore } from '@/store/auth-store';
 import { finenessToKaratLabel } from '@/utils/purity';
 
@@ -33,12 +33,7 @@ export default function StockScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const { activeLocationId } = useAuthStore();
 
-  const { data, isLoading, refetch } = useApiQuery<{
-    items: StockItem[];
-    total: number;
-  }>(
-    ['sales', 'stock', search, activeLocationId],
-    '/api/v1/inventory/stock-items',
+  const { data, isLoading, refetch } = trpc.inventory.stockItems.list.useQuery(
     {
       search: search || undefined,
       locationId: activeLocationId ?? undefined,
@@ -52,7 +47,8 @@ export default function StockScreen() {
     setRefreshing(false);
   }, [refetch]);
 
-  const items = data?.items ?? [];
+  // Data shape comes from tRPC inventoryService.findAllStockItems — cast for display.
+  const items = ((data as { items?: StockItem[] } | undefined)?.items ?? []) as StockItem[];
 
   return (
     <SafeAreaView className="flex-1 bg-surface-50">

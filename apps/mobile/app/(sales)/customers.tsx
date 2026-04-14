@@ -7,7 +7,7 @@ import { DataList } from '@/components/DataList';
 import { Card } from '@/components/Card';
 import { Avatar } from '@/components/Avatar';
 import { Badge } from '@/components/Badge';
-import { useApiQuery } from '@/hooks/useApi';
+import { trpc } from '@/lib/trpc';
 
 interface CustomerListItem {
   id: string;
@@ -25,14 +25,10 @@ export default function CustomersScreen() {
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data, isLoading, refetch } = useApiQuery<{
-    items: CustomerListItem[];
-    total: number;
-  }>(
-    ['sales', 'customers', search],
-    '/api/v1/crm/customers',
-    { search: search || undefined, limit: 50 },
-  );
+  const { data, isLoading, refetch } = trpc.crm.customerList.useQuery({
+    search: search || undefined,
+    limit: 50,
+  });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -40,7 +36,7 @@ export default function CustomersScreen() {
     setRefreshing(false);
   }, [refetch]);
 
-  const customers = data?.items ?? [];
+  const customers = ((data as { items?: CustomerListItem[] } | undefined)?.items ?? []) as CustomerListItem[];
 
   const tierVariant = (tier: string | null) => {
     switch (tier) {

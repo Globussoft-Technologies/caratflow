@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAuthStore } from '@/store/auth-store';
 import { addNotificationListeners } from '@/lib/notifications';
+import { trpc, createTrpcClient } from '@/lib/trpc';
 import '../global.css';
 
 const queryClient = new QueryClient({
@@ -18,6 +19,8 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+const trpcClient = createTrpcClient();
 
 export default function RootLayout() {
   const restoreSession = useAuthStore((s) => s.restoreSession);
@@ -33,17 +36,19 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <QueryClientProvider client={queryClient}>
-        <StatusBar style="dark" />
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(owner)" />
-          <Stack.Screen name="(sales)" />
-          <Stack.Screen name="(customer)" />
-          <Stack.Screen name="(agent)" />
-        </Stack>
-      </QueryClientProvider>
+      <trpc.Provider client={trpcClient} queryClient={queryClient}>
+        <QueryClientProvider client={queryClient}>
+          <StatusBar style="dark" />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(owner)" />
+            <Stack.Screen name="(sales)" />
+            <Stack.Screen name="(customer)" />
+            <Stack.Screen name="(agent)" />
+          </Stack>
+        </QueryClientProvider>
+      </trpc.Provider>
     </GestureHandlerRootView>
   );
 }

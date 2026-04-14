@@ -1,14 +1,13 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useApiQuery } from '@/hooks/useApi';
 import { StatCard } from '@/components/StatCard';
 import { Card } from '@/components/Card';
 import { MoneyDisplay } from '@/components/MoneyDisplay';
 import { Badge, getStatusVariant } from '@/components/Badge';
 import { formatTime } from '@/utils/date';
 import { formatMoneyShort, formatMoney } from '@/utils/money';
-import { useAuthStore } from '@/store/auth-store';
+import { trpc } from '@/lib/trpc';
 
 interface TodaySummary {
   mySalesCount: number;
@@ -32,14 +31,12 @@ interface TodaySummary {
 }
 
 export default function TodayScreen() {
-  const { user } = useAuthStore();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data, isLoading, refetch } = useApiQuery<TodaySummary>(
-    ['sales', 'today', user?.id],
-    '/api/v1/retail/today-summary',
-    { userId: user?.id },
-  );
+  // retail.staffDashboard aggregates sales for the logged-in user
+  // (derived from ctx.userId on the server) plus pending repairs,
+  // recent transactions, and today's gold/silver rates.
+  const { data, refetch } = trpc.retail.staffDashboard.useQuery(undefined);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -47,7 +44,8 @@ export default function TodayScreen() {
     setRefreshing(false);
   }, [refetch]);
 
-  const summary = data ?? {
+  const raw = data as unknown as TodaySummary | undefined;
+  const summary: TodaySummary = raw ?? {
     mySalesCount: 0,
     myRevenuePaise: 0,
     goldRatePer10g: 0,

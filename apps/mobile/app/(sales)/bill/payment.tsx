@@ -7,7 +7,7 @@ import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { MoneyDisplay } from '@/components/MoneyDisplay';
 import { Badge } from '@/components/Badge';
-import { useApiMutation } from '@/hooks/useApi';
+import { trpc } from '@/lib/trpc';
 import { useAuthStore } from '@/store/auth-store';
 import { formatMoney, decimalToPaise, paiseToDecimal } from '@/utils/money';
 
@@ -39,16 +39,10 @@ export default function PaymentScreen() {
   const paidTotal = payments.reduce((s, p) => s + p.amountPaise, 0);
   const remaining = totalPaise - paidTotal;
 
-  const saleMutation = useApiMutation<unknown>(
-    '/api/v1/retail/sales',
-    {
-      offlineQueue: true,
-      invalidateKeys: [
-        ['sales', 'today'],
-        ['owner', 'dashboard'],
-      ],
-    },
-  );
+  // NOTE: tRPC's mutation does not support the offline queue that useApiMutation
+  // gave us. If needed later, reintroduce an offline wrapper that calls
+  // trpcClient.retail.createSale.mutate directly via queue.
+  const saleMutation = trpc.retail.createSale.useMutation();
 
   const addPaymentMethod = (method: PaymentMethod) => {
     if (payments.find((p) => p.method === method)) return;
@@ -98,7 +92,7 @@ export default function PaymentScreen() {
       currencyCode: 'INR',
     };
 
-    saleMutation.mutate(saleInput, {
+    saleMutation.mutate(saleInput as never, {
       onSuccess: () => {
         Alert.alert('Success', 'Sale completed successfully!', [
           {

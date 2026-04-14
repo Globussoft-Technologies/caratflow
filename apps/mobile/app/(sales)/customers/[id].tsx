@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { useApiQuery } from '@/hooks/useApi';
+import { trpc } from '@/lib/trpc';
 import { Screen } from '@/components/Screen';
 import { Card } from '@/components/Card';
 import { Avatar } from '@/components/Avatar';
@@ -47,12 +47,12 @@ interface Customer360 {
 export default function CustomerDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const { data, isLoading, error } = useApiQuery<Customer360>(
-    ['sales', 'customer', id],
-    `/api/v1/crm/customers/${id}/360`,
+  const { data, isLoading, error } = trpc.crm.customer360.useQuery(
+    { customerId: id! },
+    { enabled: !!id },
   );
 
-  const customer = data;
+  const customer = data as Customer360 | undefined;
   const fullName = customer
     ? `${customer.profile.firstName} ${customer.profile.lastName}`
     : '';
