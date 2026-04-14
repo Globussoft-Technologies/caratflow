@@ -24,6 +24,23 @@ export enum ConnectionType {
   NETWORK_HTTP = 'NETWORK_HTTP',
 }
 
+export enum JobPriority {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+  URGENT = 'URGENT',
+}
+
+export enum SalePaymentMethod {
+  CASH = 'CASH',
+  CARD = 'CARD',
+  UPI = 'UPI',
+  BANK_TRANSFER = 'BANK_TRANSFER',
+  CHEQUE = 'CHEQUE',
+  STORE_CREDIT = 'STORE_CREDIT',
+  GOLD_EXCHANGE = 'GOLD_EXCHANGE',
+}
+
 export const JEWELRY_LABEL_FIELDS = [
   'productName', 'sku', 'barcode', 'grossWeight', 'netWeight',
   'purity', 'huid', 'price', 'qrCode',

@@ -650,6 +650,150 @@ describe('InventoryService', () => {
     });
   });
 
+  // ─── getProductWithStock (mobile product-detail screen) ───────
+
+  describe('getProductWithStock', () => {
+    it('should throw NotFoundException when product does not exist', async () => {
+      prisma.product.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getProductWithStock(tenantId, 'missing-product-id'),
+      ).rejects.toThrow(NotFoundException);
+      await expect(
+        service.getProductWithStock(tenantId, 'missing-product-id'),
+      ).rejects.toThrow('Product not found');
+    });
+
+    it('should return empty stockByLocation when no stock items exist', async () => {
+      prisma.product.findFirst.mockResolvedValue(
+        createMockProduct({
+          id: 'p1',
+          sku: 'SKU-1',
+          name: 'Gold Ring',
+          productType: 'GOLD_JEWELRY',
+          images: [],
+        }),
+      );
+      prisma.stockItem.findMany.mockResolvedValue([]);
+
+      const result = await service.getProductWithStock(tenantId, 'p1');
+
+      expect(result.stockByLocation).toEqual([]);
+      expect(result.product.id).toBe('p1');
+      expect(result.product.sku).toBe('SKU-1');
+      expect(result.product.name).toBe('Gold Ring');
+      expect(result.product.metalType).toBe('GOLD');
+      expect(result.product.hsnCode).toBe('7113');
+    });
+
+    it('should return single-location stock entry when product has stock at one location', async () => {
+      prisma.product.findFirst.mockResolvedValue(
+        createMockProduct({
+          id: 'p1',
+          productType: 'SILVER_JEWELRY',
+          images: [],
+        }),
+      );
+      prisma.stockItem.findMany.mockResolvedValue([
+        {
+          id: 'si-1',
+          tenantId,
+          productId: 'p1',
+          locationId: 'loc-a',
+          quantityOnHand: 7,
+          quantityReserved: 2,
+          location: { id: 'loc-a', name: 'Main Store' },
+        },
+      ]);
+
+      const result = await service.getProductWithStock(tenantId, 'p1');
+
+      expect(result.stockByLocation).toHaveLength(1);
+      expect(result.stockByLocation[0]).toEqual({
+        locationId: 'loc-a',
+        locationName: 'Main Store',
+        quantity: 7,
+        reservedQuantity: 2,
+        quantityOnHand: 7,
+        quantityAvailable: 5,
+      });
+      expect(result.product.metalType).toBe('SILVER');
+    });
+
+    it('should aggregate stock across multiple locations with joined location names', async () => {
+      prisma.product.findFirst.mockResolvedValue(
+        createMockProduct({
+          id: 'p1',
+          productType: 'PLATINUM_JEWELRY',
+          images: ['https://example.com/image.jpg', 123, null],
+          metalWeightMg: 7500,
+          metalPurity: 950,
+          costPricePaise: 1000000n,
+          sellingPricePaise: 1250000n,
+          description: 'Platinum bracelet',
+        }),
+      );
+      prisma.stockItem.findMany.mockResolvedValue([
+        {
+          id: 'si-1',
+          tenantId,
+          productId: 'p1',
+          locationId: 'loc-a',
+          quantityOnHand: 3,
+          quantityReserved: 1,
+          location: { id: 'loc-a', name: 'Main Store' },
+        },
+        {
+          id: 'si-2',
+          tenantId,
+          productId: 'p1',
+          locationId: 'loc-b',
+          quantityOnHand: 5,
+          quantityReserved: 0,
+          location: { id: 'loc-b', name: 'Branch Store' },
+        },
+      ]);
+
+      const result = await service.getProductWithStock(tenantId, 'p1');
+
+      expect(result.stockByLocation).toHaveLength(2);
+      expect(result.stockByLocation[0].locationName).toBe('Main Store');
+      expect(result.stockByLocation[0].quantityAvailable).toBe(2);
+      expect(result.stockByLocation[1].locationName).toBe('Branch Store');
+      expect(result.stockByLocation[1].quantityAvailable).toBe(5);
+      expect(result.product.metalType).toBe('PLATINUM');
+      expect(result.product.purityFineness).toBe(950);
+      expect(result.product.weightMg).toBe(7500);
+      expect(result.product.sellingPricePaise).toBe(1250000);
+      expect(result.product.description).toBe('Platinum bracelet');
+      // Non-string image entries are filtered out
+      expect(result.product.images).toEqual(['https://example.com/image.jpg']);
+    });
+
+    it('should scope both the product and stock-item queries by tenantId', async () => {
+      prisma.product.findFirst.mockResolvedValue(
+        createMockProduct({ id: 'p1', productType: 'OTHER', images: [] }),
+      );
+      prisma.stockItem.findMany.mockResolvedValue([]);
+
+      await service.getProductWithStock(tenantId, 'p1');
+
+      expect(prisma.product.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ tenantId, id: 'p1' }),
+        }),
+      );
+      expect(prisma.stockItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ tenantId, productId: 'p1' }),
+          include: expect.objectContaining({
+            location: { select: { id: true, name: true } },
+          }),
+        }),
+      );
+    });
+  });
+
   // ─── Tenant Isolation ──────────────────────────────────────────
 
   describe('tenant isolation', () => {

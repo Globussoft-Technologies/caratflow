@@ -6,131 +6,209 @@ import { createMockPrismaService, TEST_TENANT_ID, TEST_USER_ID } from '../../../
 function extendPrisma(base: ReturnType<typeof createMockPrismaService>) {
   return {
     ...base,
-    setting: {
-      findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(),
-      update: vi.fn(), updateMany: vi.fn(), delete: vi.fn(),
+    hardwareDevice: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      count: vi.fn(),
     },
   };
 }
 
+function mockEventBus() {
+  return {
+    publish: vi.fn().mockResolvedValue(undefined),
+    subscribe: vi.fn(),
+  };
+}
+
+const baseDevice = {
+  id: 'dev-1',
+  tenantId: TEST_TENANT_ID,
+  locationId: 'loc-1',
+  name: 'Scale 1',
+  deviceType: 'WEIGHING_SCALE',
+  connectionType: 'SERIAL',
+  port: 'COM3',
+  baudRate: 9600,
+  ipAddress: null,
+  tcpPort: null,
+  vendorId: null,
+  productId: null,
+  settings: {},
+  status: 'DISCONNECTED',
+  isActive: true,
+  lastSeenAt: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
 describe('HardwareDeviceService (Unit)', () => {
   let service: HardwareDeviceService;
   let mockPrisma: ReturnType<typeof extendPrisma>;
-
-  const device = {
-    id: 'dev-1', tenantId: TEST_TENANT_ID, name: 'Scale 1',
-    deviceType: 'SCALE', connectionType: 'USB', port: 'COM3',
-    baudRate: 9600, ipAddress: null, tcpPort: null, vendorId: null,
-    productId: null, settings: {}, isActive: true, locationId: 'loc-1',
-    status: undefined, lastSeenAt: null,
-    createdAt: new Date(), updatedAt: new Date(),
-  };
+  let eventBus: ReturnType<typeof mockEventBus>;
 
   beforeEach(() => {
     mockPrisma = extendPrisma(createMockPrismaService());
-    service = new HardwareDeviceService(mockPrisma as any);
+    eventBus = mockEventBus();
+    service = new HardwareDeviceService(mockPrisma as any, eventBus as any);
   });
 
   describe('registerDevice', () => {
-    it('creates a device config in settings', async () => {
-      mockPrisma.setting.create.mockResolvedValue({});
+    it('creates a device row in hardwareDevice table with DISCONNECTED status', async () => {
+      mockPrisma.hardwareDevice.create.mockResolvedValue(baseDevice);
 
       const result = await service.registerDevice(TEST_TENANT_ID, TEST_USER_ID, {
-        name: 'Scale 1', deviceType: 'SCALE', connectionType: 'USB',
-        port: 'COM3', baudRate: 9600, locationId: 'loc-1',
+        name: 'Scale 1',
+        deviceType: 'WEIGHING_SCALE',
+        connectionType: 'SERIAL',
+        port: 'COM3',
+        baudRate: 9600,
+        locationId: 'loc-1',
       } as any);
 
       expect(result.name).toBe('Scale 1');
-      expect(result.id).toBeDefined();
-      expect(mockPrisma.setting.create).toHaveBeenCalledOnce();
+      expect(result.status).toBe('DISCONNECTED');
+      const args = mockPrisma.hardwareDevice.create.mock.calls[0][0];
+      expect(args.data.tenantId).toBe(TEST_TENANT_ID);
+      expect(args.data.createdBy).toBe(TEST_USER_ID);
     });
   });
 
   describe('listDevices', () => {
-    it('returns paginated devices', async () => {
-      mockPrisma.setting.findMany.mockResolvedValue([
-        { value: JSON.stringify(device) },
-        { value: JSON.stringify({ ...device, id: 'dev-2', name: 'Printer 1', deviceType: 'PRINTER' }) },
+    it('returns paginated devices with totals', async () => {
+      mockPrisma.hardwareDevice.count.mockResolvedValue(2);
+      mockPrisma.hardwareDevice.findMany.mockResolvedValue([
+        baseDevice,
+        { ...baseDevice, id: 'dev-2', deviceType: 'LABEL_PRINTER', name: 'Printer' },
       ]);
 
       const result = await service.listDevices(TEST_TENANT_ID, { page: 1, limit: 10 } as any);
+
       expect(result.items).toHaveLength(2);
       expect(result.total).toBe(2);
+      expect(result.page).toBe(1);
     });
 
-    it('filters by locationId', async () => {
-      mockPrisma.setting.findMany.mockResolvedValue([
-        { value: JSON.stringify({ ...device, locationId: 'loc-1' }) },
-        { value: JSON.stringify({ ...device, id: 'dev-2', locationId: 'loc-2' }) },
-      ]);
+    it('filters by locationId and deviceType', async () => {
+      mockPrisma.hardwareDevice.count.mockResolvedValue(0);
+      mockPrisma.hardwareDevice.findMany.mockResolvedValue([]);
 
-      const result = await service.listDevices(TEST_TENANT_ID, {
-        page: 1, limit: 10, locationId: 'loc-1',
+      await service.listDevices(TEST_TENANT_ID, {
+        page: 1,
+        limit: 10,
+        locationId: 'loc-9',
+        deviceType: 'WEIGHING_SCALE',
+        isActive: true,
       } as any);
 
-      expect(result.items).toHaveLength(1);
-    });
-
-    it('filters by deviceType', async () => {
-      mockPrisma.setting.findMany.mockResolvedValue([
-        { value: JSON.stringify(device) },
-        { value: JSON.stringify({ ...device, id: 'dev-2', deviceType: 'PRINTER' }) },
-      ]);
-
-      const result = await service.listDevices(TEST_TENANT_ID, {
-        page: 1, limit: 10, deviceType: 'SCALE',
-      } as any);
-
-      expect(result.items).toHaveLength(1);
+      const where = mockPrisma.hardwareDevice.findMany.mock.calls[0][0].where;
+      expect(where).toEqual(
+        expect.objectContaining({
+          tenantId: TEST_TENANT_ID,
+          locationId: 'loc-9',
+          deviceType: 'WEIGHING_SCALE',
+          isActive: true,
+        }),
+      );
     });
   });
 
   describe('getDevice', () => {
     it('returns device when found', async () => {
-      mockPrisma.setting.findFirst.mockResolvedValue({ value: JSON.stringify(device) });
+      mockPrisma.hardwareDevice.findFirst.mockResolvedValue(baseDevice);
       const result = await service.getDevice(TEST_TENANT_ID, 'dev-1');
       expect(result.name).toBe('Scale 1');
     });
 
-    it('throws NotFoundException when not found', async () => {
-      mockPrisma.setting.findFirst.mockResolvedValue(null);
+    it('throws NotFoundException when missing', async () => {
+      mockPrisma.hardwareDevice.findFirst.mockResolvedValue(null);
       await expect(service.getDevice(TEST_TENANT_ID, 'bad')).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('updateDevice', () => {
-    it('updates device configuration', async () => {
-      mockPrisma.setting.findFirst.mockResolvedValue({ value: JSON.stringify(device) });
-      mockPrisma.setting.updateMany.mockResolvedValue({ count: 1 });
+    it('updates only provided fields', async () => {
+      mockPrisma.hardwareDevice.findFirst.mockResolvedValue(baseDevice);
+      mockPrisma.hardwareDevice.update.mockResolvedValue({ ...baseDevice, name: 'Renamed' });
 
       const result = await service.updateDevice(TEST_TENANT_ID, TEST_USER_ID, 'dev-1', {
-        name: 'Updated Scale',
+        name: 'Renamed',
       } as any);
 
-      expect(result.name).toBe('Updated Scale');
+      expect(result.name).toBe('Renamed');
+      const updateArg = mockPrisma.hardwareDevice.update.mock.calls[0][0];
+      expect(updateArg.data.name).toBe('Renamed');
+      expect(updateArg.data.deviceType).toBeUndefined();
+      expect(updateArg.data.updatedBy).toBe(TEST_USER_ID);
     });
   });
 
   describe('removeDevice', () => {
-    it('deletes a device', async () => {
-      mockPrisma.setting.findFirst.mockResolvedValue({ id: 's-1' });
-      mockPrisma.setting.delete.mockResolvedValue({});
-
+    it('deletes an existing device', async () => {
+      mockPrisma.hardwareDevice.findFirst.mockResolvedValue(baseDevice);
+      mockPrisma.hardwareDevice.delete.mockResolvedValue({});
       await service.removeDevice(TEST_TENANT_ID, 'dev-1');
-      expect(mockPrisma.setting.delete).toHaveBeenCalledOnce();
+      expect(mockPrisma.hardwareDevice.delete).toHaveBeenCalledWith({ where: { id: 'dev-1' } });
     });
 
     it('throws NotFoundException for missing device', async () => {
-      mockPrisma.setting.findFirst.mockResolvedValue(null);
+      mockPrisma.hardwareDevice.findFirst.mockResolvedValue(null);
       await expect(service.removeDevice(TEST_TENANT_ID, 'bad')).rejects.toThrow(NotFoundException);
     });
   });
 
+  describe('updateDeviceStatus', () => {
+    it('updates status and emits hardware.device.status_changed event', async () => {
+      mockPrisma.hardwareDevice.findFirst.mockResolvedValue(baseDevice);
+      mockPrisma.hardwareDevice.update.mockResolvedValue({});
+
+      await service.updateDeviceStatus(TEST_TENANT_ID, 'dev-1', 'CONNECTED' as any);
+
+      expect(mockPrisma.hardwareDevice.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'dev-1' },
+          data: expect.objectContaining({ status: 'CONNECTED', lastSeenAt: expect.any(Date) }),
+        }),
+      );
+      expect(eventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'hardware.device.status_changed',
+          tenantId: TEST_TENANT_ID,
+          payload: expect.objectContaining({ deviceId: 'dev-1', status: 'CONNECTED' }),
+        }),
+      );
+    });
+
+    it('does not refresh lastSeenAt for non-CONNECTED transitions', async () => {
+      mockPrisma.hardwareDevice.findFirst.mockResolvedValue(baseDevice);
+      mockPrisma.hardwareDevice.update.mockResolvedValue({});
+
+      await service.updateDeviceStatus(TEST_TENANT_ID, 'dev-1', 'DISCONNECTED' as any);
+
+      const args = mockPrisma.hardwareDevice.update.mock.calls[0][0];
+      expect(args.data.status).toBe('DISCONNECTED');
+      expect(args.data.lastSeenAt).toBeUndefined();
+    });
+
+    it('throws NotFoundException for missing device', async () => {
+      mockPrisma.hardwareDevice.findFirst.mockResolvedValue(null);
+      await expect(
+        service.updateDeviceStatus(TEST_TENANT_ID, 'bad', 'CONNECTED' as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('getDeviceStatus', () => {
-    it('returns DISCONNECTED by default', async () => {
-      mockPrisma.setting.findFirst.mockResolvedValue({ value: JSON.stringify(device) });
+    it('returns the current status', async () => {
+      mockPrisma.hardwareDevice.findFirst.mockResolvedValue({
+        ...baseDevice,
+        status: 'CONNECTED',
+      });
       const result = await service.getDeviceStatus(TEST_TENANT_ID, 'dev-1');
-      expect(result.status).toBe('DISCONNECTED');
+      expect(result.status).toBe('CONNECTED');
     });
   });
 });

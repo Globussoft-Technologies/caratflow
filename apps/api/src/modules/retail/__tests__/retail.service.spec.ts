@@ -16,11 +16,18 @@ vi.mock('uuid', () => ({
   v4: vi.fn(() => 'mock-uuid-' + Math.random().toString(36).slice(2, 10)),
 }));
 
+function createMockRatesService() {
+  return {
+    getCurrentRate: vi.fn(),
+  };
+}
+
 describe('RetailService', () => {
   let service: RetailService;
   let prisma: ReturnType<typeof createMockPrismaService>;
   let eventBus: ReturnType<typeof createMockEventBusService>;
   let pricingService: RetailPricingService;
+  let ratesService: ReturnType<typeof createMockRatesService>;
   const { tenantId, userId } = mockTenantContext;
 
   beforeEach(() => {
@@ -30,7 +37,18 @@ describe('RetailService', () => {
     capturePublishedEvents(eventBus);
     pricingService = new RetailPricingService(prisma as never);
     prisma.customer.findFirst = vi.fn() as any;
-    service = new RetailService(prisma as never, eventBus as never, pricingService);
+    // Extend repairOrder mock (mocks.ts only has count)
+    (prisma as any).repairOrder = {
+      count: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
+    };
+    ratesService = createMockRatesService();
+    service = new RetailService(
+      prisma as never,
+      eventBus as never,
+      pricingService,
+      ratesService as never,
+    );
     eventBus.publishedEvents = [];
   });
 
@@ -479,6 +497,179 @@ describe('RetailService', () => {
           where: expect.objectContaining({ tenantId, locationId: 'loc-1' }),
         }),
       );
+    });
+  });
+
+  // ─── Staff Dashboard ───────────────────────────────────────────
+
+  describe('getStaffDashboard', () => {
+    const GOLD_RATE = { ratePer10gPaise: 600000, metalType: 'GOLD', purity: 916 };
+    const SILVER_RATE = { ratePer10gPaise: 7500, metalType: 'SILVER', purity: 999 };
+
+    it('should return mySalesCount and myRevenuePaise summed from today', async () => {
+      prisma.sale.findMany.mockResolvedValue([
+        createMockSale({ id: 's1', totalPaise: 100_000n, customer: null }),
+        createMockSale({ id: 's2', totalPaise: 50_000n, customer: null }),
+      ]);
+      ratesService.getCurrentRate
+        .mockResolvedValueOnce(GOLD_RATE)
+        .mockResolvedValueOnce(SILVER_RATE);
+
+      const result = await service.getStaffDashboard(tenantId, userId);
+
+      expect(result.mySalesCount).toBe(2);
+      expect(result.myRevenuePaise).toBe(150_000);
+    });
+
+    it('should return zeros when staff has no sales today', async () => {
+      prisma.sale.findMany.mockResolvedValue([]);
+      ratesService.getCurrentRate
+        .mockResolvedValueOnce(GOLD_RATE)
+        .mockResolvedValueOnce(SILVER_RATE);
+
+      const result = await service.getStaffDashboard(tenantId, userId);
+
+      expect(result.mySalesCount).toBe(0);
+      expect(result.myRevenuePaise).toBe(0);
+      expect(result.recentTransactions).toHaveLength(0);
+    });
+
+    it('should narrow the date range to the provided date', async () => {
+      prisma.sale.findMany.mockResolvedValue([]);
+      ratesService.getCurrentRate.mockResolvedValue(GOLD_RATE);
+
+      const date = new Date('2026-03-15T10:30:00');
+      await service.getStaffDashboard(tenantId, userId, date);
+
+      const saleCall = prisma.sale.findMany.mock.calls[0]![0] as {
+        where: { createdAt: { gte: Date; lt: Date }; userId: string; status: string };
+      };
+
+      // Range is the given day (local midnight) → next day
+      expect(saleCall.where.userId).toBe(userId);
+      expect(saleCall.where.status).toBe('COMPLETED');
+      const gte = saleCall.where.createdAt.gte;
+      const lt = saleCall.where.createdAt.lt;
+      expect(gte.getHours()).toBe(0);
+      expect(gte.getMinutes()).toBe(0);
+      // lt should be exactly 24h after gte
+      expect(lt.getTime() - gte.getTime()).toBe(24 * 60 * 60 * 1000);
+      // gte should be the local midnight of the given day
+      expect(gte.getDate()).toBe(15);
+      expect(gte.getMonth()).toBe(2); // March = 2
+    });
+
+    it('should limit recentTransactions to 10 even if more sales exist', async () => {
+      const sales = Array.from({ length: 15 }, (_, i) =>
+        createMockSale({ id: `s${i}`, saleNumber: `SL/${i}`, totalPaise: 10_000n, customer: null }),
+      );
+      prisma.sale.findMany.mockResolvedValue(sales);
+      ratesService.getCurrentRate
+        .mockResolvedValueOnce(GOLD_RATE)
+        .mockResolvedValueOnce(SILVER_RATE);
+
+      const result = await service.getStaffDashboard(tenantId, userId);
+
+      expect(result.mySalesCount).toBe(15);
+      expect(result.recentTransactions).toHaveLength(10);
+    });
+
+    it('should filter pendingRepairs by the correct set of active statuses', async () => {
+      prisma.sale.findMany.mockResolvedValue([]);
+      (prisma as any).repairOrder.findMany.mockResolvedValue([]);
+      ratesService.getCurrentRate
+        .mockResolvedValueOnce(GOLD_RATE)
+        .mockResolvedValueOnce(SILVER_RATE);
+
+      await service.getStaffDashboard(tenantId, userId);
+
+      const repairCall = (prisma as any).repairOrder.findMany.mock.calls[0][0];
+      expect(repairCall.where.status.in).toEqual(
+        expect.arrayContaining(['RECEIVED', 'DIAGNOSED', 'QUOTED', 'APPROVED', 'IN_PROGRESS']),
+      );
+      expect(repairCall.where.tenantId).toBe(tenantId);
+    });
+
+    it('should map pending repairs with customer names', async () => {
+      prisma.sale.findMany.mockResolvedValue([]);
+      (prisma as any).repairOrder.findMany.mockResolvedValue([
+        {
+          id: 'r1',
+          repairNumber: 'RPR/0001',
+          status: 'IN_PROGRESS',
+          itemDescription: '22K chain',
+          customer: { firstName: 'Rajesh', lastName: 'Sharma' },
+        },
+      ]);
+      ratesService.getCurrentRate
+        .mockResolvedValueOnce(GOLD_RATE)
+        .mockResolvedValueOnce(SILVER_RATE);
+
+      const result = await service.getStaffDashboard(tenantId, userId);
+
+      expect(result.pendingRepairs).toHaveLength(1);
+      expect(result.pendingRepairs[0]).toEqual({
+        id: 'r1',
+        repairNumber: 'RPR/0001',
+        customerName: 'Rajesh Sharma',
+        status: 'IN_PROGRESS',
+        itemDescription: '22K chain',
+      });
+    });
+
+    it('should wire IndiaRatesService for gold (916) and silver (999)', async () => {
+      prisma.sale.findMany.mockResolvedValue([]);
+      ratesService.getCurrentRate
+        .mockResolvedValueOnce(GOLD_RATE)
+        .mockResolvedValueOnce(SILVER_RATE);
+
+      const result = await service.getStaffDashboard(tenantId, userId);
+
+      expect(ratesService.getCurrentRate).toHaveBeenCalledWith('GOLD', 916);
+      expect(ratesService.getCurrentRate).toHaveBeenCalledWith('SILVER', 999);
+      expect(result.goldRatePer10g).toBe(600000);
+      expect(result.silverRatePer10g).toBe(7500);
+    });
+
+    it('should degrade gracefully to 0 when IndiaRatesService throws NotFoundException for gold', async () => {
+      prisma.sale.findMany.mockResolvedValue([]);
+      ratesService.getCurrentRate
+        .mockRejectedValueOnce(new NotFoundException('no gold rate'))
+        .mockResolvedValueOnce(SILVER_RATE);
+
+      const result = await service.getStaffDashboard(tenantId, userId);
+
+      expect(result.goldRatePer10g).toBe(0);
+      expect(result.silverRatePer10g).toBe(7500);
+    });
+
+    it('should degrade gracefully to 0 when IndiaRatesService throws for silver', async () => {
+      prisma.sale.findMany.mockResolvedValue([]);
+      ratesService.getCurrentRate
+        .mockResolvedValueOnce(GOLD_RATE)
+        .mockRejectedValueOnce(new NotFoundException('no silver rate'));
+
+      const result = await service.getStaffDashboard(tenantId, userId);
+
+      expect(result.goldRatePer10g).toBe(600000);
+      expect(result.silverRatePer10g).toBe(0);
+    });
+
+    it('should include customer name in recentTransactions when present', async () => {
+      prisma.sale.findMany.mockResolvedValue([
+        createMockSale({
+          id: 's1',
+          totalPaise: 100_000n,
+          customer: { firstName: 'Asha', lastName: 'Patel' },
+        }),
+      ]);
+      ratesService.getCurrentRate
+        .mockResolvedValueOnce(GOLD_RATE)
+        .mockResolvedValueOnce(SILVER_RATE);
+
+      const result = await service.getStaffDashboard(tenantId, userId);
+
+      expect(result.recentTransactions[0]!.customerName).toBe('Asha Patel');
     });
   });
 });
