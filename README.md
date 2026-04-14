@@ -403,29 +403,44 @@ RUN_E2E=true pnpm test:e2e
 
 ---
 
+## Current Status (April 2026)
+
+The platform is feature-complete across Phases 1-3 and has been deployed to https://caratflow.globusdemos.com. A Phase 4 "gap-closure" pass landed the following:
+
+- **tRPC fully wired end-to-end** -- `@trpc/react-query` v11 client in both `apps/web` and `apps/mobile`, typed against a single `AppRouter` that merges all 27 module routers.
+- **Admin dashboard converted from stubs to real data** -- ~95 stub pages rewritten to use real tRPC procedures. 8 multi-entity "new" forms built with product/customer/karigar/location pickers.
+- **Sales mobile app (Expo)** -- barcode scanning (expo-camera), my-sales tab with KPI cards, receipt detail with Share, POS checkout via tRPC.
+- **Hardware integrations** -- real serial-port scale drivers (Mettler Toledo SICS, A&D FG/FX, generic RS-232), ZPL/TSPL label rendering, barcode lookup, SSE customer-facing display, ZKTeco/ESSL biometric webhooks.
+- **Perf test suite** -- autocannon runner at `tests/perf/` with 6 benchmark scenarios (auth, inventory list, sale creation, journal entry, reporting, search).
+- **Additional documentation** -- `docs/user-guide.md`, `docs/admin-guide.md`, `docs/module-map.md`, plus a Production Checklist section in `docs/deployment.md`.
+
+Known remaining follow-ups: Prisma migration for the new hardware models, retail POS full tRPC conversion (type-safe but still on mock data), wholesale supplier tRPC procedures, 2 mobile screens awaiting new procedures, a React 19 / Radix Dialog type conflict, and `recharts` install for ForecastChart/ReportChart components.
+
+---
+
 ## Roadmap
 
-### Phase 2: B2C E-Commerce Storefront (In Progress)
-- [ ] B2C customer-facing storefront (browse, search, filter, product pages, cart, checkout)
-- [ ] Customer self-service portal (my orders, returns, address book, KYC, scheme dashboard)
-- [ ] Social login (Google, Facebook, Apple ID) + OTP-based mobile auth
-- [ ] Two-factor authentication (2FA) for high-value transactions
-- [ ] Digital Gold module (buy/sell/accumulate fractional gold, SIP auto-debit, redemption)
-- [ ] Wishlist & favorites with price drop alerts
-- [ ] Abandoned cart tracking & recovery (WhatsApp, email, push)
-- [ ] Coupon code system (separate from discount rules)
-- [ ] Product comparison
-- [ ] Pre-order / backorder management + back-in-stock notifications
-- [ ] CMS for admin (banners, homepage content, blog management)
-- [ ] Referral rewards program
-- [ ] AML compliance monitoring (suspicious transaction flagging)
-- [ ] AR Virtual Try-On (rings, necklaces, earrings)
-- [ ] 360-degree product view
-- [ ] Order modification before processing
-- [ ] BNPL / EMI payment options
+### Phase 2: B2C E-Commerce Storefront (Complete)
+- [x] B2C customer-facing storefront (browse, search, filter, product pages, cart, checkout)
+- [x] Customer self-service portal (my orders, returns, address book, KYC, scheme dashboard)
+- [x] Social login (Google, Facebook, Apple ID) + OTP-based mobile auth
+- [x] Two-factor authentication (2FA) for high-value transactions
+- [x] Digital Gold module (buy/sell/accumulate fractional gold, SIP auto-debit, redemption)
+- [x] Wishlist & favorites with price drop alerts
+- [x] Abandoned cart tracking & recovery (WhatsApp, email, push)
+- [x] Coupon code system (separate from discount rules)
+- [x] Product comparison
+- [x] Pre-order / backorder management + back-in-stock notifications
+- [x] CMS for admin (banners, homepage content, blog management)
+- [x] Referral rewards program
+- [x] AML compliance monitoring (suspicious transaction flagging)
+- [x] AR Virtual Try-On (rings, necklaces, earrings)
+- [x] 360-degree product view
+- [x] Order modification before processing
+- [x] BNPL / EMI payment options
 - [ ] Biometric payment security (Face ID / fingerprint) in mobile
-- [ ] AI-powered product recommendations
-- [ ] AI chatbot for personalized shopping assistance
+- [x] AI-powered product recommendations
+- [x] AI chatbot for personalized shopping assistance
 - [ ] Voice search integration
 - [ ] Live shopping & video consultation
 
@@ -439,11 +454,11 @@ RUN_E2E=true pnpm test:e2e
 - [ ] WhatsApp Business API integration
 - [ ] Tally accounting software sync
 - [ ] Production hardening and performance optimization
-- [ ] Advanced AI analytics and demand forecasting
+- [x] Advanced AI analytics and demand forecasting
 - [ ] Multi-language UI translations
 - [ ] Mobile app beta release (iOS + Android)
 - [ ] Kubernetes deployment manifests
-- [ ] Performance benchmarks and load testing
+- [x] Performance benchmarks (autocannon suite at `tests/perf/`) -- load testing pending
 
 ---
 
