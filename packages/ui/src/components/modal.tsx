@@ -5,49 +5,81 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-const Dialog = DialogPrimitive.Root;
-const DialogTrigger = DialogPrimitive.Trigger;
-const DialogPortal = DialogPrimitive.Portal;
-const DialogClose = DialogPrimitive.Close;
+// React 19 tightened JSX element return types while Radix's `React.FC<...>`
+// signature widened to `ReactNode | Promise<ReactNode>`. Under strict
+// typechecking, consumers hit TS2786 ("cannot be used as a JSX component")
+// when they compose these primitives across package boundaries — especially
+// when the monorepo transitively exposes both `@types/react@18` (from the
+// React Native app) and `@types/react@19`, because tsc then merges their
+// ambient `React` namespaces and picks the stricter 18-era JSX element
+// signature. We cast the primitive components to a JSX element type shape
+// that is compatible with BOTH React 18 and React 19 type definitions, so
+// downstream apps compile cleanly regardless of which copy of @types/react
+// they resolve at typecheck time.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type JSXComponent<P> = (props: P, deprecatedLegacyContext?: any) => any;
 
-const DialogOverlay = React.forwardRef<
-  React.ComponentRef<typeof DialogPrimitive.Overlay>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Overlay
-    ref={ref}
-    className={cn(
-      'fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-      className,
-    )}
-    {...props}
-  />
-));
-DialogOverlay.displayName = 'DialogOverlay';
+const Dialog = DialogPrimitive.Root as unknown as JSXComponent<
+  React.ComponentProps<typeof DialogPrimitive.Root>
+>;
+const DialogTrigger = DialogPrimitive.Trigger as unknown as JSXComponent<
+  React.ComponentProps<typeof DialogPrimitive.Trigger>
+>;
+const DialogPortal = DialogPrimitive.Portal as unknown as JSXComponent<
+  React.ComponentProps<typeof DialogPrimitive.Portal>
+>;
+const DialogClose = DialogPrimitive.Close as unknown as JSXComponent<
+  React.ComponentProps<typeof DialogPrimitive.Close>
+>;
 
-const DialogContent = React.forwardRef<
-  React.ComponentRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
+type DialogOverlayProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>;
+type DialogOverlayRef = React.ComponentRef<typeof DialogPrimitive.Overlay>;
+
+const DialogOverlayInner = React.forwardRef<DialogOverlayRef, DialogOverlayProps>(
+  ({ className, ...props }, ref) => (
+    <DialogPrimitive.Overlay
       ref={ref}
       className={cn(
-        'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg',
+        'fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         className,
       )}
       {...props}
-    >
-      {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
-DialogContent.displayName = 'DialogContent';
+    />
+  ),
+);
+DialogOverlayInner.displayName = 'DialogOverlay';
+const DialogOverlay = DialogOverlayInner as unknown as JSXComponent<
+  DialogOverlayProps & React.RefAttributes<DialogOverlayRef>
+>;
+
+type DialogContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>;
+type DialogContentRef = React.ComponentRef<typeof DialogPrimitive.Content>;
+
+const DialogContentInner = React.forwardRef<DialogContentRef, DialogContentProps>(
+  ({ className, children, ...props }, ref) => (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        ref={ref}
+        className={cn(
+          'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg',
+          className,
+        )}
+        {...props}
+      >
+        {children}
+        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  ),
+);
+DialogContentInner.displayName = 'DialogContent';
+const DialogContent = DialogContentInner as unknown as JSXComponent<
+  DialogContentProps & React.RefAttributes<DialogContentRef>
+>;
 
 function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn('flex flex-col space-y-1.5 text-center sm:text-left', className)} {...props} />;

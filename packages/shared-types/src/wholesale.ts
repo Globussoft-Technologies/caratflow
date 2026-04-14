@@ -439,6 +439,68 @@ export interface RateContractResponse {
   updatedAt: string;
 }
 
+// ─── Supplier Schemas ─────────────────────────────────────────────
+
+export const SupplierInputSchema = z.object({
+  name: z.string().min(1).max(255),
+  contactPerson: z.string().max(200).optional(),
+  email: z.string().email().max(255).optional(),
+  phone: z.string().max(20).optional(),
+  address: z.string().max(500).optional(),
+  city: z.string().max(100).optional(),
+  state: z.string().max(100).optional(),
+  country: z.string().length(2).optional(),
+  postalCode: z.string().max(20).optional(),
+  gstinNumber: z.string().max(15).optional(),
+  panNumber: z.string().max(10).optional(),
+  supplierType: z.string().max(50).optional(),
+  rating: z.number().int().min(0).max(5).optional(),
+  isActive: z.boolean().default(true),
+});
+
+export type SupplierInput = z.infer<typeof SupplierInputSchema>;
+
+export const SupplierListFilterSchema = z.object({
+  search: z.string().optional(),
+  isActive: z.boolean().optional(),
+  supplierType: z.string().optional(),
+});
+
+export type SupplierListFilter = z.infer<typeof SupplierListFilterSchema>;
+
+export interface SupplierResponse {
+  id: string;
+  tenantId: string;
+  name: string;
+  contactPerson: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  postalCode: string | null;
+  gstinNumber: string | null;
+  panNumber: string | null;
+  supplierType: string | null;
+  rating: number | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupplierPerformance {
+  supplierId: string;
+  supplierName: string;
+  totalOrders: number;
+  completedOrders: number;
+  onTimeDeliveryPercent: number;
+  qualityRejectionPercent: number;
+  priceCompliancePercent: number;
+  averageLeadTimeDays: number;
+  totalPurchaseValuePaise: number;
+}
+
 // ─── Dashboard Schema ─────────────────────────────────────────────
 
 export interface WholesaleDashboardResponse {

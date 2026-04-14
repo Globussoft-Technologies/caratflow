@@ -400,3 +400,77 @@ export const HardwareWebSocketEvents = {
 } as const;
 
 export type HardwareWebSocketEvent = (typeof HardwareWebSocketEvents)[keyof typeof HardwareWebSocketEvents];
+
+// ─── Device Abstraction ───────────────────────────────────────
+// Common interface every concrete hardware driver must implement.
+
+export interface DeviceStatusInfo {
+  deviceId: string;
+  status: DeviceStatus;
+  lastSeenAt?: string;
+  message?: string;
+}
+
+export interface IDevice<TRead = unknown, TWrite = unknown> {
+  readonly deviceId: string;
+  readonly deviceType: DeviceType;
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  read(): Promise<TRead | null>;
+  write(payload: TWrite): Promise<void>;
+  status(): Promise<DeviceStatusInfo>;
+}
+
+// ─── Scale read-on-demand ─────────────────────────────────────
+
+export const ScaleReadRequestSchema = z.object({
+  deviceId: UuidSchema,
+  timeoutMs: z.number().int().min(100).max(10000).default(2000),
+});
+export type ScaleReadRequest = z.infer<typeof ScaleReadRequestSchema>;
+
+// ─── Label print command response ─────────────────────────────
+
+export const LabelPrintCommandResponseSchema = z.object({
+  productId: UuidSchema,
+  templateId: UuidSchema,
+  printerLanguage: z.enum(['ZPL', 'TSPL']),
+  command: z.string(),
+  copies: z.number().int().min(1).max(100),
+});
+export type LabelPrintCommandResponse = z.infer<typeof LabelPrintCommandResponseSchema>;
+
+// ─── Customer-Facing Display Stream ───────────────────────────
+
+export const CfdSaleLineSchema = z.object({
+  sku: z.string(),
+  name: z.string(),
+  qty: z.number(),
+  unitPricePaise: z.number().int(),
+  lineTotalPaise: z.number().int(),
+});
+export type CfdSaleLine = z.infer<typeof CfdSaleLineSchema>;
+
+export const CfdSaleStateSchema = z.object({
+  terminalId: z.string(),
+  locationId: UuidSchema,
+  lines: z.array(CfdSaleLineSchema).default([]),
+  subTotalPaise: z.number().int().nonnegative().default(0),
+  taxPaise: z.number().int().nonnegative().default(0),
+  totalPaise: z.number().int().nonnegative().default(0),
+  message: z.string().optional(),
+  updatedAt: z.string(),
+});
+export type CfdSaleState = z.infer<typeof CfdSaleStateSchema>;
+
+// ─── Biometric webhook payload (ZKTeco / ESSL) ────────────────
+
+export const BiometricWebhookPayloadSchema = z.object({
+  deviceSerial: z.string().optional(),
+  deviceId: UuidSchema.optional(),
+  employeeCode: z.string().min(1),
+  eventType: z.enum(['CHECK_IN', 'CHECK_OUT']).default('CHECK_IN'),
+  timestamp: z.string(),
+  raw: z.record(z.unknown()).optional(),
+});
+export type BiometricWebhookPayload = z.infer<typeof BiometricWebhookPayloadSchema>;

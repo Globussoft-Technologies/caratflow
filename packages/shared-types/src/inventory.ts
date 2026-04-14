@@ -493,3 +493,40 @@ export const InventoryDashboardResponseSchema = z.object({
   recentMovements: z.array(StockMovementResponseSchema),
 });
 export type InventoryDashboardResponse = z.infer<typeof InventoryDashboardResponseSchema>;
+
+// ─── Product-With-Stock (mobile Sales app) ────────────────────
+// Product details plus stock-by-location aggregation, consumed by
+// the mobile Sales stock detail screen.
+
+export const ProductWithStockInputSchema = z.object({
+  productId: UuidSchema,
+});
+export type ProductWithStockInput = z.infer<typeof ProductWithStockInputSchema>;
+
+export const ProductWithStockSchema = z.object({
+  product: z.object({
+    id: UuidSchema,
+    sku: z.string(),
+    name: z.string(),
+    productType: z.string(),
+    description: z.string().nullable(),
+    metalType: z.string().nullable(),
+    purityFineness: z.number().int(),
+    weightMg: z.number().int(),
+    costPricePaise: z.number().int(),
+    sellingPricePaise: z.number().int(),
+    hsnCode: z.string(),
+    images: z.array(z.string()),
+  }),
+  stockByLocation: z.array(
+    z.object({
+      locationId: UuidSchema,
+      locationName: z.string(),
+      quantity: z.number().int(),
+      reservedQuantity: z.number().int(),
+      quantityOnHand: z.number().int(),
+      quantityAvailable: z.number().int(),
+    }),
+  ),
+});
+export type ProductWithStockResponse = z.infer<typeof ProductWithStockSchema>;

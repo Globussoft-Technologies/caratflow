@@ -591,3 +591,41 @@ export const RepairListFilterSchema = z.object({
   locationId: z.string().uuid().optional(),
 });
 export type RepairListFilter = z.infer<typeof RepairListFilterSchema>;
+
+// ─── Staff Dashboard (mobile Sales app) ───────────────────────────
+// Per-user (logged-in sales staff) today summary used by the mobile
+// Sales app. Aggregates Sale rows for the user on the given date,
+// pending repair orders, plus current gold/silver per-10g rates.
+
+export const StaffDashboardInputSchema = z
+  .object({
+    date: z.coerce.date().optional(),
+  })
+  .optional();
+export type StaffDashboardInput = z.infer<typeof StaffDashboardInputSchema>;
+
+export const StaffDashboardSchema = z.object({
+  mySalesCount: z.number().int().nonnegative(),
+  myRevenuePaise: z.number().int().nonnegative(),
+  pendingRepairs: z.array(
+    z.object({
+      id: z.string().uuid(),
+      repairNumber: z.string(),
+      customerName: z.string(),
+      status: z.nativeEnum(RepairOrderStatus),
+      itemDescription: z.string(),
+    }),
+  ),
+  recentTransactions: z.array(
+    z.object({
+      id: z.string().uuid(),
+      saleNumber: z.string(),
+      customerName: z.string().nullable(),
+      totalPaise: z.number().int(),
+      createdAt: z.coerce.date(),
+    }),
+  ),
+  goldRatePer10g: z.number().int().nonnegative(),
+  silverRatePer10g: z.number().int().nonnegative(),
+});
+export type StaffDashboardResponse = z.infer<typeof StaffDashboardSchema>;

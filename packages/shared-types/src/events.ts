@@ -285,6 +285,38 @@ export interface PlatformSettingsUpdatedEvent extends DomainEventBase {
   payload: { settingKey: string; oldValue: unknown; newValue: unknown };
 }
 
+// ─── Hardware Events ──────────────────────────────────────────
+
+export interface HardwareScaleReadEvent extends DomainEventBase {
+  type: 'hardware.scale.read';
+  payload: { deviceId: string; weightMg: number; isStable: boolean };
+}
+
+export interface HardwareBarcodeScannedEvent extends DomainEventBase {
+  type: 'hardware.barcode.scanned';
+  payload: { deviceId?: string; barcode: string; productId: string | null };
+}
+
+export interface HardwareRfidScannedEvent extends DomainEventBase {
+  type: 'hardware.rfid.scanned';
+  payload: { deviceId: string; epc: string; serialNumberId: string | null };
+}
+
+export interface HardwareLabelPrintedEvent extends DomainEventBase {
+  type: 'hardware.label.printed';
+  payload: { templateId: string; productId: string; copies: number };
+}
+
+export interface HardwareBiometricEventReceivedEvent extends DomainEventBase {
+  type: 'hardware.biometric.received';
+  payload: { deviceId: string; employeeCode: string; eventType: 'CHECK_IN' | 'CHECK_OUT' };
+}
+
+export interface HardwareDeviceStatusChangedEvent extends DomainEventBase {
+  type: 'hardware.device.status_changed';
+  payload: { deviceId: string; status: string };
+}
+
 // ─── India Events (defined in india.ts, imported here for union) ──
 // These are re-imported to keep the DomainEvent union complete.
 
@@ -384,6 +416,13 @@ export type DomainEvent =
   | CrmReferralCompletedEvent
   // AML
   | ComplianceAmlAlertCreatedEvent
-  | ComplianceAmlAlertEscalatedEvent;
+  | ComplianceAmlAlertEscalatedEvent
+  // Hardware
+  | HardwareScaleReadEvent
+  | HardwareBarcodeScannedEvent
+  | HardwareRfidScannedEvent
+  | HardwareLabelPrintedEvent
+  | HardwareBiometricEventReceivedEvent
+  | HardwareDeviceStatusChangedEvent;
 
 export type DomainEventType = DomainEvent['type'];
