@@ -253,6 +253,7 @@ model RepairOrder {
   repairNumber     String            @map("repair_number") @db.VarChar(50)
   customerId       String            @map("customer_id") @db.VarChar(36)
   locationId       String            @map("location_id") @db.VarChar(36)
+  staffUserId      String?           @map("staff_user_id") @db.VarChar(36)
   status           RepairOrderStatus @default(RECEIVED)
   itemDescription  String            @map("item_description") @db.VarChar(500)
   itemWeightMg     BigInt?           @map("item_weight_mg")
@@ -270,14 +271,16 @@ model RepairOrder {
   createdBy        String?           @map("created_by") @db.VarChar(36)
   updatedBy        String?           @map("updated_by") @db.VarChar(36)
 
-  customer Customer @relation(fields: [customerId], references: [id])
-  location Location @relation(fields: [locationId], references: [id])
+  customer  Customer @relation(fields: [customerId], references: [id])
+  location  Location @relation(fields: [locationId], references: [id])
+  staffUser User?    @relation("RepairOrderStaffUser", fields: [staffUserId], references: [id])
 
   @@unique([tenantId, repairNumber])
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, customerId])
   @@index([tenantId, locationId])
+  @@index([tenantId, staffUserId])
   @@map("repair_orders")
 }
 

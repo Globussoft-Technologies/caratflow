@@ -221,3 +221,108 @@ model FileUpload {
   @@index([tenantId, entityType, entityId])
   @@map("file_uploads")
 }
+
+// ─── HardwareDevice ───────────────────────────────────────────
+// Tenant-scoped registry of physical/integrated peripherals
+// (RFID readers, scales, scanners, label printers, customer
+// displays, biometric terminals).
+
+enum HardwareDeviceType {
+  RFID_READER
+  BARCODE_SCANNER
+  WEIGHING_SCALE
+  LABEL_PRINTER
+  CUSTOMER_DISPLAY
+  BIOMETRIC
+}
+
+enum HardwareConnectionType {
+  USB_HID
+  USB_SERIAL
+  BLUETOOTH
+  NETWORK_TCP
+  NETWORK_HTTP
+}
+
+enum HardwareDeviceStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  INITIALIZING
+}
+
+model HardwareDevice {
+  id             String                 @id @default(uuid()) @db.VarChar(36)
+  tenantId       String                 @map("tenant_id") @db.VarChar(36)
+  locationId     String                 @map("location_id") @db.VarChar(36)
+  name           String                 @db.VarChar(200)
+  deviceType     HardwareDeviceType     @map("device_type")
+  connectionType HardwareConnectionType @map("connection_type")
+  port           String?                @db.VarChar(100)
+  baudRate       Int?                   @map("baud_rate")
+  ipAddress      String?                @map("ip_address") @db.VarChar(100)
+  tcpPort        Int?                   @map("tcp_port")
+  vendorId       String?                @map("vendor_id") @db.VarChar(20)
+  productId      String?                @map("product_id") @db.VarChar(20)
+  settings       Json                   @default("{}")
+  status         HardwareDeviceStatus   @default(DISCONNECTED)
+  isActive       Boolean                @default(true) @map("is_active")
+  lastSeenAt     DateTime?              @map("last_seen_at")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  createdBy      String?                @map("created_by") @db.VarChar(36)
+  updatedBy      String?                @map("updated_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@index([tenantId, locationId])
+  @@index([tenantId, deviceType])
+  @@map("hardware_devices")
+}
+
+// ─── HardwareLabelTemplate ────────────────────────────────────
+// Reusable jewelry-tag/label templates for ZPL/TSPL printers.
+
+model HardwareLabelTemplate {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  tenantId  String   @map("tenant_id") @db.VarChar(36)
+  name      String   @db.VarChar(200)
+  width     Float
+  height    Float
+  fields    Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by") @db.VarChar(36)
+  updatedBy String?  @map("updated_by") @db.VarChar(36)
+
+  @@index([tenantId])
+  @@map("hardware_label_templates")
+}
+
+// ─── HardwareBiometricEvent ───────────────────────────────────
+// Raw attendance events received from biometric terminals
+// (ZKTeco / ESSL push payloads) before they are reconciled to
+// karigar / user attendance records.
+
+enum HardwareBiometricEventType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+model HardwareBiometricEvent {
+  id            String                     @id @default(uuid()) @db.VarChar(36)
+  tenantId      String                     @map("tenant_id") @db.VarChar(36)
+  deviceId      String                     @map("device_id") @db.VarChar(36)
+  employeeCode  String                     @map("employee_code") @db.VarChar(50)
+  employeeName  String?                    @map("employee_name") @db.VarChar(200)
+  eventType     HardwareBiometricEventType @map("event_type")
+  eventAt       DateTime                   @map("event_at")
+  processed     Boolean                    @default(false)
+  rawPayload    Json?                      @map("raw_payload")
+  createdAt     DateTime                   @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([tenantId, deviceId])
+  @@index([tenantId, employeeCode])
+  @@index([tenantId, eventAt])
+  @@map("hardware_biometric_events")
+}

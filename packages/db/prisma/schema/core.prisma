@@ -69,7 +69,8 @@ model User {
   refreshTokens RefreshToken[]
 
   // Retail relations
-  sales Sale[]
+  sales        Sale[]
+  staffRepairs RepairOrder[] @relation("RepairOrderStaffUser")
 
   @@unique([tenantId, email])
   @@index([tenantId])
