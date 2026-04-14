@@ -8,6 +8,7 @@ import { CrmNotificationService } from './crm.notification.service';
 import { CrmCampaignService } from './crm.campaign.service';
 import { CrmLeadService } from './crm.lead.service';
 import { CrmFeedbackService } from './crm.feedback.service';
+import { VideoConsultationService } from './video-consultation.service';
 import { CrmTrpcRouter } from './crm.trpc';
 import { CrmEventHandler } from './crm.event-handler';
 
@@ -20,6 +21,7 @@ import { CrmEventHandler } from './crm.event-handler';
     CrmCampaignService,
     CrmLeadService,
     CrmFeedbackService,
+    VideoConsultationService,
     CrmTrpcRouter,
     CrmEventHandler,
   ],
@@ -30,6 +32,7 @@ import { CrmEventHandler } from './crm.event-handler';
     CrmCampaignService,
     CrmLeadService,
     CrmFeedbackService,
+    VideoConsultationService,
     CrmTrpcRouter,
   ],
 })

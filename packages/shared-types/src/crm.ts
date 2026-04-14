@@ -359,6 +359,74 @@ export const CustomerSegmentInputSchema = z.object({
 });
 export type CustomerSegmentInput = z.infer<typeof CustomerSegmentInputSchema>;
 
+// ─── Video Consultation (Live Shopping) ────────────────────────
+
+export const VideoConsultationStatusEnum = z.enum([
+  'REQUESTED', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW',
+]);
+export type VideoConsultationStatus = z.infer<typeof VideoConsultationStatusEnum>;
+
+export const VideoConsultationProductInterestSchema = z.object({
+  productId: z.string().uuid(),
+  notes: z.string().max(500).optional(),
+});
+export type VideoConsultationProductInterest = z.infer<typeof VideoConsultationProductInterestSchema>;
+
+export const VideoConsultationInputSchema = z.object({
+  customerId: z.string().uuid(),
+  productsOfInterest: z.array(VideoConsultationProductInterestSchema).optional(),
+  preferredLang: z.string().min(2).max(10).default('en'),
+  customerPhone: z.string().max(20).optional(),
+  notes: z.string().max(2000).optional(),
+});
+export type VideoConsultationInput = z.infer<typeof VideoConsultationInputSchema>;
+
+export const VideoConsultationUpdateSchema = z.object({
+  id: z.string().uuid(),
+  status: VideoConsultationStatusEnum.optional(),
+  scheduledAt: z.coerce.date().optional(),
+  consultantId: z.string().uuid().optional(),
+  meetingUrl: z.string().url().max(500).optional(),
+  notes: z.string().max(2000).optional(),
+});
+export type VideoConsultationUpdate = z.infer<typeof VideoConsultationUpdateSchema>;
+
+export const VideoConsultationScheduleSchema = z.object({
+  id: z.string().uuid(),
+  consultantId: z.string().uuid(),
+  scheduledAt: z.coerce.date(),
+});
+export type VideoConsultationSchedule = z.infer<typeof VideoConsultationScheduleSchema>;
+
+export const VideoConsultationFilterSchema = z.object({
+  status: VideoConsultationStatusEnum.optional(),
+  consultantId: z.string().uuid().optional(),
+  customerId: z.string().uuid().optional(),
+  page: z.number().int().min(1).default(1),
+  limit: z.number().int().min(1).max(100).default(20),
+});
+export type VideoConsultationFilter = z.infer<typeof VideoConsultationFilterSchema>;
+
+export const VideoConsultationResponseSchema = z.object({
+  id: z.string().uuid(),
+  tenantId: z.string().uuid(),
+  customerId: z.string().uuid(),
+  consultantId: z.string().uuid().nullable(),
+  requestedAt: z.coerce.date(),
+  scheduledAt: z.coerce.date().nullable(),
+  startedAt: z.coerce.date().nullable(),
+  endedAt: z.coerce.date().nullable(),
+  status: VideoConsultationStatusEnum,
+  meetingUrl: z.string().nullable(),
+  notes: z.string().nullable(),
+  productsOfInterest: z.unknown().nullable(),
+  customerPhone: z.string().nullable(),
+  preferredLang: z.string(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+export type VideoConsultationResponse = z.infer<typeof VideoConsultationResponseSchema>;
+
 // ─── Customer 360 ──────────────────────────────────────────────
 
 export const Customer360ResponseSchema = z.object({

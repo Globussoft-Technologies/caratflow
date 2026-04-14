@@ -115,6 +115,16 @@ export interface CrmNotificationSentEvent extends DomainEventBase {
   payload: { customerId: string; channel: string; templateId: string; status: string };
 }
 
+export interface CrmConsultationRequestedEvent extends DomainEventBase {
+  type: 'crm.consultation.requested';
+  payload: { consultationId: string; customerId: string };
+}
+
+export interface CrmConsultationScheduledEvent extends DomainEventBase {
+  type: 'crm.consultation.scheduled';
+  payload: { consultationId: string; customerId: string; consultantId: string; scheduledAt: string; meetingUrl: string };
+}
+
 // ─── Wholesale Events ──────────────────────────────────────────
 
 export interface WholesalePurchaseCompletedEvent extends DomainEventBase {
@@ -365,6 +375,8 @@ export type DomainEvent =
   | CrmCustomerUpdatedEvent
   | CrmLoyaltyPointsEarnedEvent
   | CrmNotificationSentEvent
+  | CrmConsultationRequestedEvent
+  | CrmConsultationScheduledEvent
   // Wholesale
   | WholesalePurchaseCompletedEvent
   | WholesaleConsignmentCreatedEvent

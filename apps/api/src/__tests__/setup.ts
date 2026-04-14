@@ -321,6 +321,14 @@ export function createMockPrismaService() {
       findMany: vi.fn(),
       create: vi.fn(),
     },
+    videoConsultation: {
+      findFirst: vi.fn(),
+      findFirstOrThrow: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
     purchaseOrder: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),

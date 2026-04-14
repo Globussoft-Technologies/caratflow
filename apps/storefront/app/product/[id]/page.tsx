@@ -232,6 +232,25 @@ export default function ProductDetailPage() {
 
             {/* Delivery checker */}
             <DeliveryChecker />
+
+            {/* Live consultation CTA */}
+            <Link
+              href={`/consultation/request?productId=${product.id}`}
+              className="mt-4 flex items-center gap-3 rounded-lg border border-gold/30 bg-gold/5 p-3.5 hover:bg-gold/10 transition-colors"
+            >
+              <div className="w-10 h-10 rounded-lg bg-gold/20 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-gold" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-navy">Book a Live Consultation</p>
+                <p className="text-xs text-navy/60">See this piece live on a video call with our consultant.</p>
+              </div>
+              <svg className="w-4 h-4 text-gold" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+              </svg>
+            </Link>
           </div>
         </div>
 

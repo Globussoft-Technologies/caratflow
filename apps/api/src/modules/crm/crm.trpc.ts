@@ -9,6 +9,7 @@ import { CrmNotificationService } from './crm.notification.service';
 import { CrmCampaignService } from './crm.campaign.service';
 import { CrmLeadService } from './crm.lead.service';
 import { CrmFeedbackService } from './crm.feedback.service';
+import { VideoConsultationService } from './video-consultation.service';
 import { z } from 'zod';
 import {
   CustomerSearchInputSchema,
@@ -27,6 +28,9 @@ import {
   FeedbackInputSchema,
   CustomerSegmentInputSchema,
   SegmentCriteriaSchema,
+  VideoConsultationInputSchema,
+  VideoConsultationScheduleSchema,
+  VideoConsultationFilterSchema,
 } from '@caratflow/shared-types';
 
 @Injectable()
@@ -39,6 +43,7 @@ export class CrmTrpcRouter {
     private readonly campaignService: CrmCampaignService,
     private readonly leadService: CrmLeadService,
     private readonly feedbackService: CrmFeedbackService,
+    private readonly videoConsultationService: VideoConsultationService,
   ) {}
 
   get router() {
@@ -416,6 +421,66 @@ export class CrmTrpcRouter {
         .mutation(async ({ ctx, input }) => {
           return this.crmService.refreshSegment(ctx.tenantId, input.id);
         }),
+
+      // ─── Video Consultation (Live Shopping) ─────────────────
+      videoConsultation: this.trpc.router({
+        request: authed
+          .input(VideoConsultationInputSchema)
+          .mutation(async ({ ctx, input }) => {
+            return this.videoConsultationService.request(ctx.tenantId, input.customerId, input);
+          }),
+
+        list: authed
+          .input(VideoConsultationFilterSchema)
+          .query(async ({ ctx, input }) => {
+            return this.videoConsultationService.list(
+              ctx.tenantId,
+              { status: input.status, consultantId: input.consultantId, customerId: input.customerId },
+              { page: input.page, limit: input.limit },
+            );
+          }),
+
+        get: authed
+          .input(z.object({ id: z.string().uuid() }))
+          .query(async ({ ctx, input }) => {
+            return this.videoConsultationService.get(ctx.tenantId, input.id);
+          }),
+
+        schedule: authed
+          .input(VideoConsultationScheduleSchema)
+          .mutation(async ({ ctx, input }) => {
+            return this.videoConsultationService.schedule(
+              ctx.tenantId,
+              input.id,
+              input.consultantId,
+              input.scheduledAt,
+            );
+          }),
+
+        start: authed
+          .input(z.object({ id: z.string().uuid() }))
+          .mutation(async ({ ctx, input }) => {
+            return this.videoConsultationService.start(ctx.tenantId, input.id);
+          }),
+
+        complete: authed
+          .input(z.object({ id: z.string().uuid(), notes: z.string().max(2000).optional() }))
+          .mutation(async ({ ctx, input }) => {
+            return this.videoConsultationService.complete(ctx.tenantId, input.id, input.notes);
+          }),
+
+        cancel: authed
+          .input(z.object({ id: z.string().uuid(), reason: z.string().max(500).optional() }))
+          .mutation(async ({ ctx, input }) => {
+            return this.videoConsultationService.cancel(ctx.tenantId, input.id, input.reason);
+          }),
+
+        markNoShow: authed
+          .input(z.object({ id: z.string().uuid() }))
+          .mutation(async ({ ctx, input }) => {
+            return this.videoConsultationService.markNoShow(ctx.tenantId, input.id);
+          }),
+      }),
     });
   }
 

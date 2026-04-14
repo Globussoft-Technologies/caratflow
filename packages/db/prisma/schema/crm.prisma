@@ -382,6 +382,34 @@ model CustomerSegment {
   @@map("customer_segments")
 }
 
+// ─── Video Consultation (Live Shopping MVP) ────────────────────
+
+model VideoConsultation {
+  id                 String    @id @default(uuid()) @db.VarChar(36)
+  tenantId           String    @map("tenant_id") @db.VarChar(36)
+  customerId         String    @map("customer_id") @db.VarChar(36)
+  consultantId       String?   @map("consultant_id") @db.VarChar(36)
+  requestedAt        DateTime  @map("requested_at")
+  scheduledAt        DateTime? @map("scheduled_at")
+  startedAt          DateTime? @map("started_at")
+  endedAt            DateTime? @map("ended_at")
+  status             String    @default("REQUESTED") @db.VarChar(30) // REQUESTED, SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
+  meetingUrl         String?   @map("meeting_url") @db.VarChar(500)
+  notes              String?   @db.Text
+  productsOfInterest Json?     @map("products_of_interest") // [{productId, notes}]
+  customerPhone      String?   @map("customer_phone") @db.VarChar(20)
+  preferredLang      String    @default("en") @map("preferred_lang") @db.VarChar(10)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, scheduledAt])
+  @@map("video_consultations")
+}
+
 // ─── Digital Passbook ──────────────────────────────────────────
 
 model DigitalPassbook {

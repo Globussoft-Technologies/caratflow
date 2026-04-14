@@ -175,6 +175,7 @@ model Customer {
   leads                Lead[]
   feedbacks            Feedback[]
   digitalPassbooks     DigitalPassbook[]
+  videoConsultations   VideoConsultation[]
 
   // Wholesale relations
   consignmentsOut ConsignmentOut[] @relation("CustomerConsignmentsOut")
