@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { StatusBadge } from '@caratflow/ui';
+import { StatusBadge, getStatusVariant } from '@caratflow/ui';
 import { Users, IndianRupee, Calendar } from 'lucide-react';
 import Link from 'next/link';
 
@@ -46,7 +46,7 @@ export function SchemeCard({
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${typeInfo.color}`}>
           {typeInfo.label}
         </span>
-        <StatusBadge status={status} />
+        <StatusBadge label={status} variant={getStatusVariant(status)} />
       </div>
 
       <h3 className="font-medium">{schemeName}</h3>

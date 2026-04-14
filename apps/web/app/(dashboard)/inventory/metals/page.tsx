@@ -5,12 +5,13 @@ import { PageHeader, FormField } from '@caratflow/ui';
 import { Coins } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { MetalStockCard } from '@/features/inventory/metal-stock-card';
+import { InventoryMetalType } from '@caratflow/shared-types';
 
 export default function MetalsPage() {
   const [selectedLocationId, setSelectedLocationId] = useState('');
   const [showAdjustForm, setShowAdjustForm] = useState(false);
   const [adjustData, setAdjustData] = useState({
-    metalType: 'GOLD' as 'GOLD' | 'SILVER' | 'PLATINUM',
+    metalType: InventoryMetalType.GOLD,
     purityFineness: 916,
     weightChangeMg: '',
     valueChangePaise: '',
@@ -115,7 +116,7 @@ export default function MetalsPage() {
             <FormField label="Metal Type" required>
               <select
                 value={adjustData.metalType}
-                onChange={(e) => setAdjustData({ ...adjustData, metalType: e.target.value as 'GOLD' | 'SILVER' | 'PLATINUM' })}
+                onChange={(e) => setAdjustData({ ...adjustData, metalType: e.target.value as InventoryMetalType })}
                 className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
               >
                 <option value="GOLD">Gold</option>

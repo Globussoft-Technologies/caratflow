@@ -94,12 +94,12 @@ export default function HuidDetailPage() {
               <div className="text-xs text-muted-foreground">Registered At</div>
               <div>{new Date(record.registeredAt as string).toLocaleDateString()}</div>
             </div>
-            {record.verifiedAt && (
+            {record.verifiedAt ? (
               <div>
                 <div className="text-xs text-muted-foreground">Verified At</div>
                 <div>{new Date(record.verifiedAt as string).toLocaleDateString()}</div>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 

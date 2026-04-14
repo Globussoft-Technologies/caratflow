@@ -134,7 +134,7 @@ export default function HardwareSettingsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {devices.map((device: DeviceConfigResponse) => (
+          {(devices as unknown as DeviceConfigResponse[]).map((device) => (
             <div key={device.id} className="rounded-lg border bg-card shadow-sm">
               <div className="flex items-start justify-between p-4">
                 <div className="min-w-0 flex-1">

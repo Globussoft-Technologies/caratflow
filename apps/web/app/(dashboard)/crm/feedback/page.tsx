@@ -1,88 +1,28 @@
 'use client';
 
-import { PageHeader, DataTable, StatusBadge, getStatusVariant } from '@caratflow/ui';
-import type { ColumnDef } from '@caratflow/ui';
-import { Star, MessageSquare } from 'lucide-react';
-
-interface FeedbackRow {
-  id: string;
-  customerName: string;
-  feedbackType: string;
-  rating: number;
-  comment: string | null;
-  status: string;
-  createdAt: Date;
-}
-
-const feedbackData: FeedbackRow[] = [
-  { id: '1', customerName: 'Priya Sharma', feedbackType: 'PURCHASE', rating: 5, comment: 'Excellent service and beautiful jewelry!', status: 'REVIEWED', createdAt: new Date(Date.now() - 86400000) },
-  { id: '2', customerName: 'Rahul Mehta', feedbackType: 'SERVICE', rating: 4, comment: 'Good cleaning service for old jewelry.', status: 'NEW', createdAt: new Date(Date.now() - 2 * 86400000) },
-  { id: '3', customerName: 'Anita Desai', feedbackType: 'REPAIR', rating: 3, comment: 'Repair took longer than expected, but quality was good.', status: 'ACTIONED', createdAt: new Date(Date.now() - 5 * 86400000) },
-  { id: '4', customerName: 'Vikram Singh', feedbackType: 'PURCHASE', rating: 5, comment: 'Amazing collection! Very helpful staff.', status: 'REVIEWED', createdAt: new Date(Date.now() - 7 * 86400000) },
-  { id: '5', customerName: 'Meena Patel', feedbackType: 'GENERAL', rating: 2, comment: 'Long wait time during peak hours.', status: 'NEW', createdAt: new Date(Date.now() - 10 * 86400000) },
-];
-
-function StarsCell({ rating }: { rating: number }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((s) => (
-        <Star
-          key={s}
-          className={`h-3.5 w-3.5 ${s <= rating ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30'}`}
-        />
-      ))}
-    </div>
-  );
-}
-
-const columns: ColumnDef<FeedbackRow>[] = [
-  {
-    accessorKey: 'createdAt',
-    header: 'Date',
-    cell: ({ getValue }) => (getValue() as Date).toLocaleDateString('en-IN'),
-  },
-  { accessorKey: 'customerName', header: 'Customer' },
-  {
-    accessorKey: 'feedbackType',
-    header: 'Type',
-    cell: ({ getValue }) => <StatusBadge label={getValue() as string} variant="muted" dot={false} />,
-  },
-  {
-    accessorKey: 'rating',
-    header: 'Rating',
-    cell: ({ getValue }) => <StarsCell rating={getValue() as number} />,
-  },
-  {
-    accessorKey: 'comment',
-    header: 'Comment',
-    cell: ({ getValue }) => (
-      <span className="text-sm text-muted-foreground line-clamp-1">
-        {(getValue() as string) ?? '-'}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'status',
-    header: 'Status',
-    cell: ({ getValue }) => {
-      const s = getValue() as string;
-      const v: Record<string, 'default' | 'success' | 'warning'> = { NEW: 'default', REVIEWED: 'warning', ACTIONED: 'success' };
-      return <StatusBadge label={s} variant={v[s] ?? 'default'} />;
-    },
-  },
-];
-
-// Rating summary
-const avgRating = feedbackData.reduce((sum, f) => sum + f.rating, 0) / feedbackData.length;
-const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-feedbackData.forEach((f) => { distribution[f.rating]!++; });
+import { useState } from 'react';
+import { PageHeader, StatusBadge, EmptyState } from '@caratflow/ui';
+import { MessageSquare } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+import { PaginationControls } from '@/components/pagination-controls';
+import { formatDate } from '@/components/format';
 
 export default function FeedbackPage() {
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState('');
+  const { data, isLoading } = trpc.crm.feedbackList.useQuery({
+    page,
+    limit: 20,
+    status: status || undefined,
+  });
+  const d = data as { items?: Array<Record<string, unknown>>; totalPages?: number; page?: number; hasPrevious?: boolean; hasNext?: boolean } | undefined;
+  const items = d?.items ?? [];
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Customer Feedback"
-        description="View and manage customer feedback and ratings."
+        title="Feedback"
+        description="Customer feedback and reviews."
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'CRM', href: '/crm' },
@@ -90,48 +30,43 @@ export default function FeedbackPage() {
         ]}
       />
 
-      {/* Rating Summary */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="rounded-lg border bg-card p-6">
-          <h3 className="text-sm font-medium text-muted-foreground">Average Rating</h3>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-bold">{avgRating.toFixed(1)}</span>
-            <span className="text-sm text-muted-foreground">/ 5</span>
-          </div>
-          <StarsCell rating={Math.round(avgRating)} />
-          <p className="mt-1 text-xs text-muted-foreground">{feedbackData.length} total reviews</p>
-        </div>
+      <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="h-9 rounded-md border px-2 text-sm">
+        <option value="">All</option>
+        <option value="NEW">New</option>
+        <option value="REVIEWED">Reviewed</option>
+        <option value="ACTIONED">Actioned</option>
+      </select>
 
-        <div className="rounded-lg border bg-card p-6 sm:col-span-1 lg:col-span-2">
-          <h3 className="text-sm font-medium text-muted-foreground">Rating Distribution</h3>
-          <div className="mt-3 space-y-2">
-            {[5, 4, 3, 2, 1].map((rating) => {
-              const count = distribution[rating] ?? 0;
-              const pct = feedbackData.length > 0 ? (count / feedbackData.length) * 100 : 0;
-              return (
-                <div key={rating} className="flex items-center gap-2">
-                  <span className="w-6 text-right text-sm">{rating}</span>
-                  <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                  <div className="flex-1 h-2 rounded-full bg-muted">
-                    <div
-                      className="h-2 rounded-full bg-amber-400"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                  <span className="w-8 text-right text-xs text-muted-foreground">{count}</span>
-                </div>
-              );
-            })}
-          </div>
+      <div className="rounded-lg border">
+        <div className="grid grid-cols-[1fr_0.6fr_2fr_1fr_1fr] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+          <span>Type</span>
+          <span>Rating</span>
+          <span>Comments</span>
+          <span>Status</span>
+          <span>Date</span>
         </div>
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
+        ) : items.length === 0 ? (
+          <EmptyState icon={<MessageSquare className="h-8 w-8" />} title="No feedback" />
+        ) : (
+          <div className="divide-y">
+            {items.map((f) => (
+              <div key={f.id as string} className="grid grid-cols-[1fr_0.6fr_2fr_1fr_1fr] gap-4 px-4 py-3 text-sm">
+                <span>{(f.feedbackType as string) ?? '-'}</span>
+                <span>{'★'.repeat(Number(f.rating ?? 0))}</span>
+                <span className="truncate text-muted-foreground">{(f.comments as string) ?? ''}</span>
+                <StatusBadge label={(f.status as string) ?? '-'} variant="default" />
+                <span className="text-muted-foreground">{formatDate(f.createdAt)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <DataTable
-        columns={columns}
-        data={feedbackData}
-        searchKey="customerName"
-        searchPlaceholder="Search by customer..."
-      />
+      {d && d.totalPages && d.totalPages > 0 && (
+        <PaginationControls page={d.page ?? 1} totalPages={d.totalPages} hasPrevious={d.hasPrevious ?? false} hasNext={d.hasNext ?? false} onChange={setPage} />
+      )}
     </div>
   );
 }

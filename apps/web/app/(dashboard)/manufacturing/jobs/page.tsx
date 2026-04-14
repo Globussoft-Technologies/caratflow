@@ -1,143 +1,78 @@
 'use client';
 
-import * as React from 'react';
-import { PageHeader, StatusBadge, getStatusVariant, DataTable, type ColumnDef } from '@caratflow/ui';
-import { Plus, LayoutGrid, Table } from 'lucide-react';
-import { JobKanbanBoard } from '@/features/manufacturing';
-
-interface JobRow {
-  id: string;
-  jobNumber: string;
-  productName: string;
-  status: string;
-  priority: string;
-  karigarName: string | null;
-  locationName: string;
-  estimatedEndDate: string | null;
-  createdAt: string;
-}
-
-const columns: ColumnDef<JobRow, unknown>[] = [
-  {
-    accessorKey: 'jobNumber',
-    header: 'Job #',
-    cell: ({ row }) => <span className="font-mono text-sm">{row.original.jobNumber}</span>,
-  },
-  {
-    accessorKey: 'productName',
-    header: 'Product',
-  },
-  {
-    accessorKey: 'status',
-    header: 'Status',
-    cell: ({ row }) => (
-      <StatusBadge
-        label={row.original.status.replace(/_/g, ' ')}
-        variant={getStatusVariant(row.original.status)}
-      />
-    ),
-  },
-  {
-    accessorKey: 'priority',
-    header: 'Priority',
-    cell: ({ row }) => {
-      const variant = row.original.priority === 'URGENT' ? 'danger' : row.original.priority === 'HIGH' ? 'warning' : 'muted';
-      return <StatusBadge label={row.original.priority} variant={variant} dot={false} />;
-    },
-  },
-  {
-    accessorKey: 'karigarName',
-    header: 'Karigar',
-    cell: ({ row }) => row.original.karigarName ?? '-',
-  },
-  {
-    accessorKey: 'locationName',
-    header: 'Location',
-  },
-  {
-    accessorKey: 'estimatedEndDate',
-    header: 'Due Date',
-    cell: ({ row }) => row.original.estimatedEndDate ? new Date(row.original.estimatedEndDate).toLocaleDateString() : '-',
-  },
-];
-
-// Placeholder data
-const JOBS: JobRow[] = [
-  { id: '1', jobNumber: 'JO-000001', productName: '22K Gold Necklace', status: 'PLANNED', priority: 'HIGH', karigarName: 'Ramesh K.', locationName: 'Main Workshop', estimatedEndDate: '2026-04-10', createdAt: '2026-04-01' },
-  { id: '2', jobNumber: 'JO-000002', productName: '18K Diamond Ring', status: 'IN_PROGRESS', priority: 'URGENT', karigarName: 'Suresh M.', locationName: 'Main Workshop', estimatedEndDate: '2026-04-08', createdAt: '2026-04-01' },
-  { id: '3', jobNumber: 'JO-000003', productName: '22K Gold Bangle Set', status: 'MATERIAL_ISSUED', priority: 'MEDIUM', karigarName: 'Suresh M.', locationName: 'Branch Workshop', estimatedEndDate: '2026-04-15', createdAt: '2026-04-02' },
-  { id: '4', jobNumber: 'JO-000004', productName: 'Silver Temple Jewellery', status: 'QC_PENDING', priority: 'LOW', karigarName: 'Dinesh P.', locationName: 'Main Workshop', estimatedEndDate: '2026-04-20', createdAt: '2026-04-02' },
-  { id: '5', jobNumber: 'JO-000005', productName: '22K Gold Chain', status: 'COMPLETED', priority: 'MEDIUM', karigarName: 'Ramesh K.', locationName: 'Main Workshop', estimatedEndDate: '2026-04-05', createdAt: '2026-03-28' },
-];
-
-const KANBAN_COLUMNS = [
-  { status: 'PLANNED', label: 'Planned', jobs: JOBS.filter(j => j.status === 'PLANNED').map(j => ({ id: j.id, jobNumber: j.jobNumber, productName: j.productName, priority: j.priority, karigarName: j.karigarName ?? undefined, estimatedEndDate: j.estimatedEndDate ?? undefined })) },
-  { status: 'MATERIAL_ISSUED', label: 'Material Issued', jobs: JOBS.filter(j => j.status === 'MATERIAL_ISSUED').map(j => ({ id: j.id, jobNumber: j.jobNumber, productName: j.productName, priority: j.priority, karigarName: j.karigarName ?? undefined, estimatedEndDate: j.estimatedEndDate ?? undefined })) },
-  { status: 'IN_PROGRESS', label: 'In Progress', jobs: JOBS.filter(j => j.status === 'IN_PROGRESS').map(j => ({ id: j.id, jobNumber: j.jobNumber, productName: j.productName, priority: j.priority, karigarName: j.karigarName ?? undefined, estimatedEndDate: j.estimatedEndDate ?? undefined })) },
-  { status: 'QC_PENDING', label: 'QC Pending', jobs: JOBS.filter(j => j.status === 'QC_PENDING').map(j => ({ id: j.id, jobNumber: j.jobNumber, productName: j.productName, priority: j.priority, karigarName: j.karigarName ?? undefined, estimatedEndDate: j.estimatedEndDate ?? undefined })) },
-  { status: 'COMPLETED', label: 'Completed', jobs: JOBS.filter(j => j.status === 'COMPLETED').map(j => ({ id: j.id, jobNumber: j.jobNumber, productName: j.productName, priority: j.priority, karigarName: j.karigarName ?? undefined, estimatedEndDate: j.estimatedEndDate ?? undefined })) },
-];
+import { useState } from 'react';
+import Link from 'next/link';
+import { PageHeader, StatusBadge, getStatusVariant, EmptyState } from '@caratflow/ui';
+import { Plus, Hammer } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+import { PaginationControls } from '@/components/pagination-controls';
+import { formatDate } from '@/components/format';
 
 export default function JobOrdersPage() {
-  const [view, setView] = React.useState<'kanban' | 'table'>('kanban');
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState('');
+  const { data, isLoading } = trpc.manufacturing.job.list.useQuery({
+    pagination: { page, limit: 20, sortOrder: 'desc' },
+    filter: status ? ({ status: status as never } as never) : undefined,
+  });
+  const items = ((data?.items as Array<Record<string, unknown>>) ?? []);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Job Orders"
-        description="Track and manage production job orders."
+        description="Track manufacturing job orders from planning to completion."
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Manufacturing', href: '/manufacturing' },
           { label: 'Job Orders' },
         ]}
         actions={
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-md border">
-              <button
-                className={`px-2.5 py-1.5 text-sm ${view === 'kanban' ? 'bg-muted' : ''}`}
-                onClick={() => setView('kanban')}
-                title="Kanban view"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </button>
-              <button
-                className={`px-2.5 py-1.5 text-sm ${view === 'table' ? 'bg-muted' : ''}`}
-                onClick={() => setView('table')}
-                title="Table view"
-              >
-                <Table className="h-4 w-4" />
-              </button>
-            </div>
-            <a
-              href="/manufacturing/jobs/new"
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              <Plus className="h-4 w-4" />
-              New Job Order
-            </a>
-          </div>
+          <Link href="/manufacturing/jobs/new" className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            <Plus className="h-4 w-4" /> New Job
+          </Link>
         }
       />
 
-      {view === 'kanban' ? (
-        <JobKanbanBoard
-          columns={KANBAN_COLUMNS}
-          onJobClick={(id) => {
-            window.location.href = `/manufacturing/jobs/${id}`;
-          }}
-        />
-      ) : (
-        <DataTable
-          columns={columns}
-          data={JOBS}
-          searchKey="jobNumber"
-          searchPlaceholder="Search job orders..."
-          onRowClick={(row) => {
-            window.location.href = `/manufacturing/jobs/${row.id}`;
-          }}
-        />
-      )}
+      <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="h-9 rounded-md border px-2 text-sm">
+        <option value="">All statuses</option>
+        <option value="PLANNED">Planned</option>
+        <option value="IN_PROGRESS">In Progress</option>
+        <option value="QC_PENDING">QC Pending</option>
+        <option value="COMPLETED">Completed</option>
+        <option value="CANCELLED">Cancelled</option>
+      </select>
+
+      <div className="rounded-lg border">
+        <div className="grid grid-cols-[1.2fr_1.4fr_1fr_1fr_1fr_1fr] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+          <span>Job #</span>
+          <span>Product</span>
+          <span>Qty</span>
+          <span>Karigar</span>
+          <span>Status</span>
+          <span>Due</span>
+        </div>
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
+        ) : items.length === 0 ? (
+          <EmptyState icon={<Hammer className="h-8 w-8" />} title="No jobs" />
+        ) : (
+          <div className="divide-y">
+            {items.map((j) => (
+              <Link key={j.id as string} href={`/manufacturing/jobs/${j.id}`} className="grid grid-cols-[1.2fr_1.4fr_1fr_1fr_1fr_1fr] gap-4 px-4 py-3 text-sm hover:bg-accent">
+                <span className="font-mono font-medium">{(j.jobNumber as string) ?? '-'}</span>
+                <span>{((j.product as { name?: string })?.name) ?? '-'}</span>
+                <span>{String(j.quantity ?? 0)}</span>
+                <span>{((j.karigar as { firstName?: string })?.firstName) ?? '-'}</span>
+                <StatusBadge label={(j.status as string) ?? '-'} variant={getStatusVariant(j.status as string)} dot={false} />
+                <span className="text-muted-foreground">{formatDate(j.dueDate)}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {data && <PaginationControls page={data.page} totalPages={data.totalPages} hasPrevious={data.hasPrevious} hasNext={data.hasNext} onChange={setPage} />}
     </div>
   );
 }

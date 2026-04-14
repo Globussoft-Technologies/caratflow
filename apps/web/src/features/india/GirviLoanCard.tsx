@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { StatusBadge } from '@caratflow/ui';
+import { StatusBadge, getStatusVariant } from '@caratflow/ui';
 import { Scale, Calendar, IndianRupee } from 'lucide-react';
 import Link from 'next/link';
 
@@ -46,7 +46,7 @@ export function GirviLoanCard({
     >
       <div className="mb-3 flex items-center justify-between">
         <span className="font-mono text-sm text-muted-foreground">{loanNumber}</span>
-        <StatusBadge status={status} />
+        <StatusBadge label={status} variant={getStatusVariant(status)} />
       </div>
 
       <p className="font-medium">{customerName}</p>

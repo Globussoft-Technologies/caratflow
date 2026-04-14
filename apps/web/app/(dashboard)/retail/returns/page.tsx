@@ -1,86 +1,70 @@
 'use client';
 
-import * as React from 'react';
-import { PageHeader, DataTable, StatusBadge, getStatusVariant, type ColumnDef } from '@caratflow/ui';
+import { useState } from 'react';
+import Link from 'next/link';
+import { PageHeader, StatusBadge, getStatusVariant, EmptyState } from '@caratflow/ui';
 import { RotateCcw } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+import { PaginationControls } from '@/components/pagination-controls';
+import { formatPaise, formatDate } from '@/components/format';
 
-interface ReturnRow {
-  id: string;
-  returnNumber: string;
-  originalSaleNumber: string;
-  customerName: string | null;
-  status: string;
-  refundAmountPaise: number;
-  metalRateDifferencePaise: number;
-  createdAt: string;
-}
+export default function ReturnsPage() {
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState('');
+  const { data, isLoading } = trpc.retail.listReturns.useQuery({
+    filters: { status: status || undefined },
+    pagination: { page, limit: 20, sortOrder: 'desc' },
+  });
+  const items = ((data?.items as Array<Record<string, unknown>>) ?? []);
 
-function formatPaise(paise: number): string {
-  return `₹${(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
-}
-
-const columns: ColumnDef<ReturnRow, unknown>[] = [
-  { accessorKey: 'returnNumber', header: 'Return #', cell: ({ row }) => (
-    <span className="font-mono text-sm">{row.original.returnNumber}</span>
-  )},
-  { accessorKey: 'originalSaleNumber', header: 'Original Sale' },
-  { accessorKey: 'customerName', header: 'Customer', cell: ({ row }) => (
-    <span>{row.original.customerName ?? 'Walk-in'}</span>
-  )},
-  { accessorKey: 'status', header: 'Status', cell: ({ row }) => (
-    <StatusBadge label={row.original.status} variant={getStatusVariant(row.original.status)} />
-  )},
-  { accessorKey: 'refundAmountPaise', header: 'Refund', cell: ({ row }) => (
-    <span className="font-medium">{formatPaise(row.original.refundAmountPaise)}</span>
-  )},
-  { accessorKey: 'metalRateDifferencePaise', header: 'Rate Diff', cell: ({ row }) => {
-    const diff = row.original.metalRateDifferencePaise;
-    if (diff === 0) return <span className="text-muted-foreground">-</span>;
-    return (
-      <span className={diff > 0 ? 'text-emerald-600' : 'text-red-600'}>
-        {diff > 0 ? '+' : ''}{formatPaise(diff)}
-      </span>
-    );
-  }},
-  { accessorKey: 'createdAt', header: 'Date', cell: ({ row }) => (
-    <span>{new Date(row.original.createdAt).toLocaleDateString('en-IN')}</span>
-  )},
-];
-
-const mockReturns: ReturnRow[] = [
-  { id: '1', returnNumber: 'RT/MUM/2604/0002', originalSaleNumber: 'SL/MUM/2604/0009', customerName: 'Anita Desai', status: 'DRAFT', refundAmountPaise: 85000_00, metalRateDifferencePaise: 2500_00, createdAt: new Date().toISOString() },
-  { id: '2', returnNumber: 'RT/MUM/2604/0001', originalSaleNumber: 'SL/MUM/2604/0005', customerName: 'Vijay Singh', status: 'COMPLETED', refundAmountPaise: 45000_00, metalRateDifferencePaise: -1200_00, createdAt: new Date().toISOString() },
-];
-
-export default function ReturnsListPage() {
   return (
     <div className="space-y-6">
       <PageHeader
         title="Sale Returns"
-        description="Manage return transactions and refunds."
+        description="Manage returned items and refunds."
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Retail', href: '/retail' },
           { label: 'Returns' },
         ]}
-        actions={
-          <button
-            type="button"
-            className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            <RotateCcw className="h-4 w-4" />
-            New Return
-          </button>
-        }
       />
 
-      <DataTable
-        columns={columns}
-        data={mockReturns}
-        searchKey="returnNumber"
-        searchPlaceholder="Search by return number..."
-        onRowClick={(row) => { window.location.href = `/retail/returns/${row.id}`; }}
-      />
+      <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="h-9 rounded-md border px-2 text-sm">
+        <option value="">All</option>
+        <option value="PENDING">Pending</option>
+        <option value="APPROVED">Approved</option>
+        <option value="COMPLETED">Completed</option>
+        <option value="REJECTED">Rejected</option>
+      </select>
+
+      <div className="rounded-lg border">
+        <div className="grid grid-cols-[1.2fr_1.2fr_1fr_1fr_1fr] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+          <span>Return #</span>
+          <span>Original Sale</span>
+          <span>Refund</span>
+          <span>Status</span>
+          <span>Date</span>
+        </div>
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
+        ) : items.length === 0 ? (
+          <EmptyState icon={<RotateCcw className="h-8 w-8" />} title="No returns" />
+        ) : (
+          <div className="divide-y">
+            {items.map((r) => (
+              <Link key={r.id as string} href={`/retail/returns/${r.id}`} className="grid grid-cols-[1.2fr_1.2fr_1fr_1fr_1fr] gap-4 px-4 py-3 text-sm hover:bg-accent">
+                <span className="font-mono font-medium">{(r.returnNumber as string) ?? '-'}</span>
+                <span className="font-mono text-xs text-muted-foreground">{(((r.originalSale as { invoiceNumber?: string })?.invoiceNumber) as string) ?? '-'}</span>
+                <span className="font-semibold">{formatPaise(r.refundAmountPaise)}</span>
+                <StatusBadge label={(r.status as string) ?? '-'} variant={getStatusVariant(r.status as string)} dot={false} />
+                <span className="text-muted-foreground">{formatDate(r.createdAt)}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {data && <PaginationControls page={data.page} totalPages={data.totalPages} hasPrevious={data.hasPrevious} hasNext={data.hasNext} onChange={setPage} />}
     </div>
   );
 }

@@ -1,153 +1,45 @@
 'use client';
 
-import * as React from 'react';
-import { PageHeader } from '@caratflow/ui';
-import { CustomReportBuilder, ReportTable, ExportButton } from '@/features/reporting';
-import type { SupportedEntity, CustomReportResponse } from '@caratflow/shared-types';
+import Link from 'next/link';
+import { PageHeader, EmptyState } from '@caratflow/ui';
+import { FileText } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+import { formatDate } from '@/components/format';
 
-// Mock entities -- in production, loaded from tRPC getSupportedEntities()
-const MOCK_ENTITIES: SupportedEntity[] = [
-  {
-    name: 'sales',
-    label: 'Sales',
-    fields: [
-      { name: 'saleNumber', label: 'Sale Number', type: 'string', filterable: true, sortable: true, aggregatable: false },
-      { name: 'status', label: 'Status', type: 'string', filterable: true, sortable: true, aggregatable: false },
-      { name: 'totalPaise', label: 'Total (Paise)', type: 'number', filterable: true, sortable: true, aggregatable: true },
-      { name: 'taxPaise', label: 'Tax (Paise)', type: 'number', filterable: true, sortable: true, aggregatable: true },
-      { name: 'createdAt', label: 'Created At', type: 'date', filterable: true, sortable: true, aggregatable: false },
-    ],
-  },
-  {
-    name: 'products',
-    label: 'Products',
-    fields: [
-      { name: 'sku', label: 'SKU', type: 'string', filterable: true, sortable: true, aggregatable: false },
-      { name: 'name', label: 'Name', type: 'string', filterable: true, sortable: true, aggregatable: false },
-      { name: 'productType', label: 'Type', type: 'string', filterable: true, sortable: true, aggregatable: false },
-      { name: 'costPricePaise', label: 'Cost Price', type: 'number', filterable: true, sortable: true, aggregatable: true },
-      { name: 'sellingPricePaise', label: 'Selling Price', type: 'number', filterable: true, sortable: true, aggregatable: true },
-    ],
-  },
-  {
-    name: 'customers',
-    label: 'Customers',
-    fields: [
-      { name: 'firstName', label: 'First Name', type: 'string', filterable: true, sortable: true, aggregatable: false },
-      { name: 'lastName', label: 'Last Name', type: 'string', filterable: true, sortable: true, aggregatable: false },
-      { name: 'customerType', label: 'Type', type: 'string', filterable: true, sortable: true, aggregatable: false },
-      { name: 'loyaltyPoints', label: 'Loyalty Points', type: 'number', filterable: true, sortable: true, aggregatable: true },
-      { name: 'city', label: 'City', type: 'string', filterable: true, sortable: true, aggregatable: false },
-    ],
-  },
-  {
-    name: 'job_orders',
-    label: 'Job Orders',
-    fields: [
-      { name: 'jobNumber', label: 'Job Number', type: 'string', filterable: true, sortable: true, aggregatable: false },
-      { name: 'status', label: 'Status', type: 'string', filterable: true, sortable: true, aggregatable: false },
-      { name: 'priority', label: 'Priority', type: 'string', filterable: true, sortable: true, aggregatable: false },
-      { name: 'quantity', label: 'Quantity', type: 'number', filterable: true, sortable: true, aggregatable: true },
-    ],
-  },
-  {
-    name: 'invoices',
-    label: 'Invoices',
-    fields: [
-      { name: 'invoiceNumber', label: 'Invoice Number', type: 'string', filterable: true, sortable: true, aggregatable: false },
-      { name: 'status', label: 'Status', type: 'string', filterable: true, sortable: true, aggregatable: false },
-      { name: 'totalPaise', label: 'Total', type: 'number', filterable: true, sortable: true, aggregatable: true },
-      { name: 'taxPaise', label: 'Tax', type: 'number', filterable: true, sortable: true, aggregatable: true },
-    ],
-  },
-];
-
-export default function CustomReportPage() {
-  const [result, setResult] = React.useState<CustomReportResponse | null>(null);
-  const [loading, setLoading] = React.useState(false);
-
-  const handleExecute = async (config: {
-    entityType: string;
-    columns: string[];
-    filters: unknown[];
-    groupBy: string[];
-    aggregations: unknown[];
-  }) => {
-    setLoading(true);
-    // In production, call tRPC executeCustomReport
-    // Simulate with a timeout
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    setResult({
-      headers: config.columns.map((c) => ({ key: c, label: c, type: 'string' })),
-      rows: [
-        { [config.columns[0] ?? 'id']: 'Sample row 1' },
-        { [config.columns[0] ?? 'id']: 'Sample row 2' },
-      ],
-      totals: {},
-      rowCount: 2,
-      executionTimeMs: 45,
-    });
-    setLoading(false);
-  };
-
-  const handleSave = (config: unknown) => {
-    console.log('Saving report config:', config);
-  };
-
-  const handleExport = (format: 'csv' | 'pdf' | 'xlsx') => {
-    console.log(`Exporting custom report as ${format}`);
-  };
+export default function CustomReportsPage() {
+  const { data, isLoading } = trpc.reporting.listSavedReports.useQuery({});
+  const items = ((data as Array<Record<string, unknown>> | undefined) ?? []);
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Custom Report Builder"
-        description="Build custom reports from any data source with flexible filters and aggregations."
-        breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Reports', href: '/reports' },
-          { label: 'Custom' },
-        ]}
-      />
-
-      <div className="grid gap-6 lg:grid-cols-5">
-        {/* Builder Panel */}
-        <div className="lg:col-span-2 rounded-lg border bg-card p-6">
-          <h3 className="text-lg font-semibold mb-4">Report Configuration</h3>
-          <CustomReportBuilder
-            entities={MOCK_ENTITIES}
-            onExecute={handleExecute}
-            onSave={handleSave}
-            loading={loading}
-          />
+      <PageHeader title="Saved Reports" breadcrumbs={[
+        { label: 'Dashboard', href: '/dashboard' },
+        { label: 'Reports', href: '/reports' },
+        { label: 'Custom' },
+      ]} />
+      <div className="rounded-lg border">
+        <div className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+          <span>Name</span>
+          <span>Type</span>
+          <span>Default</span>
+          <span>Updated</span>
         </div>
-
-        {/* Results Panel */}
-        <div className="lg:col-span-3">
-          {result ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  {result.rowCount} rows returned in {result.executionTimeMs}ms
-                </p>
-                <ExportButton onExport={handleExport} />
-              </div>
-              <ReportTable
-                columns={result.headers.map((h) => ({
-                  key: h.key,
-                  label: h.label,
-                }))}
-                data={result.rows as Array<Record<string, unknown>>}
-                totals={result.totals}
-              />
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-64 rounded-lg border bg-card text-muted-foreground">
-              Configure and run a report to see results here.
-            </div>
-          )}
-        </div>
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
+        ) : items.length === 0 ? (
+          <EmptyState icon={<FileText className="h-8 w-8" />} title="No saved reports" />
+        ) : (
+          <div className="divide-y">
+            {items.map((r) => (
+              <Link key={r.id as string} href={`/reports/custom/${r.id}`} className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-4 px-4 py-3 text-sm hover:bg-accent">
+                <span className="font-medium">{(r.name as string) ?? '-'}</span>
+                <span>{(r.reportType as string) ?? '-'}</span>
+                <span>{r.isDefault ? 'Yes' : ''}</span>
+                <span className="text-muted-foreground">{formatDate(r.updatedAt)}</span>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

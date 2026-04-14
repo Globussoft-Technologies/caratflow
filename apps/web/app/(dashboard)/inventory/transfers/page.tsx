@@ -6,6 +6,7 @@ import { ArrowRightLeft, Plus } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import type { ColumnDef } from '@caratflow/ui';
 import { TransferForm } from '@/features/inventory/transfer-form';
+import { TransferStatus } from '@caratflow/shared-types';
 
 interface TransferRow {
   id: string;
@@ -35,7 +36,7 @@ export default function TransfersPage() {
   const { data, isLoading, refetch } = trpc.inventory.transfers.list.useQuery({
     page,
     limit: 20,
-    status: statusFilter ? (statusFilter as 'DRAFT' | 'IN_TRANSIT' | 'RECEIVED' | 'CANCELLED') : undefined,
+    status: statusFilter ? (statusFilter as TransferStatus) : undefined,
   });
 
   const approveMutation = trpc.inventory.transfers.approve.useMutation({

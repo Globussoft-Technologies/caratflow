@@ -120,7 +120,7 @@ export default function LabelTemplatesPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {templates.map((template: LabelTemplateResponse) => (
+              {(templates as unknown as LabelTemplateResponse[]).map((template) => (
                 <div key={template.id} className="rounded-lg border bg-card shadow-sm">
                   <div className="p-4">
                     <h3 className="text-sm font-semibold">{template.name}</h3>

@@ -19,7 +19,7 @@ export default function NewGirviLoanPage() {
     appraisedRatePer10g: '',
     loanPercentage: '75',
     interestRate: '18',
-    interestType: 'SIMPLE' as const,
+    interestType: 'SIMPLE' as 'SIMPLE' | 'COMPOUND',
     compoundingPeriod: 'MONTHLY',
     durationMonths: '12',
     collateralDescription: '',

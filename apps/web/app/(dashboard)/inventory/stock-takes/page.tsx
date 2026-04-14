@@ -7,6 +7,7 @@ import { trpc } from '@/lib/trpc';
 import type { ColumnDef } from '@caratflow/ui';
 import { StockTakeForm } from '@/features/inventory/stock-take-form';
 import { VarianceDisplay } from '@/features/inventory/variance-display';
+import { StockTakeStatus } from '@caratflow/shared-types';
 
 interface StockTakeRow {
   id: string;
@@ -36,7 +37,7 @@ export default function StockTakesPage() {
   const { data, isLoading, refetch } = trpc.inventory.stockTakes.list.useQuery({
     page,
     limit: 20,
-    status: statusFilter ? (statusFilter as 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED') : undefined,
+    status: statusFilter ? (statusFilter as StockTakeStatus) : undefined,
   });
 
   const completeMutation = trpc.inventory.stockTakes.complete.useMutation({

@@ -1,21 +1,21 @@
 'use client';
 
-import { PageHeader, StatusBadge } from '@caratflow/ui';
-import { Plus } from 'lucide-react';
-import { RateContractForm } from '../../../../src/features/wholesale/RateContractForm';
-
-const mockContracts = [
-  { id: '1', supplierName: 'ABC Gold Refinery', metalType: 'GOLD', ratePerGramPaise: 6500_00, makingChargesPercent: 800, validFrom: '2026-01-01', validTo: '2026-06-30', isActive: true },
-  { id: '2', supplierName: 'Silver Craft Ltd', metalType: 'SILVER', ratePerGramPaise: 85_00, makingChargesPercent: 1200, validFrom: '2026-01-01', validTo: '2026-12-31', isActive: true },
-  { id: '3', supplierName: 'Platinum Works', metalType: 'PLATINUM', ratePerGramPaise: 3200_00, makingChargesPercent: 1000, validFrom: '2025-07-01', validTo: '2025-12-31', isActive: false },
-];
-
-function formatPaise(paise: number): string {
-  const rupees = paise / 100;
-  return `\u20B9${rupees.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
-}
+import { useState } from 'react';
+import { PageHeader, StatusBadge, EmptyState } from '@caratflow/ui';
+import { Plus, FileText } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+import { PaginationControls } from '@/components/pagination-controls';
+import { formatDate } from '@/components/format';
 
 export default function RateContractsPage() {
+  const [page, setPage] = useState(1);
+  const [activeOnly, setActiveOnly] = useState(true);
+  const { data, isLoading } = trpc.wholesale.listRateContracts.useQuery({
+    filters: { isActive: activeOnly || undefined },
+    pagination: { page, limit: 20, sortOrder: 'desc' },
+  });
+  const items = ((data?.items as Array<Record<string, unknown>>) ?? []);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -27,41 +27,54 @@ export default function RateContractsPage() {
           { label: 'Rate Contracts' },
         ]}
         actions={
-          <button className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+          <button className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
             <Plus className="h-4 w-4" />
             New Contract
           </button>
         }
       />
 
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={activeOnly} onChange={(e) => { setActiveOnly(e.target.checked); setPage(1); }} />
+        Active only
+      </label>
+
       <div className="rounded-lg border">
-        <div className="grid grid-cols-7 gap-4 border-b px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          <div className="col-span-2">Supplier</div>
-          <div>Metal Type</div>
-          <div className="text-right">Rate/g</div>
-          <div className="text-right">Making %</div>
-          <div>Valid Period</div>
-          <div>Status</div>
+        <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr_0.8fr] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <span>Supplier</span>
+          <span>Metal</span>
+          <span>Valid From</span>
+          <span>Valid To</span>
+          <span>Status</span>
         </div>
-        {mockContracts.map((c) => (
-          <div key={c.id} className="grid grid-cols-7 gap-4 border-b px-4 py-3 last:border-b-0">
-            <div className="col-span-2 text-sm font-medium">{c.supplierName}</div>
-            <div className="text-sm">{c.metalType}</div>
-            <div className="text-sm text-right font-medium">{formatPaise(c.ratePerGramPaise)}</div>
-            <div className="text-sm text-right">{(c.makingChargesPercent / 100).toFixed(2)}%</div>
-            <div className="text-sm text-muted-foreground">
-              {new Date(c.validFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })} - {new Date(c.validTo).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}
-            </div>
-            <div>
-              <StatusBadge
-                label={c.isActive ? 'Active' : 'Expired'}
-                variant={c.isActive ? 'success' : 'secondary'}
-                dot
-              />
-            </div>
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
+        ) : items.length === 0 ? (
+          <EmptyState icon={<FileText className="h-8 w-8" />} title="No rate contracts" />
+        ) : (
+          <div className="divide-y">
+            {items.map((c) => {
+              const supplier = c.supplier as { name?: string } | undefined;
+              return (
+                <div key={c.id as string} className="grid grid-cols-[1.4fr_1fr_1fr_1fr_0.8fr] gap-4 px-4 py-3 text-sm">
+                  <span className="font-medium">{supplier?.name ?? '-'}</span>
+                  <span>{(c.metalType as string) ?? '-'}</span>
+                  <span className="text-muted-foreground">{formatDate(c.validFrom)}</span>
+                  <span className="text-muted-foreground">{formatDate(c.validTo)}</span>
+                  <StatusBadge
+                    label={c.isActive ? 'Active' : 'Expired'}
+                    variant={c.isActive ? 'success' : 'default'}
+                  />
+                </div>
+              );
+            })}
           </div>
-        ))}
+        )}
       </div>
+
+      {data && (
+        <PaginationControls page={data.page} totalPages={data.totalPages} hasPrevious={data.hasPrevious} hasNext={data.hasNext} onChange={setPage} />
+      )}
     </div>
   );
 }

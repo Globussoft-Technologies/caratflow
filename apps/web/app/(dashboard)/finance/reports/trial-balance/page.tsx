@@ -1,99 +1,56 @@
 'use client';
 
-import * as React from 'react';
+import { useState } from 'react';
 import { PageHeader } from '@caratflow/ui';
-
-const mockTrialBalance = {
-  asOfDate: '2026-04-04',
-  accounts: [
-    { accountCode: '1001', accountName: 'Cash on Hand', accountType: 'ASSET', debitTotal: 520_000_00, creditTotal: 200_000_00, balance: 320_000_00 },
-    { accountCode: '1002', accountName: 'Bank - SBI', accountType: 'ASSET', debitTotal: 1_245_000_00, creditTotal: 400_000_00, balance: 845_000_00 },
-    { accountCode: '1003', accountName: 'Bank - HDFC', accountType: 'ASSET', debitTotal: 420_000_00, creditTotal: 100_000_00, balance: 320_000_00 },
-    { accountCode: '1100', accountName: 'Accounts Receivable', accountType: 'ASSET', debitTotal: 850_000_00, creditTotal: 270_000_00, balance: 580_000_00 },
-    { accountCode: '2001', accountName: 'Accounts Payable', accountType: 'LIABILITY', debitTotal: 180_000_00, creditTotal: 500_000_00, balance: -320_000_00 },
-    { accountCode: '2010', accountName: 'GST Payable', accountType: 'LIABILITY', debitTotal: 0, creditTotal: 45_000_00, balance: -45_000_00 },
-    { accountCode: '4001', accountName: 'Sales Revenue', accountType: 'REVENUE', debitTotal: 0, creditTotal: 2_450_000_00, balance: -2_450_000_00 },
-    { accountCode: '5001', accountName: 'Cost of Goods Sold', accountType: 'EXPENSE', debitTotal: 1_380_000_00, creditTotal: 0, balance: 1_380_000_00 },
-    { accountCode: '5010', accountName: 'Salaries', accountType: 'EXPENSE', debitTotal: 120_000_00, creditTotal: 0, balance: 120_000_00 },
-    { accountCode: '5020', accountName: 'Rent', accountType: 'EXPENSE', debitTotal: 50_000_00, creditTotal: 0, balance: 50_000_00 },
-  ],
-  totalDebits: 4_765_000_00,
-  totalCredits: 3_965_000_00,
-};
+import { trpc } from '@/lib/trpc';
+import { formatPaise } from '@/components/format';
 
 export default function TrialBalancePage() {
-  const d = mockTrialBalance;
-  const formatAmount = (paise: number) =>
-    paise === 0 ? '-' : (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+  const today = new Date();
+  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const [from, setFrom] = useState(firstOfMonth.toISOString().slice(0, 10));
+  const [to, setTo] = useState(today.toISOString().slice(0, 10));
+
+  const { data, isLoading } = trpc.financial.reports.trialBalance.useQuery({
+    dateRange: { from: new Date(from), to: new Date(to) },
+  });
+  const rows = ((data as Array<Record<string, unknown>> | undefined) ?? []);
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Trial Balance"
-        description={`As of ${d.asOfDate}`}
-        breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Finance', href: '/finance' },
-          { label: 'Reports', href: '/finance/reports' },
-          { label: 'Trial Balance' },
-        ]}
-      />
+      <PageHeader title="Trial Balance" description="Accounts with debit/credit balances." breadcrumbs={[
+        { label: 'Dashboard', href: '/dashboard' },
+        { label: 'Finance', href: '/finance' },
+        { label: 'Reports', href: '/finance/reports' },
+        { label: 'Trial Balance' },
+      ]} />
 
-      <div className="rounded-lg border">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/50">
-              <th className="px-4 py-2 text-left font-medium">Code</th>
-              <th className="px-4 py-2 text-left font-medium">Account Name</th>
-              <th className="px-4 py-2 text-left font-medium">Type</th>
-              <th className="px-4 py-2 text-right font-medium">Debit</th>
-              <th className="px-4 py-2 text-right font-medium">Credit</th>
-            </tr>
-          </thead>
-          <tbody>
-            {d.accounts.map((acc) => {
-              const isDebitBalance = acc.balance >= 0;
-              return (
-                <tr key={acc.accountCode} className="border-b hover:bg-muted/30">
-                  <td className="px-4 py-2 font-mono">{acc.accountCode}</td>
-                  <td className="px-4 py-2">{acc.accountName}</td>
-                  <td className="px-4 py-2">
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs">{acc.accountType}</span>
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono">
-                    {isDebitBalance ? formatAmount(Math.abs(acc.balance)) : '-'}
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono">
-                    {!isDebitBalance ? formatAmount(Math.abs(acc.balance)) : '-'}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr className="border-t-2 bg-muted/50">
-              <td colSpan={3} className="px-4 py-2 font-bold">Total</td>
-              <td className="px-4 py-2 text-right font-mono font-bold">
-                {formatAmount(d.accounts.filter((a) => a.balance >= 0).reduce((s, a) => s + a.balance, 0))}
-              </td>
-              <td className="px-4 py-2 text-right font-mono font-bold">
-                {formatAmount(Math.abs(d.accounts.filter((a) => a.balance < 0).reduce((s, a) => s + a.balance, 0)))}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+      <div className="flex gap-3">
+        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 rounded-md border px-2 text-sm" />
+        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 rounded-md border px-2 text-sm" />
       </div>
 
-      <div className="rounded-lg border bg-muted/30 p-4">
-        <p className="text-sm">
-          {d.totalDebits === d.totalCredits ? (
-            <span className="text-emerald-600 font-medium">Trial balance is in equilibrium. Debits equal credits.</span>
-          ) : (
-            <span className="text-red-600 font-medium">
-              Warning: Trial balance does not balance. Difference: {formatAmount(Math.abs(d.totalDebits - d.totalCredits))}
-            </span>
-          )}
-        </p>
+      <div className="rounded-lg border">
+        <div className="grid grid-cols-[2fr_1fr_1fr] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+          <span>Account</span>
+          <span className="text-right">Debit</span>
+          <span className="text-right">Credit</span>
+        </div>
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
+        ) : rows.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">No data</div>
+        ) : (
+          <div className="divide-y">
+            {rows.map((r, idx) => (
+              <div key={idx} className="grid grid-cols-[2fr_1fr_1fr] gap-4 px-4 py-3 text-sm">
+                <span>{(r.accountName as string) ?? '-'}</span>
+                <span className="text-right">{formatPaise(r.debitPaise)}</span>
+                <span className="text-right">{formatPaise(r.creditPaise)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

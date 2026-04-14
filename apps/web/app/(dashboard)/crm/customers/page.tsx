@@ -1,142 +1,85 @@
 'use client';
 
-import { PageHeader, DataTable, StatusBadge, getStatusVariant } from '@caratflow/ui';
-import type { ColumnDef } from '@caratflow/ui';
-import { Users, Plus, Upload, Search } from 'lucide-react';
-import Link from 'next/link';
 import { useState } from 'react';
-
-interface CustomerRow {
-  id: string;
-  firstName: string;
-  lastName: string;
-  phone: string | null;
-  email: string | null;
-  customerType: string;
-  city: string | null;
-  loyaltyPoints: number;
-  loyaltyTier: string | null;
-}
-
-// Placeholder data
-const customers: CustomerRow[] = [
-  { id: '1', firstName: 'Priya', lastName: 'Sharma', phone: '+919876543210', email: 'priya@example.com', customerType: 'RETAIL', city: 'Mumbai', loyaltyPoints: 2500, loyaltyTier: 'GOLD' },
-  { id: '2', firstName: 'Rahul', lastName: 'Mehta', phone: '+919876543211', email: 'rahul@example.com', customerType: 'WHOLESALE', city: 'Delhi', loyaltyPoints: 8200, loyaltyTier: 'PLATINUM' },
-  { id: '3', firstName: 'Anita', lastName: 'Desai', phone: '+919876543212', email: null, customerType: 'RETAIL', city: 'Pune', loyaltyPoints: 450, loyaltyTier: 'SILVER' },
-  { id: '4', firstName: 'Vikram', lastName: 'Singh', phone: '+919876543213', email: 'vikram@example.com', customerType: 'CORPORATE', city: 'Jaipur', loyaltyPoints: 12000, loyaltyTier: 'DIAMOND' },
-  { id: '5', firstName: 'Meena', lastName: 'Patel', phone: '+919876543214', email: 'meena@example.com', customerType: 'RETAIL', city: 'Ahmedabad', loyaltyPoints: 150, loyaltyTier: 'BRONZE' },
-];
-
-const columns: ColumnDef<CustomerRow>[] = [
-  {
-    accessorKey: 'firstName',
-    header: 'Name',
-    cell: ({ row }) => (
-      <Link href={`/crm/customers/${row.original.id}`} className="font-medium text-primary hover:underline">
-        {row.original.firstName} {row.original.lastName}
-      </Link>
-    ),
-  },
-  {
-    accessorKey: 'phone',
-    header: 'Phone',
-    cell: ({ getValue }) => getValue() ?? '-',
-  },
-  {
-    accessorKey: 'email',
-    header: 'Email',
-    cell: ({ getValue }) => getValue() ?? '-',
-  },
-  {
-    accessorKey: 'customerType',
-    header: 'Type',
-    cell: ({ getValue }) => {
-      const type = getValue() as string;
-      return <StatusBadge label={type} variant={type === 'WHOLESALE' ? 'info' : type === 'CORPORATE' ? 'default' : 'muted'} />;
-    },
-  },
-  {
-    accessorKey: 'city',
-    header: 'City',
-    cell: ({ getValue }) => getValue() ?? '-',
-  },
-  {
-    accessorKey: 'loyaltyPoints',
-    header: 'Points',
-    cell: ({ getValue }) => (getValue() as number).toLocaleString('en-IN'),
-  },
-  {
-    accessorKey: 'loyaltyTier',
-    header: 'Tier',
-    cell: ({ getValue }) => {
-      const tier = getValue() as string | null;
-      if (!tier) return '-';
-      const variantMap: Record<string, 'muted' | 'default' | 'warning' | 'success' | 'info'> = {
-        BRONZE: 'muted',
-        SILVER: 'default',
-        GOLD: 'warning',
-        PLATINUM: 'info',
-        DIAMOND: 'success',
-      };
-      return <StatusBadge label={tier} variant={variantMap[tier] ?? 'default'} />;
-    },
-  },
-];
+import Link from 'next/link';
+import { PageHeader, EmptyState } from '@caratflow/ui';
+import { Users, Plus } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+import { PaginationControls } from '@/components/pagination-controls';
 
 export default function CustomersPage() {
-  const [typeFilter, setTypeFilter] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
 
-  const filteredCustomers = typeFilter
-    ? customers.filter((c) => c.customerType === typeFilter)
-    : customers;
+  const { data, isLoading } = trpc.crm.customerList.useQuery({
+    page,
+    limit: 20,
+    search: search || undefined,
+  } as never);
+  const d = data as { items?: Array<Record<string, unknown>>; total?: number; totalPages?: number; page?: number; hasPrevious?: boolean; hasNext?: boolean } | undefined;
+  const items = d?.items ?? [];
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Customers"
-        description="Manage your customer database."
+        description="Customer database and 360° profiles."
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'CRM', href: '/crm' },
           { label: 'Customers' },
         ]}
         actions={
-          <div className="flex items-center gap-2">
-            <button className="inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm font-medium hover:bg-accent">
-              <Upload className="h-4 w-4" />
-              Import CSV
-            </button>
-            <button className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-              <Plus className="h-4 w-4" />
-              Add Customer
-            </button>
-          </div>
+          <button className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            <Plus className="h-4 w-4" /> Add Customer
+          </button>
         }
       />
 
-      {/* Filters */}
-      <div className="flex items-center gap-3">
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="h-9 rounded-md border bg-transparent px-3 text-sm"
-        >
-          <option value="">All Types</option>
-          <option value="RETAIL">Retail</option>
-          <option value="WHOLESALE">Wholesale</option>
-          <option value="CORPORATE">Corporate</option>
-        </select>
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+        placeholder="Search by name, phone, or email..."
+        className="h-9 w-72 rounded-md border bg-transparent px-3 text-sm"
+      />
+
+      <div className="rounded-lg border">
+        <div className="grid grid-cols-[1.4fr_1fr_1.2fr_1fr_0.8fr] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+          <span>Name</span>
+          <span>Phone</span>
+          <span>Email</span>
+          <span>City</span>
+          <span>Type</span>
+        </div>
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
+        ) : items.length === 0 ? (
+          <EmptyState icon={<Users className="h-8 w-8" />} title="No customers" />
+        ) : (
+          <div className="divide-y">
+            {items.map((c) => (
+              <Link key={c.id as string} href={`/crm/customers/${c.id}`} className="grid grid-cols-[1.4fr_1fr_1.2fr_1fr_0.8fr] gap-4 px-4 py-3 text-sm hover:bg-accent">
+                <span className="font-medium">{`${(c.firstName as string) ?? ''} ${(c.lastName as string) ?? ''}`.trim()}</span>
+                <span>{(c.phone as string) ?? '-'}</span>
+                <span className="text-muted-foreground">{(c.email as string) ?? '-'}</span>
+                <span>{(c.city as string) ?? '-'}</span>
+                <span className="text-xs">{(c.customerType as string) ?? '-'}</span>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
-      <DataTable
-        columns={columns}
-        data={filteredCustomers}
-        searchKey="firstName"
-        searchPlaceholder="Search by name..."
-        onRowClick={(row) => {
-          window.location.href = `/crm/customers/${row.id}`;
-        }}
-      />
+      {d && d.totalPages != null && d.totalPages > 0 && (
+        <PaginationControls
+          page={d.page ?? 1}
+          totalPages={d.totalPages}
+          hasPrevious={d.hasPrevious ?? false}
+          hasNext={d.hasNext ?? false}
+          onChange={setPage}
+        />
+      )}
     </div>
   );
 }

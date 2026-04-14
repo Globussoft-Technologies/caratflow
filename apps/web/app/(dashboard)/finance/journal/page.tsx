@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { PageHeader, StatusBadge, DataTable, type ColumnDef } from '@caratflow/ui';
+import { PageHeader, StatusBadge, getStatusVariant, DataTable, type ColumnDef } from '@caratflow/ui';
 import { Plus, BookOpen } from 'lucide-react';
 import { JournalEntryForm } from '@/features/finance/journal-entry-form';
 
@@ -49,7 +49,7 @@ const columns: ColumnDef<JournalEntryRow, unknown>[] = [
     <span className="font-mono">{(row.original.totalCredit / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
   )},
   { accessorKey: 'status', header: 'Status', cell: ({ row }) => (
-    <StatusBadge status={row.original.status} />
+    <StatusBadge label={row.original.status} variant={getStatusVariant(row.original.status)} />
   )},
 ];
 

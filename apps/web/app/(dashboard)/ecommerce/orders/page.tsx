@@ -1,119 +1,57 @@
 'use client';
 
-import { PageHeader, StatusBadge, getStatusVariant } from '@caratflow/ui';
-import { Search, Filter } from 'lucide-react';
-import { ChannelBadge } from '@/features/ecommerce';
+import { useState } from 'react';
+import Link from 'next/link';
+import { PageHeader, StatusBadge, getStatusVariant, EmptyState } from '@caratflow/ui';
+import { ShoppingCart } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+import { PaginationControls } from '@/components/pagination-controls';
+import { formatPaise, formatDateTime } from '@/components/format';
 
-// Mock data -- in production from tRPC: ecommerce.listOrders
-const orders = [
-  { id: '1', orderNumber: 'ON/SHO/2604/0028', channelType: 'SHOPIFY', customerName: 'Meera Joshi', customerEmail: 'meera@example.com', status: 'CONFIRMED', totalPaise: 125000_00, currencyCode: 'INR', placedAt: '2026-04-04T11:00:00Z', itemCount: 2 },
-  { id: '2', orderNumber: 'ON/AMA/2604/0006', channelType: 'AMAZON', customerName: 'Vikram Singh', customerEmail: 'vikram@example.com', status: 'PROCESSING', totalPaise: 85000_00, currencyCode: 'INR', placedAt: '2026-04-04T09:30:00Z', itemCount: 1 },
-  { id: '3', orderNumber: 'ON/SHO/2604/0027', channelType: 'SHOPIFY', customerName: 'Ananya Reddy', customerEmail: 'ananya@example.com', status: 'SHIPPED', totalPaise: 250000_00, currencyCode: 'INR', placedAt: '2026-04-03T16:00:00Z', itemCount: 3 },
-  { id: '4', orderNumber: 'ON/INS/2604/0004', channelType: 'INSTAGRAM', customerName: 'Pooja Gupta', customerEmail: 'pooja@example.com', status: 'PENDING', totalPaise: 45000_00, currencyCode: 'INR', placedAt: '2026-04-04T12:00:00Z', itemCount: 1 },
-  { id: '5', orderNumber: 'ON/SHO/2604/0026', channelType: 'SHOPIFY', customerName: 'Rahul Patel', customerEmail: 'rahul@example.com', status: 'DELIVERED', totalPaise: 175000_00, currencyCode: 'INR', placedAt: '2026-04-01T10:00:00Z', itemCount: 2 },
-  { id: '6', orderNumber: 'ON/AMA/2604/0005', channelType: 'AMAZON', customerName: 'Deepa Nair', customerEmail: 'deepa@example.com', status: 'CANCELLED', totalPaise: 65000_00, currencyCode: 'INR', placedAt: '2026-04-02T14:00:00Z', itemCount: 1 },
-];
+export default function EcommerceOrdersPage() {
+  const [page, setPage] = useState(1);
+  const { data, isLoading } = trpc.ecommerce.listOrders.useQuery({
+    pagination: { page, limit: 20, sortOrder: 'desc' },
+  });
+  const d = data as { items?: Array<Record<string, unknown>>; totalPages?: number; page?: number; hasPrevious?: boolean; hasNext?: boolean } | undefined;
+  const items = d?.items ?? [];
 
-function formatPaise(paise: number): string {
-  const rupees = paise / 100;
-  return `\u20B9${rupees.toLocaleString('en-IN')}`;
-}
-
-export default function OrdersPage() {
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Online Orders"
-        description="Manage orders received from all sales channels."
-        breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
-          { label: 'E-Commerce', href: '/ecommerce' },
-          { label: 'Orders' },
-        ]}
-        actions={
-          <button className="inline-flex h-9 items-center gap-2 rounded-md border px-4 text-sm font-medium transition-colors hover:bg-accent">
-            <Filter className="h-4 w-4" />
-            Filters
-          </button>
-        }
-      />
-
-      {/* Status Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {['All', 'PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'].map((status) => (
-          <button
-            key={status}
-            className="inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors hover:bg-accent whitespace-nowrap"
-          >
-            {status === 'All' ? 'All Orders' : status.replace('_', ' ')}
-          </button>
-        ))}
-      </div>
-
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="text"
-          placeholder="Search by order number, customer name, or email..."
-          className="h-10 w-full rounded-md border bg-background pl-10 pr-4 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-      </div>
-
-      {/* Orders Table */}
+      <PageHeader title="Online Orders" breadcrumbs={[
+        { label: 'Dashboard', href: '/dashboard' },
+        { label: 'E-Commerce', href: '/ecommerce' },
+        { label: 'Orders' },
+      ]} />
       <div className="rounded-lg border">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b bg-muted/50">
-              <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase">Order</th>
-              <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase">Channel</th>
-              <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase">Customer</th>
-              <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase">Status</th>
-              <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase">Items</th>
-              <th className="p-3 text-right text-xs font-medium text-muted-foreground uppercase">Total</th>
-              <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase">Date</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {orders.map((order) => (
-              <tr key={order.id} className="transition-colors hover:bg-accent/50">
-                <td className="p-3">
-                  <a href={`/ecommerce/orders/${order.id}`} className="text-sm font-medium font-mono hover:underline">
-                    {order.orderNumber}
-                  </a>
-                </td>
-                <td className="p-3">
-                  <ChannelBadge channelType={order.channelType} />
-                </td>
-                <td className="p-3">
-                  <div>
-                    <p className="text-sm font-medium">{order.customerName}</p>
-                    <p className="text-xs text-muted-foreground">{order.customerEmail}</p>
-                  </div>
-                </td>
-                <td className="p-3">
-                  <StatusBadge
-                    label={order.status.replace('_', ' ')}
-                    variant={getStatusVariant(order.status)}
-                    dot={false}
-                  />
-                </td>
-                <td className="p-3">
-                  <span className="text-sm">{order.itemCount}</span>
-                </td>
-                <td className="p-3 text-right">
-                  <span className="text-sm font-semibold">{formatPaise(order.totalPaise)}</span>
-                </td>
-                <td className="p-3">
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(order.placedAt).toLocaleDateString()}
-                  </span>
-                </td>
-              </tr>
+        <div className="grid grid-cols-[1.2fr_1.4fr_1fr_1fr_1fr] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+          <span>Order #</span>
+          <span>Customer</span>
+          <span>Total</span>
+          <span>Status</span>
+          <span>Placed</span>
+        </div>
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
+        ) : items.length === 0 ? (
+          <EmptyState icon={<ShoppingCart className="h-8 w-8" />} title="No orders" />
+        ) : (
+          <div className="divide-y">
+            {items.map((o) => (
+              <Link key={o.id as string} href={`/ecommerce/orders/${o.id}`} className="grid grid-cols-[1.2fr_1.4fr_1fr_1fr_1fr] gap-4 px-4 py-3 text-sm hover:bg-accent">
+                <span className="font-mono font-medium">{(o.orderNumber as string) ?? (o.externalOrderId as string) ?? '-'}</span>
+                <span>{(o.customerName as string) ?? '-'}</span>
+                <span className="font-semibold">{formatPaise(o.totalPaise)}</span>
+                <StatusBadge label={(o.status as string) ?? '-'} variant={getStatusVariant(o.status as string)} dot={false} />
+                <span className="text-muted-foreground">{formatDateTime(o.placedAt ?? o.createdAt)}</span>
+              </Link>
             ))}
-          </tbody>
-        </table>
+          </div>
+        )}
       </div>
+      {d && d.totalPages && d.totalPages > 0 && (
+        <PaginationControls page={d.page ?? 1} totalPages={d.totalPages} hasPrevious={d.hasPrevious ?? false} hasNext={d.hasNext ?? false} onChange={setPage} />
+      )}
     </div>
   );
 }

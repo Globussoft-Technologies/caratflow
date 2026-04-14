@@ -1,122 +1,161 @@
 'use client';
 
-import { PageHeader, StatusBadge, getStatusVariant } from '@caratflow/ui';
-import { Star, TrendingUp, Clock, CheckCircle, AlertTriangle } from 'lucide-react';
-import { SupplierPerformanceCard } from '@/features/wholesale';
-
-const mockSupplier = {
-  supplierId: '1',
-  supplierName: 'ABC Gold Refinery',
-  totalOrders: 45,
-  completedOrders: 42,
-  onTimeDeliveryPercent: 93,
-  qualityRejectionPercent: 2,
-  priceCompliancePercent: 98,
-  averageLeadTimeDays: 5,
-  totalPurchaseValuePaise: 15000000_00,
-};
-
-const mockRateContracts = [
-  { id: '1', metalType: 'GOLD', purityFineness: 916, ratePaisePer10g: 580000_00, validFrom: '2026-03-01', validTo: '2026-06-30', isActive: true },
-  { id: '2', metalType: 'GOLD', purityFineness: 750, ratePaisePer10g: 475000_00, validFrom: '2026-03-01', validTo: '2026-06-30', isActive: true },
-  { id: '3', metalType: 'SILVER', purityFineness: 999, ratePaisePer10g: 8500_00, validFrom: '2026-01-01', validTo: '2026-03-31', isActive: false },
-];
-
-const mockRecentPOs = [
-  { id: '1', poNumber: 'PO/2604/0015', totalPaise: 1200000_00, status: 'SENT', createdAt: '2026-04-03' },
-  { id: '2', poNumber: 'PO/2604/0009', totalPaise: 890000_00, status: 'RECEIVED', createdAt: '2026-03-20' },
-  { id: '3', poNumber: 'PO/2603/0022', totalPaise: 2100000_00, status: 'RECEIVED', createdAt: '2026-03-10' },
-];
-
-function formatPaise(paise: number): string {
-  return `\u20B9${(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
-}
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { PageHeader, StatusBadge } from '@caratflow/ui';
+import { trpc } from '@/lib/trpc';
+import { formatPaise, formatDate } from '@/components/format';
 
 export default function SupplierDetailPage() {
-  const supplier = mockSupplier;
+  const params = useParams<{ id: string }>();
+  const id = params?.id ?? '';
+
+  const { data, isLoading } = trpc.wholesale.getSupplier.useQuery(
+    { id },
+    { enabled: Boolean(id) },
+  );
+  const { data: performance } = trpc.wholesale.getSupplierPerformance.useQuery(
+    { id },
+    { enabled: Boolean(id) },
+  );
+  const { data: purchaseOrdersData } = trpc.wholesale.listPurchaseOrders.useQuery(
+    {
+      filters: { supplierId: id },
+      pagination: { page: 1, limit: 10, sortOrder: 'desc' },
+    },
+    { enabled: Boolean(id) },
+  );
+
+  if (isLoading || !data) {
+    return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
+  }
+
+  const s = data as Record<string, unknown>;
+  const perf = (performance as Record<string, unknown> | undefined) ?? null;
+  const purchaseOrders = ((purchaseOrdersData?.items as Array<Record<string, unknown>>) ?? []);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={supplier.supplierName}
-        description="Supplier details, rate contracts, and purchase history."
+        title={s.name as string}
+        description={(s.supplierType as string) ?? 'Supplier'}
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Wholesale', href: '/wholesale' },
           { label: 'Suppliers', href: '/wholesale/suppliers' },
-          { label: supplier.supplierName },
+          { label: s.name as string },
         ]}
+        actions={
+          <StatusBadge
+            label={s.isActive ? 'Active' : 'Inactive'}
+            variant={s.isActive ? 'success' : 'default'}
+          />
+        }
       />
 
-      {/* Performance Card */}
-      <SupplierPerformanceCard performance={supplier} />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="rounded-lg border p-4">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">Contact</p>
+          <p className="mt-1 text-sm font-medium">{(s.contactPerson as string) ?? '-'}</p>
+          <p className="text-sm text-muted-foreground">{(s.phone as string) ?? '-'}</p>
+          <p className="text-sm text-muted-foreground">{(s.email as string) ?? '-'}</p>
+        </div>
+        <div className="rounded-lg border p-4">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">Address</p>
+          <p className="mt-1 text-sm">{(s.address as string) ?? '-'}</p>
+          <p className="text-sm text-muted-foreground">
+            {[s.city, s.state, s.country].filter(Boolean).join(', ') || '-'}
+          </p>
+          <p className="text-sm text-muted-foreground">{(s.postalCode as string) ?? ''}</p>
+        </div>
+        <div className="rounded-lg border p-4">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">Tax IDs</p>
+          <p className="mt-1 text-sm">
+            <span className="text-muted-foreground">GSTIN: </span>
+            <span className="font-mono">{(s.gstinNumber as string) ?? '-'}</span>
+          </p>
+          <p className="text-sm">
+            <span className="text-muted-foreground">PAN: </span>
+            <span className="font-mono">{(s.panNumber as string) ?? '-'}</span>
+          </p>
+          <p className="text-sm">
+            <span className="text-muted-foreground">Rating: </span>
+            {String(s.rating ?? '-')}
+          </p>
+        </div>
+      </div>
 
-      {/* Rate Contracts */}
-      <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Rate Contracts</h2>
-        <div className="rounded-lg border">
-          <div className="grid grid-cols-[1fr_1fr_1fr_1fr_1fr_auto] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            <span>Metal</span>
-            <span>Purity</span>
-            <span>Rate / 10g</span>
-            <span>Valid From</span>
-            <span>Valid To</span>
-            <span>Active</span>
+      <div>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Performance
+        </h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-lg border p-4">
+            <p className="text-xs uppercase text-muted-foreground">Total Orders</p>
+            <p className="mt-2 text-2xl font-semibold">{Number(perf?.totalOrders ?? 0)}</p>
+            <p className="text-xs text-muted-foreground">
+              {Number(perf?.completedOrders ?? 0)} completed
+            </p>
           </div>
-          <div className="divide-y">
-            {mockRateContracts.map((contract) => (
-              <div
-                key={contract.id}
-                className="grid grid-cols-[1fr_1fr_1fr_1fr_1fr_auto] gap-4 px-4 py-3 text-sm"
-              >
-                <span className="font-medium">{contract.metalType}</span>
-                <span>{contract.purityFineness}</span>
-                <span className="font-semibold">{formatPaise(contract.ratePaisePer10g)}</span>
-                <span className="text-muted-foreground">
-                  {new Date(contract.validFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                </span>
-                <span className="text-muted-foreground">
-                  {new Date(contract.validTo).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                </span>
-                <span>
-                  {contract.isActive ? (
-                    <CheckCircle className="h-4 w-4 text-emerald-500" />
-                  ) : (
-                    <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </span>
-              </div>
-            ))}
+          <div className="rounded-lg border p-4">
+            <p className="text-xs uppercase text-muted-foreground">On-time Delivery</p>
+            <p className="mt-2 text-2xl font-semibold">
+              {Number(perf?.onTimeDeliveryPercent ?? 0)}%
+            </p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <p className="text-xs uppercase text-muted-foreground">Quality Rejection</p>
+            <p className="mt-2 text-2xl font-semibold">
+              {Number(perf?.qualityRejectionPercent ?? 0)}%
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Avg lead: {Number(perf?.averageLeadTimeDays ?? 0)} days
+            </p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <p className="text-xs uppercase text-muted-foreground">Total Purchase Value</p>
+            <p className="mt-2 text-2xl font-semibold">
+              {formatPaise(perf?.totalPurchaseValuePaise)}
+            </p>
           </div>
         </div>
       </div>
 
-      {/* PO History */}
-      <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Recent Purchase Orders</h2>
-        <div className="rounded-lg border divide-y">
-          {mockRecentPOs.map((po) => (
-            <a
-              key={po.id}
-              href={`/wholesale/purchase-orders/${po.id}`}
-              className="flex items-center justify-between px-4 py-3 transition-colors hover:bg-accent"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium font-mono">{po.poNumber}</span>
-                <StatusBadge
-                  label={po.status.replace(/_/g, ' ')}
-                  variant={getStatusVariant(po.status)}
-                  dot={false}
-                />
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="text-sm font-semibold">{formatPaise(po.totalPaise)}</span>
-                <span className="text-xs text-muted-foreground">
-                  {new Date(po.createdAt).toLocaleDateString('en-IN')}
-                </span>
-              </div>
-            </a>
-          ))}
+      <div>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Recent Purchase Orders
+        </h2>
+        <div className="rounded-lg border">
+          <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr_0.8fr] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <span>PO Number</span>
+            <span>Status</span>
+            <span>Total</span>
+            <span>Expected</span>
+            <span>Created</span>
+          </div>
+          {purchaseOrders.length === 0 ? (
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              No purchase orders yet.
+            </div>
+          ) : (
+            <div className="divide-y">
+              {purchaseOrders.map((po) => (
+                <Link
+                  key={po.id as string}
+                  href={`/wholesale/purchase-orders/${po.id}`}
+                  className="grid grid-cols-[1.4fr_1fr_1fr_1fr_0.8fr] gap-4 px-4 py-3 text-sm hover:bg-accent"
+                >
+                  <span className="font-mono text-xs">{(po.poNumber as string) ?? '-'}</span>
+                  <span>{po.status as string}</span>
+                  <span className="font-semibold">{formatPaise(po.totalPaise)}</span>
+                  <span className="text-muted-foreground">
+                    {po.expectedDate ? formatDate(po.expectedDate) : '-'}
+                  </span>
+                  <span className="text-muted-foreground">{formatDate(po.createdAt)}</span>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

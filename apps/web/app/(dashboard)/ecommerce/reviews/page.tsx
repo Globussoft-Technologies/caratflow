@@ -1,108 +1,64 @@
 'use client';
 
-import { PageHeader } from '@caratflow/ui';
-import { Search, Eye, EyeOff } from 'lucide-react';
-import { ReviewStars } from '@/features/ecommerce';
-
-// Mock data -- in production from tRPC: ecommerce.listReviews
-const reviews = [
-  { id: '1', productName: '22K Gold Necklace Set', customerName: 'Meera Joshi', rating: 5, title: 'Absolutely stunning!', body: 'The necklace is beautiful, just as shown in the pictures. Great quality gold work.', isVerified: true, isPublished: true, publishedAt: '2026-04-02T10:00:00Z', createdAt: '2026-04-01T08:00:00Z' },
-  { id: '2', productName: 'Diamond Solitaire Ring', customerName: 'Vikram Singh', rating: 4, title: 'Good quality', body: 'Ring looks great. Delivery was slightly delayed but product quality is excellent.', isVerified: true, isPublished: true, publishedAt: '2026-03-28T10:00:00Z', createdAt: '2026-03-27T14:00:00Z' },
-  { id: '3', productName: 'Pearl Drop Earrings', customerName: 'Ananya Reddy', rating: 5, title: 'Perfect gift!', body: 'Bought these as a birthday gift. My wife loves them!', isVerified: false, isPublished: false, publishedAt: null, createdAt: '2026-04-03T09:00:00Z' },
-  { id: '4', productName: '18K Gold Bangles', customerName: 'Pooja Gupta', rating: 3, title: 'Good but sizing issue', body: 'The bangles are beautiful but the sizing was slightly off. Had to get them adjusted.', isVerified: true, isPublished: false, publishedAt: null, createdAt: '2026-04-03T16:00:00Z' },
-  { id: '5', productName: 'Kundan Bridal Set', customerName: 'Riya Sharma', rating: 5, title: 'Gorgeous bridal set', body: 'Wore this at my wedding and got so many compliments. Worth every penny!', isVerified: true, isPublished: true, publishedAt: '2026-03-20T10:00:00Z', createdAt: '2026-03-19T12:00:00Z' },
-];
+import { useState } from 'react';
+import { PageHeader, StatusBadge, EmptyState } from '@caratflow/ui';
+import { Star } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+import { PaginationControls } from '@/components/pagination-controls';
+import { formatDate } from '@/components/format';
 
 export default function ReviewsPage() {
+  const [page, setPage] = useState(1);
+  const { data, isLoading, refetch } = trpc.ecommerce.listReviews.useQuery({
+    pagination: { page, limit: 20, sortOrder: 'desc' },
+  });
+  const publish = trpc.ecommerce.publishReview.useMutation({ onSuccess: () => refetch() });
+  const unpublish = trpc.ecommerce.unpublishReview.useMutation({ onSuccess: () => refetch() });
+  const d = data as { items?: Array<Record<string, unknown>>; totalPages?: number; page?: number; hasPrevious?: boolean; hasNext?: boolean } | undefined;
+  const items = d?.items ?? [];
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Product Reviews"
-        description="Moderate customer reviews and manage publication status."
-        breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
-          { label: 'E-Commerce', href: '/ecommerce' },
-          { label: 'Reviews' },
-        ]}
-      />
-
-      {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border p-4 text-center">
-          <p className="text-2xl font-bold">{reviews.length}</p>
-          <p className="text-xs text-muted-foreground">Total Reviews</p>
+      <PageHeader title="Product Reviews" breadcrumbs={[
+        { label: 'Dashboard', href: '/dashboard' },
+        { label: 'E-Commerce', href: '/ecommerce' },
+        { label: 'Reviews' },
+      ]} />
+      <div className="rounded-lg border">
+        <div className="grid grid-cols-[1.4fr_0.6fr_2fr_1fr_1fr_0.8fr] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+          <span>Customer</span>
+          <span>Rating</span>
+          <span>Comment</span>
+          <span>Date</span>
+          <span>Status</span>
+          <span>Action</span>
         </div>
-        <div className="rounded-lg border p-4 text-center">
-          <p className="text-2xl font-bold">{reviews.filter((r) => r.isPublished).length}</p>
-          <p className="text-xs text-muted-foreground">Published</p>
-        </div>
-        <div className="rounded-lg border p-4 text-center">
-          <p className="text-2xl font-bold">{reviews.filter((r) => !r.isPublished).length}</p>
-          <p className="text-xs text-muted-foreground">Pending Moderation</p>
-        </div>
-      </div>
-
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="text"
-          placeholder="Search reviews..."
-          className="h-10 w-full rounded-md border bg-background pl-10 pr-4 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-      </div>
-
-      <div className="space-y-3">
-        {reviews.map((review) => (
-          <div key={review.id} className="rounded-lg border p-4">
-            <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <ReviewStars rating={review.rating} />
-                  <span className="text-sm font-medium">{review.title}</span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {review.customerName}
-                  {review.isVerified && (
-                    <span className="ml-1 inline-flex items-center rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
-                      Verified
-                    </span>
-                  )}
-                  {' on '}
-                  {review.productName}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {review.isPublished ? (
-                  <button
-                    className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-accent"
-                    title="Unpublish"
-                  >
-                    <EyeOff className="h-3.5 w-3.5" />
-                    Unpublish
-                  </button>
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
+        ) : items.length === 0 ? (
+          <EmptyState icon={<Star className="h-8 w-8" />} title="No reviews" />
+        ) : (
+          <div className="divide-y">
+            {items.map((r) => (
+              <div key={r.id as string} className="grid grid-cols-[1.4fr_0.6fr_2fr_1fr_1fr_0.8fr] gap-4 px-4 py-3 text-sm">
+                <span className="font-medium">{(r.customerName as string) ?? '-'}</span>
+                <span>{'★'.repeat(Number(r.rating ?? 0))}</span>
+                <span className="truncate text-muted-foreground">{(r.body as string) ?? (r.title as string) ?? ''}</span>
+                <span className="text-muted-foreground">{formatDate(r.createdAt)}</span>
+                <StatusBadge label={r.isPublished ? 'Published' : 'Pending'} variant={r.isPublished ? 'success' : 'default'} />
+                {r.isPublished ? (
+                  <button onClick={() => unpublish.mutate({ reviewId: r.id as string })} className="text-xs text-primary">Unpublish</button>
                 ) : (
-                  <button
-                    className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                    title="Publish"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    Publish
-                  </button>
+                  <button onClick={() => publish.mutate({ reviewId: r.id as string })} className="text-xs text-primary">Publish</button>
                 )}
               </div>
-            </div>
-            {review.body && (
-              <p className="mt-2 text-sm text-muted-foreground">{review.body}</p>
-            )}
-            <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{new Date(review.createdAt).toLocaleDateString()}</span>
-              {review.isPublished && review.publishedAt && (
-                <span>Published: {new Date(review.publishedAt).toLocaleDateString()}</span>
-              )}
-            </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
+      {d && d.totalPages && d.totalPages > 0 && (
+        <PaginationControls page={d.page ?? 1} totalPages={d.totalPages} hasPrevious={d.hasPrevious ?? false} hasNext={d.hasNext ?? false} onChange={setPage} />
+      )}
     </div>
   );
 }

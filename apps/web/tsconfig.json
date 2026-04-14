@@ -15,6 +15,7 @@
     "incremental": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
+    "types": ["node"],
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./src/*"]

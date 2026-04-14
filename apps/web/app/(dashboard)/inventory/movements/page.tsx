@@ -5,6 +5,7 @@ import { PageHeader, DataTable, StatusBadge, getStatusVariant } from '@caratflow
 import { Activity } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import type { ColumnDef } from '@caratflow/ui';
+import { MovementType } from '@caratflow/shared-types';
 
 interface MovementRow {
   id: string;
@@ -27,7 +28,7 @@ export default function MovementsPage() {
   const { data, isLoading } = trpc.inventory.movements.list.useQuery({
     page,
     limit: 20,
-    movementType: typeFilter ? (typeFilter as 'IN' | 'OUT' | 'TRANSFER' | 'ADJUST' | 'RETURN' | 'PRODUCTION') : undefined,
+    movementType: typeFilter ? (typeFilter as MovementType) : undefined,
   });
 
   const columns: ColumnDef<MovementRow, unknown>[] = [

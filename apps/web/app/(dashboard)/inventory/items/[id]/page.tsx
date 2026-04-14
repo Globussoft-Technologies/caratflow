@@ -37,17 +37,25 @@ export default function StockItemDetailPage() {
   }
 
   const available = item.quantityOnHand - item.quantityReserved;
+  const product = item.product as {
+    name?: string;
+    sku?: string;
+    productType?: string | null;
+    costPricePaise?: number | bigint | string | null;
+    sellingPricePaise?: number | bigint | string | null;
+  } | null | undefined;
+  const location = item.location as { name?: string } | null | undefined;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={item.product?.name ?? 'Stock Item'}
-        description={`SKU: ${item.product?.sku ?? '-'} | Location: ${item.location?.name ?? '-'}`}
+        title={product?.name ?? 'Stock Item'}
+        description={`SKU: ${product?.sku ?? '-'} | Location: ${location?.name ?? '-'}`}
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Inventory', href: '/inventory' },
           { label: 'Items', href: '/inventory/items' },
-          { label: item.product?.name ?? id },
+          { label: product?.name ?? id },
         ]}
       />
 
@@ -92,23 +100,23 @@ export default function StockItemDetailPage() {
           <h3 className="font-semibold text-sm">Product Info</h3>
           <div className="grid grid-cols-2 gap-2 text-sm">
             <span className="text-muted-foreground">Type:</span>
-            <span>{item.product?.productType ?? '-'}</span>
+            <span>{product?.productType ?? '-'}</span>
             <span className="text-muted-foreground">Cost Price:</span>
             <span>
-              {item.product?.costPricePaise
-                ? (Number(item.product.costPricePaise) / 100).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })
+              {product?.costPricePaise
+                ? (Number(product.costPricePaise) / 100).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })
                 : '-'}
             </span>
             <span className="text-muted-foreground">Selling Price:</span>
             <span>
-              {item.product?.sellingPricePaise
-                ? (Number(item.product.sellingPricePaise) / 100).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })
+              {product?.sellingPricePaise
+                ? (Number(product.sellingPricePaise) / 100).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })
                 : '-'}
             </span>
             <span className="text-muted-foreground">Total Value:</span>
             <span className="font-semibold">
-              {item.product?.costPricePaise
-                ? ((Number(item.product.costPricePaise) * item.quantityOnHand) / 100).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })
+              {product?.costPricePaise
+                ? ((Number(product.costPricePaise) * item.quantityOnHand) / 100).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })
                 : '-'}
             </span>
           </div>

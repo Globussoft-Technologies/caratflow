@@ -1,49 +1,64 @@
 'use client';
 
-import * as React from 'react';
-import { PageHeader } from '@caratflow/ui';
-import { Plus } from 'lucide-react';
-import { KarigarCard } from '@/features/manufacturing';
-
-// Placeholder data
-const KARIGARS = [
-  { id: 'k1', employeeCode: 'KRG-001', firstName: 'Ramesh', lastName: 'Kumar', skillLevel: 'MASTER', specialization: 'Gold Necklaces', locationName: 'Main Workshop', isActive: true, currentJobNumber: 'JO-000005' },
-  { id: 'k2', employeeCode: 'KRG-002', firstName: 'Suresh', lastName: 'Mahajan', skillLevel: 'SENIOR', specialization: 'Diamond Setting', locationName: 'Main Workshop', isActive: true, currentJobNumber: 'JO-000003' },
-  { id: 'k3', employeeCode: 'KRG-003', firstName: 'Dinesh', lastName: 'Patel', skillLevel: 'JUNIOR', specialization: 'Silver Work', locationName: 'Main Workshop', isActive: true, currentJobNumber: 'JO-000004' },
-  { id: 'k4', employeeCode: 'KRG-004', firstName: 'Mukesh', lastName: 'Singh', skillLevel: 'APPRENTICE', specialization: 'Polishing', locationName: 'Branch Workshop', isActive: true, currentJobNumber: null },
-  { id: 'k5', employeeCode: 'KRG-005', firstName: 'Ganesh', lastName: 'Verma', skillLevel: 'SENIOR', specialization: 'Kundan Work', locationName: 'Main Workshop', isActive: false, currentJobNumber: null },
-];
+import { useState } from 'react';
+import Link from 'next/link';
+import { PageHeader, StatusBadge, EmptyState } from '@caratflow/ui';
+import { Plus, Users } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+import { PaginationControls } from '@/components/pagination-controls';
 
 export default function KarigarsPage() {
+  const [page, setPage] = useState(1);
+  const { data, isLoading } = trpc.manufacturing.karigar.list.useQuery({
+    pagination: { page, limit: 20, sortOrder: 'desc' },
+  });
+  const items = ((data?.items as Array<Record<string, unknown>>) ?? []);
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Karigars"
-        description="Manage artisans and craftsmen."
+        description="Artisans and workshop staff."
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Manufacturing', href: '/manufacturing' },
           { label: 'Karigars' },
         ]}
         actions={
-          <button className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-            <Plus className="h-4 w-4" />
-            Add Karigar
+          <button className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            <Plus className="h-4 w-4" /> Add Karigar
           </button>
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {KARIGARS.map((karigar) => (
-          <KarigarCard
-            key={karigar.id}
-            {...karigar}
-            onClick={(id) => {
-              window.location.href = `/manufacturing/karigars/${id}`;
-            }}
-          />
-        ))}
+      <div className="rounded-lg border">
+        <div className="grid grid-cols-[1fr_1.4fr_1fr_1fr_1fr] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+          <span>Code</span>
+          <span>Name</span>
+          <span>Skill</span>
+          <span>Specialization</span>
+          <span>Status</span>
+        </div>
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
+        ) : items.length === 0 ? (
+          <EmptyState icon={<Users className="h-8 w-8" />} title="No karigars" />
+        ) : (
+          <div className="divide-y">
+            {items.map((k) => (
+              <Link key={k.id as string} href={`/manufacturing/karigars/${k.id}`} className="grid grid-cols-[1fr_1.4fr_1fr_1fr_1fr] gap-4 px-4 py-3 text-sm hover:bg-accent">
+                <span className="font-mono">{(k.employeeCode as string) ?? '-'}</span>
+                <span className="font-medium">{`${(k.firstName as string) ?? ''} ${(k.lastName as string) ?? ''}`.trim()}</span>
+                <span>{(k.skillLevel as string) ?? '-'}</span>
+                <span className="text-muted-foreground">{(k.specialization as string) ?? '-'}</span>
+                <StatusBadge label={k.isActive ? 'Active' : 'Inactive'} variant={k.isActive ? 'success' : 'default'} />
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
+
+      {data && <PaginationControls page={data.page} totalPages={data.totalPages} hasPrevious={data.hasPrevious} hasNext={data.hasNext} onChange={setPage} />}
     </div>
   );
 }

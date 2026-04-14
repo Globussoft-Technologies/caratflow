@@ -1,7 +1,7 @@
 'use client';
 
 import { Gift } from 'lucide-react';
-import { cn } from '@caratflow/ui/lib/utils';
+import { cn } from '@caratflow/ui';
 
 interface LoyaltyBadgeProps {
   tier: string | null;

@@ -55,7 +55,7 @@ export function TransferForm({ onClose, onSuccess }: TransferFormProps) {
     if (field === 'quantityRequested') {
       updated[index] = { ...updated[index]!, [field]: typeof value === 'string' ? parseInt(value) || 0 : value };
     } else {
-      updated[index] = { ...updated[index]!, [field]: value };
+      updated[index] = { ...updated[index]!, [field]: value as string };
     }
     setItems(updated);
   };

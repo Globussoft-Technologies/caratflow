@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useParams } from 'next/navigation';
-import { PageHeader, StatusBadge } from '@caratflow/ui';
+import { PageHeader, StatusBadge, getStatusVariant } from '@caratflow/ui';
 import { TaxBreakdownDisplay } from '@/features/finance/tax-breakdown-display';
 import { Printer, Send, Ban, CreditCard } from 'lucide-react';
 
@@ -102,7 +102,7 @@ export default function InvoiceDetailPage() {
           <div className="space-y-3">
             <div className="flex justify-between">
               <span className="text-sm text-muted-foreground">Status</span>
-              <StatusBadge status={inv.status} />
+              <StatusBadge label={inv.status} variant={getStatusVariant(inv.status)} />
             </div>
             <div className="flex justify-between">
               <span className="text-sm text-muted-foreground">Date</span>

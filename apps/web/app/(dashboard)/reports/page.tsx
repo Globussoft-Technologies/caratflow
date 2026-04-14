@@ -1,136 +1,43 @@
 'use client';
 
-import * as React from 'react';
 import Link from 'next/link';
-import { PageHeader } from '@caratflow/ui';
-import {
-  ShoppingCart,
-  Package,
-  Factory,
-  Users,
-  IndianRupee,
-  Wrench,
-  TrendingUp,
-  Clock,
-  Star,
-  BarChart3,
-} from 'lucide-react';
+import { PageHeader, StatCard } from '@caratflow/ui';
+import { BarChart, Package, Factory, Users, TrendingUp, FileText, Clock, Calendar } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+import { formatPaise } from '@/components/format';
 
-const REPORT_CATEGORIES = [
-  {
-    title: 'Sales Analytics',
-    description: 'Daily summaries, product performance, salesperson rankings, location comparison.',
-    href: '/reports/sales',
-    icon: ShoppingCart,
-    color: 'bg-green-500/10 text-green-600',
-  },
-  {
-    title: 'Inventory Reports',
-    description: 'Stock summary, low stock alerts, dead stock, aging analysis, valuation.',
-    href: '/reports/inventory',
-    icon: Package,
-    color: 'bg-blue-500/10 text-blue-600',
-  },
-  {
-    title: 'Manufacturing',
-    description: 'Job summary, karigar performance, material usage, wastage, cost analysis.',
-    href: '/reports/manufacturing',
-    icon: Factory,
-    color: 'bg-purple-500/10 text-purple-600',
-  },
-  {
-    title: 'Customer Analytics',
-    description: 'Acquisition, retention, lifetime value, loyalty metrics, lead funnel.',
-    href: '/reports/crm',
-    icon: Users,
-    color: 'bg-orange-500/10 text-orange-600',
-  },
-  {
-    title: 'Custom Reports',
-    description: 'Build reports with any entity, custom columns, filters, and aggregations.',
-    href: '/reports/custom',
-    icon: Wrench,
-    color: 'bg-cyan-500/10 text-cyan-600',
-  },
-  {
-    title: 'Demand Forecasting',
-    description: 'Sales predictions, reorder points, seasonality analysis.',
-    href: '/reports/forecast',
-    icon: TrendingUp,
-    color: 'bg-emerald-500/10 text-emerald-600',
-  },
-  {
-    title: 'Scheduled Reports',
-    description: 'Automated report delivery via email. PDF, Excel, or CSV.',
-    href: '/reports/scheduled',
-    icon: Clock,
-    color: 'bg-amber-500/10 text-amber-600',
-  },
-] as const;
+export default function ReportsDashboardPage() {
+  const today = new Date();
+  const { data } = trpc.reporting.getAnalyticsDashboard.useQuery({
+    dateRange: { from: new Date(today.getFullYear(), today.getMonth(), 1), to: today },
+  });
+  const d = (data as Record<string, unknown> | undefined) ?? {};
 
-export default function ReportsHubPage() {
+  const links = [
+    { label: 'Sales Reports', href: '/reports/sales', icon: BarChart },
+    { label: 'Inventory Reports', href: '/reports/inventory', icon: Package },
+    { label: 'Manufacturing Reports', href: '/reports/manufacturing', icon: Factory },
+    { label: 'CRM Reports', href: '/reports/crm', icon: Users },
+    { label: 'Forecasting', href: '/reports/forecast', icon: TrendingUp },
+    { label: 'Custom Reports', href: '/reports/custom', icon: FileText },
+    { label: 'Scheduled Reports', href: '/reports/scheduled', icon: Clock },
+  ];
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Reports & Analytics"
-        description="Business intelligence, financial reports, and data exports."
-        breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Reports' },
-        ]}
-      />
-
-      {/* Report Category Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {REPORT_CATEGORIES.map((category) => {
-          const Icon = category.icon;
-          return (
-            <Link
-              key={category.href}
-              href={category.href}
-              className="group rounded-lg border bg-card p-6 hover:border-primary/50 hover:shadow-sm transition-all"
-            >
-              <div className="flex items-start gap-4">
-                <div
-                  className={`flex-shrink-0 rounded-lg p-3 ${category.color}`}
-                >
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-semibold group-hover:text-primary transition-colors">
-                    {category.title}
-                  </h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {category.description}
-                  </p>
-                </div>
-              </div>
-            </Link>
-          );
-        })}
+      <PageHeader title="Reports & Analytics" breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Reports' }]} />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard title="MTD Revenue" value={formatPaise(d.mtdRevenuePaise)} icon={<Calendar className="h-4 w-4" />} />
+        <StatCard title="MTD Orders" value={String((d.mtdOrders as number) ?? 0)} icon={<BarChart className="h-4 w-4" />} />
+        <StatCard title="Stock Value" value={formatPaise(d.stockValuePaise)} icon={<Package className="h-4 w-4" />} />
+        <StatCard title="Active Customers" value={String((d.activeCustomers as number) ?? 0)} icon={<Users className="h-4 w-4" />} />
       </div>
-
-      {/* Recent / Favorite Reports */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border bg-card p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Star className="h-5 w-5 text-amber-500" />
-            <h3 className="text-lg font-semibold">Favorite Reports</h3>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Save reports from any category to access them quickly here.
-          </p>
-        </div>
-
-        <div className="rounded-lg border bg-card p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <BarChart3 className="h-5 w-5 text-blue-500" />
-            <h3 className="text-lg font-semibold">Recent Reports</h3>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Your recently viewed reports will appear here.
-          </p>
-        </div>
+      <div className="space-y-2">
+        {links.map((l) => (
+          <Link key={l.label} href={l.href} className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent">
+            <div className="flex items-center gap-3"><l.icon className="h-4 w-4" /><span className="text-sm font-medium">{l.label}</span></div>
+          </Link>
+        ))}
       </div>
     </div>
   );

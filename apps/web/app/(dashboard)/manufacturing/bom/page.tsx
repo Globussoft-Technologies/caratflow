@@ -1,93 +1,65 @@
 'use client';
 
-import * as React from 'react';
-import { PageHeader, StatusBadge, getStatusVariant, DataTable, type ColumnDef } from '@caratflow/ui';
+import { useState } from 'react';
+import Link from 'next/link';
+import { PageHeader, StatusBadge, getStatusVariant, EmptyState } from '@caratflow/ui';
 import { FileText, Plus } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+import { PaginationControls } from '@/components/pagination-controls';
+import { formatDate } from '@/components/format';
 
-interface BomRow {
-  id: string;
-  name: string;
-  version: number;
-  productName: string;
-  status: string;
-  itemCount: number;
-  estimatedCostPaise: number;
-  updatedAt: string;
-}
+export default function BomPage() {
+  const [page, setPage] = useState(1);
+  const { data, isLoading } = trpc.manufacturing.bom.list.useQuery({
+    pagination: { page, limit: 20, sortOrder: 'desc' },
+  });
+  const items = ((data?.items as Array<Record<string, unknown>>) ?? []);
 
-const columns: ColumnDef<BomRow, unknown>[] = [
-  {
-    accessorKey: 'name',
-    header: 'BOM Name',
-    cell: ({ row }) => (
-      <div>
-        <p className="font-medium">{row.original.name}</p>
-        <p className="text-xs text-muted-foreground">v{row.original.version}</p>
-      </div>
-    ),
-  },
-  {
-    accessorKey: 'productName',
-    header: 'Product',
-  },
-  {
-    accessorKey: 'status',
-    header: 'Status',
-    cell: ({ row }) => (
-      <StatusBadge label={row.original.status} variant={getStatusVariant(row.original.status)} />
-    ),
-  },
-  {
-    accessorKey: 'itemCount',
-    header: 'Items',
-  },
-  {
-    accessorKey: 'estimatedCostPaise',
-    header: 'Est. Cost',
-    cell: ({ row }) => `Rs ${(row.original.estimatedCostPaise / 100).toLocaleString('en-IN')}`,
-  },
-  {
-    accessorKey: 'updatedAt',
-    header: 'Last Updated',
-    cell: ({ row }) => new Date(row.original.updatedAt).toLocaleDateString(),
-  },
-];
-
-// Placeholder data
-const BOMS: BomRow[] = [
-  { id: '1', name: '22K Gold Necklace BOM', version: 2, productName: '22K Gold Necklace', status: 'ACTIVE', itemCount: 5, estimatedCostPaise: 350000_00, updatedAt: '2026-04-01' },
-  { id: '2', name: '18K Diamond Ring BOM', version: 1, productName: '18K Diamond Ring', status: 'DRAFT', itemCount: 4, estimatedCostPaise: 125000_00, updatedAt: '2026-04-02' },
-  { id: '3', name: 'Silver Temple Set BOM', version: 3, productName: 'Silver Temple Jewellery', status: 'ACTIVE', itemCount: 8, estimatedCostPaise: 45000_00, updatedAt: '2026-03-28' },
-];
-
-export default function BomListPage() {
   return (
     <div className="space-y-6">
       <PageHeader
         title="Bill of Materials"
-        description="Manage BOMs for product manufacturing."
+        description="Manage BOMs for manufacturing products."
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Manufacturing', href: '/manufacturing' },
           { label: 'BOM' },
         ]}
         actions={
-          <button className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-            <Plus className="h-4 w-4" />
-            Create BOM
+          <button className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            <Plus className="h-4 w-4" /> New BOM
           </button>
         }
       />
 
-      <DataTable
-        columns={columns}
-        data={BOMS}
-        searchKey="name"
-        searchPlaceholder="Search BOMs..."
-        onRowClick={(row) => {
-          window.location.href = `/manufacturing/bom/${row.id}`;
-        }}
-      />
+      <div className="rounded-lg border">
+        <div className="grid grid-cols-[2fr_0.8fr_1fr_1fr_1fr] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
+          <span>Name</span>
+          <span>Version</span>
+          <span>Status</span>
+          <span>Product</span>
+          <span>Updated</span>
+        </div>
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
+        ) : items.length === 0 ? (
+          <EmptyState icon={<FileText className="h-8 w-8" />} title="No BOMs" />
+        ) : (
+          <div className="divide-y">
+            {items.map((b) => (
+              <Link key={b.id as string} href={`/manufacturing/bom/${b.id}`} className="grid grid-cols-[2fr_0.8fr_1fr_1fr_1fr] gap-4 px-4 py-3 text-sm hover:bg-accent">
+                <span className="font-medium">{(b.name as string) ?? '-'}</span>
+                <span>v{String(b.version ?? 1)}</span>
+                <StatusBadge label={(b.status as string) ?? '-'} variant={getStatusVariant(b.status as string)} dot={false} />
+                <span className="text-muted-foreground">{((b.product as { name?: string })?.name) ?? '-'}</span>
+                <span className="text-muted-foreground">{formatDate(b.updatedAt)}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {data && <PaginationControls page={data.page} totalPages={data.totalPages} hasPrevious={data.hasPrevious} hasNext={data.hasNext} onChange={setPage} />}
     </div>
   );
 }

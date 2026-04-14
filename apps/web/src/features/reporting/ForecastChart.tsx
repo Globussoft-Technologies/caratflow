@@ -37,8 +37,14 @@ export function ForecastChart({ data, height = 400 }: ForecastChartProps) {
   }));
 
   // Find the dividing line between actual and predicted
-  const lastActualIdx = data.predictions.findLastIndex((p) => p.actual !== null);
-  const dividerPeriod = data.predictions[lastActualIdx]?.period;
+  let lastActualIdx = -1;
+  for (let i = data.predictions.length - 1; i >= 0; i--) {
+    if (data.predictions[i]!.actual !== null) {
+      lastActualIdx = i;
+      break;
+    }
+  }
+  const dividerPeriod = lastActualIdx >= 0 ? data.predictions[lastActualIdx]!.period : undefined;
 
   return (
     <div className="space-y-3">

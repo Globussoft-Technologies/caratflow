@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { FormField } from '@caratflow/ui';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@caratflow/ui';
 import { trpc } from '@/lib/trpc';
+import { MovementType } from '@caratflow/shared-types';
 
 interface StockMovementFormProps {
   stockItemId?: string;
@@ -22,7 +23,7 @@ const movementTypes = [
 export function StockMovementForm({ stockItemId, onClose, onSuccess }: StockMovementFormProps) {
   const [formData, setFormData] = useState({
     stockItemId: stockItemId ?? '',
-    movementType: 'IN' as 'IN' | 'OUT' | 'ADJUST' | 'RETURN' | 'PRODUCTION',
+    movementType: MovementType.IN as MovementType,
     quantityChange: 0,
     referenceType: '',
     notes: '',

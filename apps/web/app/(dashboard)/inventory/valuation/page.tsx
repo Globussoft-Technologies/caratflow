@@ -5,6 +5,7 @@ import { PageHeader, DataTable } from '@caratflow/ui';
 import { Calculator } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import type { ColumnDef } from '@caratflow/ui';
+import { ValuationMethod } from '@caratflow/shared-types';
 
 interface ValuationItemRow {
   productId: string;
@@ -24,7 +25,7 @@ interface CategoryBreakdownRow {
 }
 
 export default function ValuationPage() {
-  const [method, setMethod] = useState<'FIFO' | 'AVG' | 'LAST_PURCHASE' | 'GROSS_PROFIT' | 'MARKET'>('AVG');
+  const [method, setMethod] = useState<ValuationMethod>(ValuationMethod.AVG);
   const [locationId, setLocationId] = useState('');
   const [runValuation, setRunValuation] = useState(false);
 

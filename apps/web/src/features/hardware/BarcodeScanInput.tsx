@@ -32,29 +32,30 @@ export function BarcodeScanInput({
   const bufferRef = useRef('');
   const lastKeystrokeRef = useRef(0);
 
-  const lookupMutation = trpc.hardware.barcode.lookup.useMutation({
-    onSuccess: (data: BarcodeProductLookup) => {
-      setLastLookup(data);
-      setIsLooking(false);
-      if (data.product) {
-        onProductFound?.(data);
-      } else {
-        onNotFound?.(data.barcode);
-      }
-    },
-    onError: () => {
-      setIsLooking(false);
-    },
-  });
+  const utils = trpc.useUtils();
 
   const performLookup = useCallback(
-    (code: string) => {
+    async (code: string) => {
       if (!code.trim()) return;
       setIsLooking(true);
       setLastLookup(null);
-      lookupMutation.mutate({ barcode: code.trim() });
+      try {
+        const data = (await utils.hardware.barcode.lookup.fetch({
+          barcode: code.trim(),
+        })) as BarcodeProductLookup;
+        setLastLookup(data);
+        if (data.product) {
+          onProductFound?.(data);
+        } else {
+          onNotFound?.(data.barcode);
+        }
+      } catch {
+        // ignore
+      } finally {
+        setIsLooking(false);
+      }
     },
-    [lookupMutation],
+    [utils, onProductFound, onNotFound],
   );
 
   /**

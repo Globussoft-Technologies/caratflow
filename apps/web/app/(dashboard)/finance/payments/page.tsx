@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { PageHeader, StatusBadge, DataTable, type ColumnDef } from '@caratflow/ui';
+import { PageHeader, StatusBadge, getStatusVariant, DataTable, type ColumnDef } from '@caratflow/ui';
 import { Plus, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { PaymentForm } from '@/features/finance/payment-form';
 
@@ -62,7 +62,7 @@ const columns: ColumnDef<PaymentRow, unknown>[] = [
     <span className="text-muted-foreground">{row.original.invoiceNumber}</span>
   )},
   { accessorKey: 'status', header: 'Status', cell: ({ row }) => (
-    <StatusBadge status={row.original.status} />
+    <StatusBadge label={row.original.status} variant={getStatusVariant(row.original.status)} />
   )},
 ];
 

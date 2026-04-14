@@ -2,7 +2,7 @@
 
 import { Star } from 'lucide-react';
 import { useState } from 'react';
-import { cn } from '@caratflow/ui/lib/utils';
+import { cn } from '@caratflow/ui';
 
 interface FeedbackStarsProps {
   rating: number;

@@ -1,26 +1,22 @@
 'use client';
 
-import { PageHeader, StatusBadge, getStatusVariant } from '@caratflow/ui';
-import { Plus } from 'lucide-react';
-
-const mockConsignmentsIn = [
-  { id: '1', consignmentNumber: 'CI/2604/0005', supplierName: 'ABC Gold Refinery', totalWeightMg: 100000, totalValuePaise: 1500000_00, status: 'RECEIVED', receivedDate: '2026-04-01', dueDate: '2026-04-30' },
-  { id: '2', consignmentNumber: 'CI/2604/0004', supplierName: 'Diamond Hub', totalWeightMg: 5000, totalValuePaise: 3200000_00, status: 'PARTIALLY_RETURNED', receivedDate: '2026-03-25', dueDate: '2026-04-25' },
-  { id: '3', consignmentNumber: 'CI/2604/0003', supplierName: 'Gem Suppliers Inc', totalWeightMg: 8000, totalValuePaise: 2100000_00, status: 'PURCHASED', receivedDate: '2026-03-15', dueDate: '2026-04-15' },
-];
-
-function formatPaise(paise: number): string {
-  const rupees = paise / 100;
-  if (rupees >= 100000) return `\u20B9${(rupees / 100000).toFixed(1)}L`;
-  if (rupees >= 1000) return `\u20B9${(rupees / 1000).toFixed(1)}K`;
-  return `\u20B9${rupees.toLocaleString('en-IN')}`;
-}
-
-function formatWeight(mg: number): string {
-  return `${(mg / 1000).toFixed(3)} g`;
-}
+import { useState } from 'react';
+import Link from 'next/link';
+import { PageHeader, StatusBadge, getStatusVariant, EmptyState } from '@caratflow/ui';
+import { Plus, Truck } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+import { PaginationControls } from '@/components/pagination-controls';
+import { formatDate } from '@/components/format';
 
 export default function ConsignmentsInPage() {
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState<string>('');
+  const { data, isLoading } = trpc.wholesale.listConsignmentsIn.useQuery({
+    filters: { status: status || undefined },
+    pagination: { page, limit: 20, sortOrder: 'desc' },
+  });
+  const items = ((data?.items as Array<Record<string, unknown>>) ?? []);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -32,39 +28,63 @@ export default function ConsignmentsInPage() {
           { label: 'Consignments In' },
         ]}
         actions={
-          <button className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+          <button className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
             <Plus className="h-4 w-4" />
             Record Consignment
           </button>
         }
       />
 
+      <select
+        value={status}
+        onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+        className="h-9 rounded-md border bg-transparent px-2 text-sm"
+      >
+        <option value="">All statuses</option>
+        <option value="RECEIVED">Received</option>
+        <option value="PARTIALLY_RETURNED">Partially Returned</option>
+        <option value="PURCHASED">Purchased</option>
+        <option value="RETURNED">Returned</option>
+        <option value="EXPIRED">Expired</option>
+      </select>
+
       <div className="rounded-lg border">
-        <div className="grid grid-cols-7 gap-4 border-b px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          <div className="col-span-2">Consignment #</div>
-          <div>Supplier</div>
-          <div className="text-right">Weight</div>
-          <div className="text-right">Value</div>
-          <div>Status</div>
-          <div>Due Date</div>
+        <div className="grid grid-cols-[1.4fr_1.4fr_1fr_1fr_1fr] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <span>Consignment #</span>
+          <span>Supplier</span>
+          <span>Status</span>
+          <span>Received</span>
+          <span>Due Date</span>
         </div>
-        {mockConsignmentsIn.map((c) => (
-          <a
-            key={c.id}
-            href={`/wholesale/consignments-in/${c.id}`}
-            className="grid grid-cols-7 gap-4 border-b px-4 py-3 transition-colors hover:bg-accent last:border-b-0"
-          >
-            <div className="col-span-2 font-mono text-sm font-medium">{c.consignmentNumber}</div>
-            <div className="text-sm">{c.supplierName}</div>
-            <div className="text-sm text-right">{formatWeight(c.totalWeightMg)}</div>
-            <div className="text-sm text-right font-medium">{formatPaise(c.totalValuePaise)}</div>
-            <div>
-              <StatusBadge label={c.status.replace(/_/g, ' ')} variant={getStatusVariant(c.status)} dot={false} />
-            </div>
-            <div className="text-sm text-muted-foreground">{new Date(c.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</div>
-          </a>
-        ))}
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading...</div>
+        ) : items.length === 0 ? (
+          <EmptyState icon={<Truck className="h-8 w-8" />} title="No consignments" />
+        ) : (
+          <div className="divide-y">
+            {items.map((c) => {
+              const supplier = c.supplier as { name?: string } | undefined;
+              return (
+                <Link
+                  key={c.id as string}
+                  href={`/wholesale/consignments-in/${c.id}`}
+                  className="grid grid-cols-[1.4fr_1.4fr_1fr_1fr_1fr] gap-4 px-4 py-3 text-sm hover:bg-accent"
+                >
+                  <span className="font-mono font-medium">{c.consignmentNumber as string}</span>
+                  <span>{supplier?.name ?? '-'}</span>
+                  <StatusBadge label={(c.status as string).replace(/_/g, ' ')} variant={getStatusVariant(c.status as string)} dot={false} />
+                  <span className="text-muted-foreground">{formatDate(c.receivedDate)}</span>
+                  <span className="text-muted-foreground">{formatDate(c.dueDate)}</span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {data && (
+        <PaginationControls page={data.page} totalPages={data.totalPages} hasPrevious={data.hasPrevious} hasNext={data.hasNext} onChange={setPage} />
+      )}
     </div>
   );
 }
