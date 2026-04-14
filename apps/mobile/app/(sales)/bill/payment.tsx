@@ -10,6 +10,10 @@ import { Badge } from '@/components/Badge';
 import { trpc } from '@/lib/trpc';
 import { useAuthStore } from '@/store/auth-store';
 import { formatMoney, decimalToPaise, paiseToDecimal } from '@/utils/money';
+import {
+  authenticateWithBiometric,
+  loadBiometricSettings,
+} from '@/lib/biometric';
 
 type PaymentMethod = 'CASH' | 'CARD' | 'UPI';
 
@@ -62,10 +66,37 @@ export default function PaymentScreen() {
     setPayments(payments.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (remaining > 100) {
       // More than 1 rupee remaining
       Alert.alert('Payment', 'Payment amounts do not cover the total.');
+      return;
+    }
+
+    // Biometric gate for high-value sales (purely client-side).
+    try {
+      const biometric = await loadBiometricSettings();
+      if (biometric.enabled && totalPaise >= biometric.thresholdPaise) {
+        const auth = await authenticateWithBiometric(
+          `Confirm sale of ${formatMoney(totalPaise)}`,
+        );
+        if (!auth.success) {
+          Alert.alert(
+            'Authentication required',
+            auth.error === 'user_cancel' || auth.error === 'UserCancel'
+              ? 'Sale cancelled. Biometric confirmation is required for this amount.'
+              : `Biometric authentication failed${auth.error ? ` (${auth.error})` : ''}. Sale aborted.`,
+          );
+          return;
+        }
+      }
+    } catch {
+      // If biometric module fails unexpectedly, do not silently bypass the
+      // gate for high-value sales — abort with a clear message.
+      Alert.alert(
+        'Authentication error',
+        'Could not verify biometric authentication. Please try again.',
+      );
       return;
     }
 

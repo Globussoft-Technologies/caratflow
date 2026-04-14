@@ -32,6 +32,10 @@ export default function SalesLayout() {
         name="today"
         options={{ title: 'Today', tabBarLabel: 'Today' }}
       />
+      <Tabs.Screen
+        name="settings"
+        options={{ href: null }}
+      />
     </Tabs>
   );
 }

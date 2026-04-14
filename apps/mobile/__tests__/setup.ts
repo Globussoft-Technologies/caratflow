@@ -107,6 +107,18 @@ vi.mock('expo-device', () => ({
   isDevice: true,
 }));
 
+vi.mock('expo-local-authentication', () => ({
+  hasHardwareAsync: vi.fn(async () => false),
+  isEnrolledAsync: vi.fn(async () => false),
+  supportedAuthenticationTypesAsync: vi.fn(async () => []),
+  authenticateAsync: vi.fn(async () => ({ success: true })),
+  AuthenticationType: {
+    FINGERPRINT: 1,
+    FACIAL_RECOGNITION: 2,
+    IRIS: 3,
+  },
+}));
+
 // ─── Async Storage ──────────────────────────────────────────────
 
 const asyncStoreData: Record<string, string> = {};
