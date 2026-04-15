@@ -419,14 +419,14 @@ function MessageBubble({
               : "bg-white border border-gray-100 text-navy rounded-tl-sm"
           }`}
         >
-          {message.content}
+          {String(message.content ?? "")}
         </div>
 
         {/* Product Cards */}
-        {message.messageType === "PRODUCT_CARD" && message.metadata?.products && (
+        {message.messageType === "PRODUCT_CARD" && Array.isArray(message.metadata?.products) && (
           <div className="mt-2 overflow-x-auto pb-2">
             <div className="flex gap-2" style={{ minWidth: "max-content" }}>
-              {(message.metadata.products as ProductCard[]).map((product) => (
+              {(message.metadata?.products as ProductCard[]).map((product) => (
                 <ProductCardMini key={product.productId} product={product} />
               ))}
             </div>
@@ -434,9 +434,9 @@ function MessageBubble({
         )}
 
         {/* Quick Replies */}
-        {message.messageType === "QUICK_REPLIES" && message.metadata?.quickReplies && (
+        {message.messageType === "QUICK_REPLIES" && Array.isArray(message.metadata?.quickReplies) && (
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {(message.metadata.quickReplies as QuickReply[]).map((reply) => (
+            {(message.metadata?.quickReplies as QuickReply[]).map((reply) => (
               <button
                 key={reply.value}
                 type="button"
@@ -450,9 +450,9 @@ function MessageBubble({
         )}
 
         {/* Occasion Picker */}
-        {message.messageType === "OCCASION_PICKER" && message.metadata?.occasions && (
+        {message.messageType === "OCCASION_PICKER" && Array.isArray(message.metadata?.occasions) && (
           <div className="mt-2 grid grid-cols-3 gap-1.5">
-            {(message.metadata.occasions as OccasionOption[]).map((occ) => (
+            {(message.metadata?.occasions as OccasionOption[]).map((occ) => (
               <button
                 key={occ.value}
                 type="button"

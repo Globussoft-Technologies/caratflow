@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { mockProducts } from "@/lib/mock-data";
-import { cn, formatPrice, debounce } from "@/lib/utils";
+import { cn, formatPrice, debounce, calculateProductPrice } from "@/lib/utils";
 import VoiceSearchButton from "./VoiceSearchButton";
 import { normalizeVoiceQuery } from "@/lib/voice-normalize";
 
@@ -42,25 +42,25 @@ interface AutocompleteData {
 
 function mockAutocomplete(query: string): AutocompleteData {
   const q = query.toLowerCase();
-  const products = mockProducts
+  const products: AutocompleteProduct[] = mockProducts
     .filter((p) => p.name.toLowerCase().includes(q))
     .slice(0, 4)
     .map((p) => ({
       id: p.id,
       name: p.name,
       productType: p.metalType,
-      categoryName: p.category,
-      totalPricePaise: Math.round(p.price * 100),
-      currencyCode: "INR",
-      image: p.images?.[0] ?? null,
+      categoryName: p.categoryName ?? null,
+      totalPricePaise: calculateProductPrice(p).total,
+      currencyCode: p.currencyCode ?? "INR",
+      image: p.images?.[0]?.url ?? null,
     }));
 
   // Extract unique categories from matching products
   const categoryMap = new Map<string, number>();
   mockProducts
-    .filter((p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q))
+    .filter((p) => p.name.toLowerCase().includes(q) || p.categoryName.toLowerCase().includes(q))
     .forEach((p) => {
-      categoryMap.set(p.category, (categoryMap.get(p.category) ?? 0) + 1);
+      categoryMap.set(p.categoryName, (categoryMap.get(p.categoryName) ?? 0) + 1);
     });
   const categories: AutocompleteCategory[] = Array.from(categoryMap.entries())
     .slice(0, 3)
@@ -114,7 +114,8 @@ export default function SearchBar({ className, expanded = false }: SearchBarProp
 
   // Debounced autocomplete fetch
   const fetchAutocomplete = useCallback(
-    debounce((query: string) => {
+    debounce((...args: unknown[]) => {
+      const query = args[0] as string;
       if (query.length >= 2) {
         // In production: fetch from /api/v1/store/search/autocomplete?q=query
         const data = mockAutocomplete(query);
@@ -270,7 +271,7 @@ export default function SearchBar({ className, expanded = false }: SearchBarProp
             expanded && "lg:py-3 lg:text-base",
           )}
           role="combobox"
-          aria-expanded={isOpen && hasDropdownContent}
+          aria-expanded={Boolean(isOpen && hasDropdownContent)}
           aria-haspopup="listbox"
           aria-autocomplete="list"
         />
