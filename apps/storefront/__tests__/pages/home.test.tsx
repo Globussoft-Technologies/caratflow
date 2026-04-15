@@ -3,58 +3,68 @@ import { screen } from "@testing-library/react";
 import HomePage from "@/app/page";
 import { renderWithStore } from "../../components/__tests__/test-utils";
 
-// Mock SearchBar to avoid VoiceSearch complexity
+// Mock SearchBar to avoid VoiceSearch complexity (kept for backwards compat)
 vi.mock("@/components/VoiceSearch", () => ({
   default: () => null,
 }));
 
 describe("HomePage", () => {
-  it("renders hero banner section", () => {
+  it("renders hero banner with primary CTA", () => {
     renderWithStore(<HomePage />);
-    // First banner title
-    expect(screen.getByText("Bridal Collection 2026")).toBeInTheDocument();
+    expect(
+      screen.getByText((t) => t.includes("Crafted for")),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Shop Collection")).toBeInTheDocument();
+    expect(screen.getByText("Book Consultation")).toBeInTheDocument();
   });
 
-  it("renders category grid with Shop by Category heading", () => {
+  it("renders featured collections strip", () => {
+    renderWithStore(<HomePage />);
+    expect(screen.getByText("Featured Collections")).toBeInTheDocument();
+    expect(screen.getByText("Bridal Heirloom")).toBeInTheDocument();
+    expect(screen.getByText("Everyday Luxe")).toBeInTheDocument();
+    expect(screen.getByText("Festive Edit")).toBeInTheDocument();
+  });
+
+  it("renders category tiles", () => {
     renderWithStore(<HomePage />);
     expect(screen.getByText("Shop by Category")).toBeInTheDocument();
-  });
-
-  it("renders category items", () => {
-    renderWithStore(<HomePage />);
-    // Categories from mockCategories
     expect(screen.getAllByText("Rings").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Necklaces").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Earrings").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Bangles").length).toBeGreaterThan(0);
   });
 
-  it("renders featured/bestseller products section", () => {
+  it("renders featured products section", () => {
     renderWithStore(<HomePage />);
-    expect(screen.getByText("Bestsellers")).toBeInTheDocument();
+    expect(screen.getByText("Featured Pieces")).toBeInTheDocument();
   });
 
-  it("renders new arrivals section", () => {
-    renderWithStore(<HomePage />);
-    expect(screen.getByText("New Arrivals")).toBeInTheDocument();
-  });
-
-  it("renders live rate strip", () => {
+  it("renders live metal rates ticker", () => {
     renderWithStore(<HomePage />);
     expect(screen.getByText("Live Rates")).toBeInTheDocument();
+    expect(screen.getByText("22K Gold")).toBeInTheDocument();
+    expect(screen.getByText("18K Gold")).toBeInTheDocument();
   });
 
-  it("renders shop by occasion section", () => {
+  it("renders trust signals", () => {
     renderWithStore(<HomePage />);
-    expect(screen.getByText("Shop by Occasion")).toBeInTheDocument();
-    expect(screen.getByText("Wedding")).toBeInTheDocument();
-    expect(screen.getByText("Engagement")).toBeInTheDocument();
+    expect(screen.getByText("BIS Hallmarked")).toBeInTheDocument();
+    expect(screen.getByText("Certified Diamonds")).toBeInTheDocument();
+    expect(screen.getByText("Lifetime Exchange")).toBeInTheDocument();
+    expect(screen.getByText("365-Day Returns")).toBeInTheDocument();
   });
 
-  it("renders trust strip section", () => {
+  it("renders testimonials section", () => {
     renderWithStore(<HomePage />);
-    expect(screen.getByText("100% Certified")).toBeInTheDocument();
-    expect(screen.getByText("Free Shipping")).toBeInTheDocument();
-    expect(screen.getByText("15-Day Returns")).toBeInTheDocument();
-    expect(screen.getByText("Secure Payments")).toBeInTheDocument();
+    expect(screen.getByText("What Our Clients Say")).toBeInTheDocument();
+    expect(screen.getByText("Priya Sharma")).toBeInTheDocument();
+  });
+
+  it("renders newsletter signup form", () => {
+    renderWithStore(<HomePage />);
+    expect(screen.getByText("Join the CaratFlow Circle")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("your@email.com")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Subscribe" })).toBeInTheDocument();
   });
 });

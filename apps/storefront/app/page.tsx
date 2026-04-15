@@ -1,101 +1,497 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { mockProducts, mockBanners, mockCategories, mockGoldRates } from "@/lib/mock-data";
-import { OCCASIONS } from "@/lib/constants";
-import { formatRupees, cn } from "@/lib/utils";
-import ProductCard from "@/components/ProductCard";
-import SearchBar from "@/components/SearchBar";
+import { mockProducts, mockGoldRates } from "@/lib/mock-data";
 
+// ─── Inline icon primitives (avoids a new dependency) ───────
+type IconProps = { className?: string; strokeWidth?: number; fill?: string };
+const Icon = ({
+  children,
+  className,
+  strokeWidth = 1.5,
+  fill = "none",
+}: IconProps & { children: React.ReactNode }) => (
+  <svg
+    className={className}
+    viewBox="0 0 24 24"
+    fill={fill}
+    stroke="currentColor"
+    strokeWidth={strokeWidth}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    {children}
+  </svg>
+);
+const Heart = (p: IconProps) => (
+  <Icon {...p} strokeWidth={p.strokeWidth ?? 2}>
+    <path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+  </Icon>
+);
+const ShieldCheck = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+  </Icon>
+);
+const Gem = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6 3h12l3 6-9 12L3 9l3-6zM3 9h18M9 3l3 6 3-6" />
+  </Icon>
+);
+const RefreshCw = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M21 12a9 9 0 01-15 6.7L3 16m0 0v5m0-5h5M3 12a9 9 0 0115-6.7L21 8m0 0V3m0 5h-5" />
+  </Icon>
+);
+const Truck = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M1 3h15v13H1zM16 8h4l3 3v5h-7zM5.5 21a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM18.5 21a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
+  </Icon>
+);
+const Star = (p: IconProps) => (
+  <Icon {...p} strokeWidth={p.strokeWidth ?? 1}>
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+  </Icon>
+);
+const ArrowRight = (p: IconProps) => (
+  <Icon {...p} strokeWidth={p.strokeWidth ?? 2}>
+    <path d="M5 12h14M13 5l7 7-7 7" />
+  </Icon>
+);
+const Mail = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+    <path d="M22 6l-10 7L2 6" />
+  </Icon>
+);
+import { calculateProductPrice, formatRupees, cn } from "@/lib/utils";
+import { useStore } from "@/lib/store";
+
+// ─── Picsum Image Library ────────────────────────────────────
+// Deterministic, always-loads, professional photography for the
+// hackathon demo. Descriptive seeds keep image identity stable.
+
+const IMG = {
+  hero: "https://picsum.photos/seed/caratflow-hero-luxury/1920/800",
+  collections: {
+    bridal: "https://picsum.photos/seed/caratflow-bridal/800/600",
+    daily: "https://picsum.photos/seed/caratflow-daily/800/600",
+    festive: "https://picsum.photos/seed/caratflow-festive/800/600",
+  },
+  categories: {
+    rings: "https://picsum.photos/seed/caratflow-cat-rings/600/600",
+    necklaces: "https://picsum.photos/seed/caratflow-cat-necklaces/600/600",
+    earrings: "https://picsum.photos/seed/caratflow-cat-earrings/600/600",
+    bangles: "https://picsum.photos/seed/caratflow-cat-bangles/600/600",
+    pendants: "https://picsum.photos/seed/caratflow-cat-pendants/600/600",
+    chains: "https://picsum.photos/seed/caratflow-cat-chains/600/600",
+  },
+  avatars: {
+    a1: "https://picsum.photos/seed/caratflow-avatar-1/100/100",
+    a2: "https://picsum.photos/seed/caratflow-avatar-2/100/100",
+    a3: "https://picsum.photos/seed/caratflow-avatar-3/100/100",
+  },
+};
+
+const PRODUCT_SLUGS = [
+  "solitaire-ring",
+  "kundan-necklace",
+  "temple-bangle",
+  "diamond-stud",
+  "gold-chain",
+  "ruby-pendant",
+  "emerald-ring",
+  "pearl-drops",
+] as const;
+
+const productImg = (slug: string) =>
+  `https://picsum.photos/seed/caratflow-prod-${slug}/600/600`;
+
+// ─── Featured Collections ────────────────────────────────────
+const COLLECTIONS = [
+  {
+    title: "Bridal Heirloom",
+    tagline: "Timeless sets for your big day",
+    image: IMG.collections.bridal,
+    href: "/category/all?occasion=bridal",
+  },
+  {
+    title: "Everyday Luxe",
+    tagline: "Lightweight pieces for daily wear",
+    image: IMG.collections.daily,
+    href: "/category/all?occasion=daily",
+  },
+  {
+    title: "Festive Edit",
+    tagline: "Statement jewelry for celebrations",
+    image: IMG.collections.festive,
+    href: "/category/all?occasion=festive",
+  },
+] as const;
+
+// ─── Category Tiles ──────────────────────────────────────────
+const CATEGORIES = [
+  { name: "Rings", slug: "rings", image: IMG.categories.rings },
+  { name: "Necklaces", slug: "necklaces", image: IMG.categories.necklaces },
+  { name: "Earrings", slug: "earrings", image: IMG.categories.earrings },
+  { name: "Bangles", slug: "bangles", image: IMG.categories.bangles },
+  { name: "Pendants", slug: "pendants", image: IMG.categories.pendants },
+  { name: "Chains", slug: "chains", image: IMG.categories.chains },
+] as const;
+
+// ─── Trust Signals ───────────────────────────────────────────
+const TRUST = [
+  {
+    icon: ShieldCheck,
+    title: "BIS Hallmarked",
+    desc: "Every piece government-certified for purity",
+  },
+  {
+    icon: Gem,
+    title: "Certified Diamonds",
+    desc: "IGI & GIA certified natural diamonds",
+  },
+  {
+    icon: RefreshCw,
+    title: "Lifetime Exchange",
+    desc: "Upgrade or exchange, no questions asked",
+  },
+  {
+    icon: Truck,
+    title: "365-Day Returns",
+    desc: "Free insured returns for a full year",
+  },
+] as const;
+
+// ─── Testimonials ────────────────────────────────────────────
+const TESTIMONIALS = [
+  {
+    name: "Priya Sharma",
+    city: "Mumbai",
+    rating: 5,
+    avatar: IMG.avatars.a1,
+    quote:
+      "The bridal set I bought for my wedding was breathtaking. Craftsmanship is world-class and the BIS hallmark gave me total peace of mind.",
+  },
+  {
+    name: "Ananya Iyer",
+    city: "Bengaluru",
+    rating: 5,
+    avatar: IMG.avatars.a2,
+    quote:
+      "Ordered a diamond pendant for my mother's 60th. It arrived beautifully packaged, with a certificate and a personal handwritten note.",
+  },
+  {
+    name: "Kavita Reddy",
+    city: "Hyderabad",
+    rating: 5,
+    avatar: IMG.avatars.a3,
+    quote:
+      "I love that I can book a video consultation before buying. The designer walked me through three options over a call. Bought on the spot.",
+  },
+] as const;
+
+// ─── Page ────────────────────────────────────────────────────
 export default function HomePage() {
-  const [currentBanner, setCurrentBanner] = useState(0);
+  const { toggleWishlist, isInWishlist } = useStore();
+  const [email, setEmail] = useState("");
+  const [subscribed, setSubscribed] = useState(false);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentBanner((prev) => (prev + 1) % mockBanners.length);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, []);
+  // Featured: take first 8 mock products but swap image to picsum slug
+  const featured = mockProducts.slice(0, 8).map((p, i) => ({
+    ...p,
+    _img: productImg(PRODUCT_SLUGS[i % PRODUCT_SLUGS.length]),
+  }));
 
-  const featured = mockProducts.filter((p) => p.isBestseller);
-  const newArrivals = mockProducts.filter((p) => p.isNew);
-  const trending = mockProducts.filter((p) => p.isTrending);
+  const goldRate22k = mockGoldRates.find(
+    (r) => r.metalType === "GOLD" && r.purity === 916,
+  );
+  const goldRate18k = mockGoldRates.find(
+    (r) => r.metalType === "GOLD" && r.purity === 750,
+  );
+  const silverRate = mockGoldRates.find((r) => r.metalType === "SILVER");
+
+  const handleSubscribe = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (email.includes("@")) {
+      setSubscribed(true);
+      setEmail("");
+    }
+  };
 
   return (
     <div>
-      {/* ─── Hero Banner Carousel ─────────────────────────────── */}
-      <section className="relative bg-navy overflow-hidden">
-        <div className="relative h-[420px] md:h-[520px]">
-          {mockBanners.map((banner, idx) => (
-            <div
-              key={banner.id}
-              className={cn(
-                "absolute inset-0 flex items-center transition-opacity duration-700",
-                idx === currentBanner ? "opacity-100" : "opacity-0 pointer-events-none"
-              )}
+      {/* ─── 1. Hero Banner ─────────────────────────────────── */}
+      <section className="relative h-[600px] w-full overflow-hidden">
+        <img
+          src={IMG.hero}
+          alt="CaratFlow luxury jewelry"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-navy/90 via-navy/60 to-navy/20" />
+        <div className="relative z-10 mx-auto flex h-full max-w-7xl items-center px-4 sm:px-6">
+          <div className="max-w-2xl">
+            <p className="mb-4 text-xs font-semibold uppercase tracking-[0.25em] text-gold">
+              Since 1952 · Four Generations of Artisans
+            </p>
+            <h1
+              className="mb-6 text-4xl font-bold leading-tight text-white md:text-6xl lg:text-7xl"
+              style={{ fontFamily: "var(--font-serif)" }}
             >
-              <div className={`absolute inset-0 bg-gradient-to-r ${banner.bgColor} opacity-90`} />
-              <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 w-full">
-                <div className="max-w-xl">
-                  <h1 className="text-3xl md:text-5xl font-bold text-white mb-4 leading-tight" style={{ fontFamily: "var(--font-serif)" }}>
-                    {banner.title}
-                  </h1>
-                  <p className="text-white/70 text-base md:text-lg mb-6 leading-relaxed">
-                    {banner.subtitle}
-                  </p>
-                  <Link
-                    href={banner.ctaLink}
-                    className="inline-block bg-gold text-white font-semibold px-8 py-3.5 rounded-lg hover:bg-gold-dark transition-colors text-sm md:text-base"
-                  >
-                    {banner.ctaText}
-                  </Link>
-                </div>
-              </div>
+              Crafted for
+              <br />
+              Generations
+            </h1>
+            <p className="mb-8 max-w-lg text-base leading-relaxed text-white/80 md:text-lg">
+              Handcrafted fine jewelry in 22K & 18K gold, natural diamonds, and
+              ethically sourced gemstones. BIS hallmarked, certified, and made
+              to be passed down.
+            </p>
+            <div className="flex flex-wrap gap-4">
+              <Link
+                href="/category/all"
+                className="inline-flex items-center gap-2 rounded-lg bg-gold px-8 py-4 text-sm font-semibold text-white transition-colors hover:bg-gold-dark"
+              >
+                Shop Collection
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/consultation/request"
+                className="inline-flex items-center gap-2 rounded-lg border border-white/40 bg-white/10 px-8 py-4 text-sm font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/20"
+              >
+                Book Consultation
+              </Link>
             </div>
-          ))}
-        </div>
-
-        {/* Dots */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-10">
-          {mockBanners.map((_, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => setCurrentBanner(idx)}
-              className={cn(
-                "w-2.5 h-2.5 rounded-full transition-all",
-                idx === currentBanner ? "bg-gold w-8" : "bg-white/40 hover:bg-white/60"
-              )}
-              aria-label={`Go to slide ${idx + 1}`}
-            />
-          ))}
-        </div>
-
-        {/* Search overlay for mobile */}
-        <div className="absolute bottom-0 left-0 right-0 md:hidden px-4 pb-16 z-10">
-          <SearchBar expanded />
+          </div>
         </div>
       </section>
 
-      {/* ─── Live Gold Rate Strip ─────────────────────────────── */}
-      <section className="bg-cream border-y border-gold/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
-          <div className="flex items-center justify-between overflow-x-auto gap-6 custom-scrollbar">
-            <span className="text-[10px] font-semibold text-navy/40 uppercase tracking-wider flex-shrink-0">
+      {/* ─── 2. Featured Collections ────────────────────────── */}
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
+        <div className="mb-10 text-center">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-gold">
+            Curated Edits
+          </p>
+          <h2
+            className="text-3xl font-bold text-navy md:text-4xl"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            Featured Collections
+          </h2>
+        </div>
+        <div className="grid gap-6 md:grid-cols-3">
+          {COLLECTIONS.map((c) => (
+            <Link
+              key={c.title}
+              href={c.href}
+              className="group relative block h-80 overflow-hidden rounded-2xl"
+            >
+              <img
+                src={c.image}
+                alt={c.title}
+                className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-navy/90 via-navy/30 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 p-6">
+                <h3
+                  className="mb-1 text-2xl font-bold text-white"
+                  style={{ fontFamily: "var(--font-serif)" }}
+                >
+                  {c.title}
+                </h3>
+                <p className="mb-3 text-sm text-white/70">{c.tagline}</p>
+                <span className="inline-flex items-center gap-1 text-sm font-semibold text-gold">
+                  Shop now
+                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+                </span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* ─── 3. Category Tiles ──────────────────────────────── */}
+      <section className="bg-cream py-16">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="mb-10 text-center">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-gold">
+              Browse Our Store
+            </p>
+            <h2
+              className="text-3xl font-bold text-navy md:text-4xl"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              Shop by Category
+            </h2>
+          </div>
+          <div className="grid grid-cols-3 gap-6 md:grid-cols-6">
+            {CATEGORIES.map((cat) => (
+              <Link
+                key={cat.slug}
+                href={`/category/${cat.slug}`}
+                className="group text-center"
+              >
+                <div className="mx-auto mb-3 h-28 w-28 overflow-hidden rounded-full border-2 border-transparent bg-warm-gray transition-all group-hover:border-gold md:h-36 md:w-36">
+                  <img
+                    src={cat.image}
+                    alt={cat.name}
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  />
+                </div>
+                <h3 className="text-sm font-semibold text-navy transition-colors group-hover:text-gold md:text-base">
+                  {cat.name}
+                </h3>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── 4. Featured Products ───────────────────────────── */}
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
+        <div className="mb-10 flex items-end justify-between">
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-gold">
+              Most Loved
+            </p>
+            <h2
+              className="text-3xl font-bold text-navy md:text-4xl"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              Featured Pieces
+            </h2>
+          </div>
+          <Link
+            href="/category/all?sort=popularity"
+            className="hidden items-center gap-1 text-sm font-medium text-gold hover:text-gold-dark sm:inline-flex"
+          >
+            View All
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-6">
+          {featured.map((product) => {
+            const price = calculateProductPrice(product);
+            const wishlisted = isInWishlist(product.id);
+            return (
+              <div
+                key={product.id}
+                className="group relative overflow-hidden rounded-xl border border-gray-100 bg-white transition-all hover:border-gold/30 hover:shadow-lg"
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleWishlist(product.id)}
+                  className={cn(
+                    "absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full transition-all",
+                    wishlisted
+                      ? "bg-rose-50 text-rose-500"
+                      : "bg-white/90 text-navy/40 hover:bg-rose-50 hover:text-rose-500",
+                  )}
+                  aria-label={
+                    wishlisted ? "Remove from wishlist" : "Add to wishlist"
+                  }
+                >
+                  <Heart
+                    className="h-4 w-4"
+                    fill={wishlisted ? "currentColor" : "none"}
+                  />
+                </button>
+                <Link
+                  href={`/product/${product.id}`}
+                  className="block aspect-square overflow-hidden bg-warm-gray"
+                >
+                  <img
+                    src={product._img}
+                    alt={product.name}
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    loading="lazy"
+                  />
+                </Link>
+                <div className="p-4">
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-gold">
+                    {product.metalType} · {product.purityLabel}
+                  </p>
+                  <h3 className="mb-2 line-clamp-1 text-sm font-semibold text-navy">
+                    {product.name}
+                  </h3>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-lg font-bold text-navy">
+                      {formatRupees(price.total / 100)}
+                    </span>
+                    <span className="text-[10px] font-medium text-navy/40">
+                      {product.netWeightGrams}g
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ─── 5. Live Metal Rates Ticker ─────────────────────── */}
+      <section className="bg-navy text-white">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
+          <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm md:text-base">
+            <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-gold">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-gold" />
               Live Rates
             </span>
-            {mockGoldRates.slice(0, 4).map((rate) => {
-              const label = rate.metalType === "GOLD"
-                ? `Gold ${rate.purity}`
-                : rate.metalType === "SILVER" ? "Silver" : "Platinum";
+            {goldRate22k && (
+              <span>
+                <span className="text-white/60">22K Gold</span>{" "}
+                <span className="font-bold">
+                  {formatRupees(goldRate22k.ratePerGram)}/g
+                </span>
+              </span>
+            )}
+            <span className="text-white/20">·</span>
+            {goldRate18k && (
+              <span>
+                <span className="text-white/60">18K Gold</span>{" "}
+                <span className="font-bold">
+                  {formatRupees(goldRate18k.ratePerGram)}/g
+                </span>
+              </span>
+            )}
+            <span className="text-white/20">·</span>
+            {silverRate && (
+              <span>
+                <span className="text-white/60">Silver</span>{" "}
+                <span className="font-bold">
+                  {formatRupees(silverRate.ratePerGram)}/g
+                </span>
+              </span>
+            )}
+            <span className="text-white/20">·</span>
+            <span className="text-xs text-white/50">
+              Updated {new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── 6. Trust Signals ───────────────────────────────── */}
+      <section className="bg-white py-16">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
+            {TRUST.map((t) => {
+              const TrustIcon = t.icon;
               return (
-                <div key={`${rate.metalType}-${rate.purity}`} className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-xs font-medium text-navy/60">{label}</span>
-                  <span className="text-sm font-bold text-navy">{formatRupees(rate.ratePerGram)}/g</span>
-                  <span className={cn("text-xs font-medium", rate.change24h >= 0 ? "text-emerald-600" : "text-rose-500")}>
-                    {rate.change24h >= 0 ? "+" : ""}{rate.changePercent24h.toFixed(2)}%
-                  </span>
+                <div
+                  key={t.title}
+                  className="flex flex-col items-center text-center"
+                >
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gold/10 text-gold">
+                    <TrustIcon className="h-8 w-8" strokeWidth={1.5} />
+                  </div>
+                  <h4 className="mb-1 text-base font-semibold text-navy">
+                    {t.title}
+                  </h4>
+                  <p className="text-xs leading-relaxed text-navy/50">
+                    {t.desc}
+                  </p>
                 </div>
               );
             })}
@@ -103,222 +499,94 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ─── Category Grid ────────────────────────────────────── */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-14">
-        <div className="text-center mb-10">
-          <h2 className="text-2xl md:text-3xl font-bold text-navy" style={{ fontFamily: "var(--font-serif)" }}>
-            Shop by Category
-          </h2>
-          <p className="text-navy/50 mt-2 text-sm">Find the perfect piece for every moment</p>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-          {mockCategories.slice(0, 10).map((cat) => (
-            <Link
-              key={cat.id}
-              href={`/category/${cat.slug}`}
-              className="group relative aspect-square rounded-xl overflow-hidden bg-warm-gray"
-            >
-              <img
-                src={cat.image}
-                alt={cat.name}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                loading="lazy"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-navy/70 via-navy/20 to-transparent" />
-              <div className="absolute bottom-3 left-3 right-3">
-                <h3 className="text-white font-semibold text-sm">{cat.name}</h3>
-                <p className="text-white/60 text-[10px]">{cat.productCount} designs</p>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* ─── Featured Products ────────────────────────────────── */}
-      <section className="bg-white py-14">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h2 className="text-2xl md:text-3xl font-bold text-navy" style={{ fontFamily: "var(--font-serif)" }}>
-                Bestsellers
-              </h2>
-              <p className="text-navy/50 mt-1 text-sm">Our most loved jewelry pieces</p>
-            </div>
-            <Link href="/category/all?sort=popularity" className="text-gold text-sm font-medium hover:text-gold-dark transition-colors flex items-center gap-1">
-              View All
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-              </svg>
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {featured.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Promotional Banner ───────────────────────────────── */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        <div className="relative bg-gradient-to-r from-navy via-navy-light to-navy rounded-2xl overflow-hidden p-8 md:p-12">
-          <div className="relative z-10 max-w-lg">
-            <p className="text-gold text-xs font-semibold uppercase tracking-wider mb-2">Gold Savings Scheme</p>
-            <h3 className="text-2xl md:text-3xl font-bold text-white mb-3" style={{ fontFamily: "var(--font-serif)" }}>
-              Save Monthly, Get Gold at Better Rates
-            </h3>
-            <p className="text-white/60 text-sm mb-6">
-              Join our 11+1 Gold Savings Scheme. Pay for 11 months, get 12 months worth of gold. Start with as little as Rs 1,000/month.
+      {/* ─── 7. Testimonials ────────────────────────────────── */}
+      <section className="bg-cream py-16">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="mb-12 text-center">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-gold">
+              Customer Stories
             </p>
-            <Link
-              href="/account/schemes"
-              className="inline-block bg-gold text-white font-semibold px-6 py-3 rounded-lg hover:bg-gold-dark transition-colors text-sm"
+            <h2
+              className="text-3xl font-bold text-navy md:text-4xl"
+              style={{ fontFamily: "var(--font-serif)" }}
             >
-              Learn More
-            </Link>
+              What Our Clients Say
+            </h2>
           </div>
-          {/* Decorative pattern */}
-          <div className="absolute top-0 right-0 w-1/2 h-full opacity-5">
-            <svg viewBox="0 0 200 200" className="w-full h-full" fill="white">
-              <pattern id="dots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-                <circle cx="2" cy="2" r="1.5" />
-              </pattern>
-              <rect fill="url(#dots)" width="200" height="200" />
-            </svg>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── New Arrivals ─────────────────────────────────────── */}
-      <section className="bg-warm-white py-14">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h2 className="text-2xl md:text-3xl font-bold text-navy" style={{ fontFamily: "var(--font-serif)" }}>
-                New Arrivals
-              </h2>
-              <p className="text-navy/50 mt-1 text-sm">Fresh additions to our collection</p>
-            </div>
-            <Link href="/category/all?sort=newest" className="text-gold text-sm font-medium hover:text-gold-dark transition-colors flex items-center gap-1">
-              View All
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-              </svg>
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {newArrivals.map((product) => (
-              <ProductCard key={product.id} product={product} />
+          <div className="grid gap-6 md:grid-cols-3">
+            {TESTIMONIALS.map((t) => (
+              <div
+                key={t.name}
+                className="flex flex-col rounded-2xl bg-white p-8 shadow-sm"
+              >
+                <div className="mb-4 flex gap-1">
+                  {Array.from({ length: t.rating }).map((_, i) => (
+                    <Star
+                      key={i}
+                      className="h-4 w-4 text-gold"
+                      fill="currentColor"
+                    />
+                  ))}
+                </div>
+                <p className="mb-6 flex-1 text-sm leading-relaxed text-navy/70">
+                  &ldquo;{t.quote}&rdquo;
+                </p>
+                <div className="flex items-center gap-3 border-t border-gray-100 pt-4">
+                  <img
+                    src={t.avatar}
+                    alt={t.name}
+                    className="h-12 w-12 rounded-full object-cover"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-navy">{t.name}</p>
+                    <p className="text-xs text-navy/50">{t.city}</p>
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ─── Shop by Occasion ─────────────────────────────────── */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-14">
-        <div className="text-center mb-10">
-          <h2 className="text-2xl md:text-3xl font-bold text-navy" style={{ fontFamily: "var(--font-serif)" }}>
-            Shop by Occasion
+      {/* ─── 8. Newsletter ──────────────────────────────────── */}
+      <section className="bg-navy py-16">
+        <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
+          <Mail className="mx-auto mb-4 h-10 w-10 text-gold" strokeWidth={1.5} />
+          <h2
+            className="mb-3 text-3xl font-bold text-white md:text-4xl"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            Join the CaratFlow Circle
           </h2>
-          <p className="text-navy/50 mt-2 text-sm">Curated collections for life's special moments</p>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {OCCASIONS.map((occasion) => (
-            <Link
-              key={occasion.slug}
-              href={`/category/all?occasion=${occasion.slug}`}
-              className="group text-center"
+          <p className="mb-8 text-sm text-white/60 md:text-base">
+            Early access to new collections, private sale invitations, and
+            expert styling tips — delivered once a week.
+          </p>
+          {subscribed ? (
+            <p className="text-sm font-semibold text-gold">
+              Thank you — you&apos;re on the list. Check your inbox.
+            </p>
+          ) : (
+            <form
+              onSubmit={handleSubscribe}
+              className="mx-auto flex max-w-md flex-col gap-3 sm:flex-row"
             >
-              <div className="aspect-square rounded-full overflow-hidden bg-warm-gray mb-3 mx-auto w-28 h-28 md:w-32 md:h-32 border-2 border-transparent group-hover:border-gold transition-all">
-                <img
-                  src={occasion.image}
-                  alt={occasion.name}
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                  loading="lazy"
-                />
-              </div>
-              <h3 className="text-sm font-semibold text-navy group-hover:text-gold transition-colors">
-                {occasion.name}
-              </h3>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* ─── Trending Products ────────────────────────────────── */}
-      <section className="bg-cream py-14">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h2 className="text-2xl md:text-3xl font-bold text-navy" style={{ fontFamily: "var(--font-serif)" }}>
-                Trending Now
-              </h2>
-              <p className="text-navy/50 mt-1 text-sm">What everyone is loving right now</p>
-            </div>
-            <Link href="/category/all?sort=popularity" className="text-gold text-sm font-medium hover:text-gold-dark transition-colors flex items-center gap-1">
-              View All
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-              </svg>
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {trending.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Trust Strip ──────────────────────────────────────── */}
-      <section className="bg-white py-12 border-t border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {[
-              {
-                icon: (
-                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                  </svg>
-                ),
-                title: "100% Certified",
-                desc: "BIS Hallmarked & IGI Certified",
-              },
-              {
-                icon: (
-                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" />
-                  </svg>
-                ),
-                title: "Free Shipping",
-                desc: "Insured delivery on all orders",
-              },
-              {
-                icon: (
-                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
-                  </svg>
-                ),
-                title: "15-Day Returns",
-                desc: "Hassle-free return & exchange",
-              },
-              {
-                icon: (
-                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                  </svg>
-                ),
-                title: "Secure Payments",
-                desc: "100% secure checkout",
-              },
-            ].map((item) => (
-              <div key={item.title} className="flex flex-col items-center text-center">
-                <div className="text-gold mb-3">{item.icon}</div>
-                <h4 className="font-semibold text-sm text-navy mb-0.5">{item.title}</h4>
-                <p className="text-xs text-navy/50">{item.desc}</p>
-              </div>
-            ))}
-          </div>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your@email.com"
+                className="flex-1 rounded-lg border border-white/20 bg-white/10 px-5 py-3.5 text-sm text-white placeholder-white/40 backdrop-blur-sm focus:border-gold focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="rounded-lg bg-gold px-8 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-gold-dark"
+              >
+                Subscribe
+              </button>
+            </form>
+          )}
         </div>
       </section>
     </div>

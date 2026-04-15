@@ -67,10 +67,10 @@ describe("Responsive Layout", () => {
 
   it("home page renders trust strip with 4 items", () => {
     renderWithStore(<HomePage />);
-    expect(screen.getByText("100% Certified")).toBeInTheDocument();
-    expect(screen.getByText("Free Shipping")).toBeInTheDocument();
-    expect(screen.getByText("15-Day Returns")).toBeInTheDocument();
-    expect(screen.getByText("Secure Payments")).toBeInTheDocument();
+    expect(screen.getByText("BIS Hallmarked")).toBeInTheDocument();
+    expect(screen.getByText("Certified Diamonds")).toBeInTheDocument();
+    expect(screen.getByText("Lifetime Exchange")).toBeInTheDocument();
+    expect(screen.getByText("365-Day Returns")).toBeInTheDocument();
   });
 
   it("wishlist page shows empty state with explore link when no items", () => {

@@ -8,7 +8,7 @@ import { renderWithStore, userEvent, getProduct } from "./test-utils";
 import HomePage from "@/app/page";
 import CategoryPage from "@/app/category/[slug]/page";
 import ProductDetailPage from "@/app/product/[id]/page";
-import { mockProducts, mockCategories, mockBanners } from "@/lib/mock-data";
+import { mockProducts, mockCategories } from "@/lib/mock-data";
 import { SORT_OPTIONS } from "@/lib/constants";
 
 // We need to override useParams per test
@@ -52,29 +52,22 @@ describe("Shopping Flow", () => {
     expect(hasFirstCat).toBe(true);
   });
 
-  it("renders hero banner carousel with slide dots", async () => {
-    const user = userEvent.setup();
+  it("renders hero banner with primary CTAs", () => {
     renderWithStore(<HomePage />);
-    const dots = screen.getAllByRole("button", { name: /go to slide/i });
-    expect(dots.length).toBe(mockBanners.length);
-    // Click second dot
-    await user.click(dots[1]!);
-    // The second banner text should now be visible (opacity-100)
-    expect(screen.getByText(mockBanners[1]!.title)).toBeInTheDocument();
+    expect(screen.getByText("Shop Collection")).toBeInTheDocument();
+    expect(screen.getByText("Book Consultation")).toBeInTheDocument();
   });
 
-  it("shows Bestsellers, New Arrivals, and Trending sections", () => {
+  it("shows Featured Collections and Featured Pieces sections", () => {
     renderWithStore(<HomePage />);
-    expect(screen.getByText("Bestsellers")).toBeInTheDocument();
-    expect(screen.getByText("New Arrivals")).toBeInTheDocument();
-    expect(screen.getByText("Trending Now")).toBeInTheDocument();
+    expect(screen.getByText("Featured Collections")).toBeInTheDocument();
+    expect(screen.getByText("Featured Pieces")).toBeInTheDocument();
   });
 
-  it("displays shop-by-occasion section with links", () => {
+  it("displays testimonials and newsletter sections", () => {
     renderWithStore(<HomePage />);
-    expect(screen.getByText("Shop by Occasion")).toBeInTheDocument();
-    expect(screen.getByText("Wedding")).toBeInTheDocument();
-    expect(screen.getByText("Engagement")).toBeInTheDocument();
+    expect(screen.getByText("What Our Clients Say")).toBeInTheDocument();
+    expect(screen.getByText("Join the CaratFlow Circle")).toBeInTheDocument();
   });
 
   it("displays live gold rate strip", () => {
