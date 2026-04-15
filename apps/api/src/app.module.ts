@@ -1,4 +1,4 @@
-import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { TrpcModule } from './trpc/trpc.module';
@@ -73,6 +73,14 @@ import { PayrollModule } from './modules/payroll/payroll.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(TenantMiddleware).forRoutes('api/v1/*');
+    // Match every sub-path under /api/v1 (including multi-segment routes
+    // like /api/v1/trpc/inventory.stockItems.list). A single-segment
+    // wildcard pattern ('api/v1/*') does NOT match deep routes in Nest 11
+    // because path-to-regexp v6 treats '*' as a single segment.
+    consumer
+      .apply(TenantMiddleware)
+      .forRoutes(
+        { path: 'api/v1/(.*)', method: RequestMethod.ALL },
+      );
   }
 }
