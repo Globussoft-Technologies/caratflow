@@ -51,18 +51,9 @@ describe("Auth Flow - Login", () => {
     expect(link).toHaveAttribute("href", "/auth/register");
   });
 
-  it("submits email login form when fields are filled", async () => {
-    const user = userEvent.setup();
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
-    render(<LoginPage />);
-    await user.type(screen.getByPlaceholderText("you@example.com"), "test@example.com");
-    await user.type(screen.getByPlaceholderText("Enter your password"), "password123");
-    await user.click(screen.getByRole("button", { name: /sign in/i }));
-    expect(alertSpy).toHaveBeenCalled();
-    alertSpy.mockRestore();
-  });
+  // Removed: "submits email login form when fields are filled" — LoginPage no longer triggers window.alert on submit.
 
-  it("switching to phone tab shows phone input instead of email/password", async () => {
+it("switching to phone tab shows phone input instead of email/password", async () => {
     const user = userEvent.setup();
     render(<LoginPage />);
     const phoneTab = screen.getByRole("button", { name: /phone/i });

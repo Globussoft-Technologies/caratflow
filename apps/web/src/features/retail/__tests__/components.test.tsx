@@ -112,7 +112,7 @@ describe('Retail Feature Components', () => {
       render(
         <PosPaymentDialog
           open={true}
-          onClose={vi.fn()}
+          onOpenChange={vi.fn()}
           totalPaise={9785000}
           onConfirm={vi.fn()}
         />,

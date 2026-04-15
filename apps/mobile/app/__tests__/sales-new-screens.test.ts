@@ -183,7 +183,7 @@ vi.mock('@/store/scan-store', () => ({
 }));
 
 // Expose React Native's Share as a vi-controllable mock.
-const shareMock = vi.fn(async () => ({ action: 'sharedAction' }));
+const shareMock = vi.fn(async (_content: { message: string }) => ({ action: 'sharedAction' }));
 vi.mock('react-native', async () => {
   const mockComponent = (name: string) => {
     const c = ({ children, ...props }: any) => ({
@@ -672,7 +672,7 @@ describe('Sale receipt detail (sales/my-sales/[id].tsx)', () => {
     expect(shareButton).toBeDefined();
     await shareButton!.props.onPress();
     expect(shareMock).toHaveBeenCalledTimes(1);
-    const msg = (shareMock.mock.calls[0][0] as { message: string }).message;
+    const msg = (shareMock.mock.calls[0]?.[0] as { message: string } | undefined)?.message ?? '';
     expect(msg).toContain('Receipt:');
     expect(msg).toContain('Ring x1');
     expect(msg).toContain('Total:');

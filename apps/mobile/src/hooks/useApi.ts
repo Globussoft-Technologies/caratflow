@@ -90,7 +90,7 @@ export function useApiMutation<TInput, TOutput = unknown>(
       for (const key of invalidateKeys) {
         queryClient.invalidateQueries({ queryKey: key });
       }
-      options?.onSuccess?.(data, variables, context);
+      (options?.onSuccess as ((d: TOutput, v: TInput, c: unknown) => void) | undefined)?.(data, variables, context);
     },
     ...options,
   });

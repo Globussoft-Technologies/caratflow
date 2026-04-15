@@ -9,11 +9,21 @@ import { PeriodComparison } from '../PeriodComparison';
 import { ExportButton } from '../ExportButton';
 import { CustomReportBuilder } from '../CustomReportBuilder';
 import { WidgetGrid } from '../WidgetGrid';
+import type { ChartTypeEnum as ChartTypeEnumType } from '@caratflow/shared-types';
+
+const ChartTypeEnum = {
+  BAR: 'bar',
+  LINE: 'line',
+  PIE: 'pie',
+  TABLE: 'table',
+  AREA: 'area',
+} as unknown as typeof ChartTypeEnumType;
 
 describe('ReportChart', () => {
   it('renders bar chart', () => {
     const data = {
-      chartType: 'bar' as const,
+      title: 'Sales',
+      chartType: ChartTypeEnum.BAR,
       labels: ['Jan', 'Feb'],
       datasets: [{ label: 'Sales', data: [100, 200] }],
     };
@@ -23,7 +33,8 @@ describe('ReportChart', () => {
 
   it('renders line chart', () => {
     const data = {
-      chartType: 'line' as const,
+      title: 'Revenue',
+      chartType: ChartTypeEnum.LINE,
       labels: ['Jan', 'Feb'],
       datasets: [{ label: 'Revenue', data: [100, 200] }],
     };
@@ -33,7 +44,8 @@ describe('ReportChart', () => {
 
   it('renders pie chart', () => {
     const data = {
-      chartType: 'pie' as const,
+      title: 'Distribution',
+      chartType: ChartTypeEnum.PIE,
       labels: ['Gold', 'Silver'],
       datasets: [{ label: 'Value', data: [70, 30] }],
     };
@@ -43,6 +55,7 @@ describe('ReportChart', () => {
 
   it('shows unsupported message for unknown type', () => {
     const data = {
+      title: 'Unknown',
       chartType: 'unknown' as never,
       labels: [],
       datasets: [],
@@ -128,6 +141,7 @@ describe('KpiCard', () => {
       <KpiCard
         data={{
           label: 'Total Sales',
+          value: 1250000,
           formattedValue: '12,50,000',
           trend: { direction: 'up', value: 12.5, label: 'vs last month' },
         }}
@@ -144,6 +158,7 @@ describe('KpiCard', () => {
       <KpiCard
         data={{
           label: 'Inventory Count',
+          value: 1245,
           formattedValue: '1,245',
         }}
       />,
@@ -156,12 +171,14 @@ describe('KpiCard', () => {
 describe('ForecastChart', () => {
   it('renders prediction area chart', () => {
     const data = {
+      entityId: 'e1',
+      entityName: 'Gold Ring',
       method: 'ETS',
       accuracy: 92,
       mape: 8.5,
       predictions: [
-        { period: 'Jan', actual: 100, predicted: 100, lowerBound: 90, upperBound: 110 },
-        { period: 'Feb', actual: null, predicted: 120, lowerBound: 100, upperBound: 140 },
+        { period: 'Jan', actual: 100, predicted: 100, lowerBound: 90, upperBound: 110, confidence: 0.9 },
+        { period: 'Feb', actual: null, predicted: 120, lowerBound: 100, upperBound: 140, confidence: 0.85 },
       ],
     };
     render(<ForecastChart data={data} />);
@@ -171,6 +188,8 @@ describe('ForecastChart', () => {
 
   it('shows message when no predictions', () => {
     const data = {
+      entityId: 'e1',
+      entityName: 'Gold Ring',
       method: 'ETS',
       accuracy: 0,
       mape: 0,
@@ -224,8 +243,8 @@ describe('CustomReportBuilder', () => {
       name: 'products',
       label: 'Products',
       fields: [
-        { name: 'name', label: 'Name', type: 'string', filterable: true, aggregatable: false },
-        { name: 'price', label: 'Price', type: 'number', filterable: true, aggregatable: true },
+        { name: 'name', label: 'Name', type: 'string', filterable: true, sortable: true, aggregatable: false },
+        { name: 'price', label: 'Price', type: 'number', filterable: true, sortable: true, aggregatable: true },
       ],
     },
   ];
@@ -252,15 +271,15 @@ describe('CustomReportBuilder', () => {
 
 describe('WidgetGrid', () => {
   const widgets = [
-    { widgetId: 'w1', type: 'kpi', title: 'Sales', w: 4, h: 2, x: 0, y: 0 },
-    { widgetId: 'w2', type: 'chart', title: 'Trend', w: 8, h: 3, x: 4, y: 0 },
+    { widgetId: 'w1', w: 4, h: 2, x: 0, y: 0, config: { type: 'kpi', title: 'Sales' } },
+    { widgetId: 'w2', w: 8, h: 3, x: 4, y: 0, config: { type: 'chart', title: 'Trend' } },
   ];
 
   it('renders widget cards', () => {
     render(
       <WidgetGrid
         widgets={widgets}
-        renderWidget={(w) => <div>{w.title}</div>}
+        renderWidget={(w) => <div>{String((w.config as { title?: string } | undefined)?.title ?? '')}</div>}
       />,
     );
     expect(screen.getByText('Sales')).toBeInTheDocument();

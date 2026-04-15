@@ -80,12 +80,13 @@ describe('LabelPreview', () => {
 
   it('renders label fields when preview provided', () => {
     const preview = {
+      templateId: 'tpl-1',
       templateName: 'Standard Label',
       width: 50,
       height: 25,
       renderedFields: [
-        { type: 'text' as const, x: 2, y: 2, width: 30, height: 5, resolvedValue: 'Gold Ring', fontSize: 10 },
-        { type: 'barcode' as const, x: 2, y: 10, width: 40, height: 8, resolvedValue: '1234567890' },
+        { type: 'text' as const, x: 2, y: 2, width: 30, height: 5, value: 'Gold Ring', resolvedValue: 'Gold Ring', fontSize: 10 },
+        { type: 'barcode' as const, x: 2, y: 10, width: 40, height: 8, value: '1234567890', resolvedValue: '1234567890' },
       ],
     };
     render(<LabelPreview preview={preview} />);
@@ -136,7 +137,7 @@ describe('CustomerDisplayPreview', () => {
       <CustomerDisplayPreview
         deviceId="dev-1"
         locationId="loc-1"
-        initialMessage={{ line1: 'Welcome', line2: 'Total: Rs.5000', amount: 500000 }}
+        initialMessage={{ deviceId: 'dev-1', line1: 'Welcome', line2: 'Total: Rs.5000', amount: 500000 }}
       />,
     );
     expect(screen.getByText('Welcome')).toBeInTheDocument();

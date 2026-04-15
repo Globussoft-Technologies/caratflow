@@ -308,6 +308,8 @@ function FullPageMessageBubble({
   onOccasionPick: (value: string) => void;
 }) {
   const isUser = message.role === "USER";
+  const metadata: Record<string, unknown> = message.metadata ?? {};
+  const quickReplies = (metadata.quickReplies as QuickReply[] | undefined) ?? [];
 
   return (
     <div className={`flex items-start gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
@@ -338,10 +340,10 @@ function FullPageMessageBubble({
         </div>
 
         {/* Product Cards */}
-        {message.messageType === "PRODUCT_CARD" && message.metadata?.products && (
+        {(message.messageType === "PRODUCT_CARD" && metadata.products != null) ? (
           <div className="mt-3 overflow-x-auto pb-2">
             <div className="flex gap-3" style={{ minWidth: "max-content" }}>
-              {(message.metadata.products as ProductCard[]).map((product) => (
+              {(metadata.products as ProductCard[]).map((product) => (
                 <Link
                   key={product.productId}
                   href={`/product/${product.productId}`}
@@ -365,7 +367,7 @@ function FullPageMessageBubble({
                     <p className="text-xs font-semibold text-navy leading-tight line-clamp-2 mt-0.5">{product.name}</p>
                     <div className="flex items-baseline gap-1 mt-1.5">
                       <span className="text-sm font-bold text-navy">{formatPrice(product.pricePaise)}</span>
-                      {product.weightMg && <span className="text-[9px] text-navy/40">{(product.weightMg / 1000).toFixed(1)}g</span>}
+                      {product.weightMg != null && <span className="text-[9px] text-navy/40">{(product.weightMg / 1000).toFixed(1)}g</span>}
                     </div>
                     <div className="mt-2">
                       <span className="text-[10px] font-medium text-gold bg-gold/5 px-2.5 py-1 rounded-full">View Details</span>
@@ -375,28 +377,30 @@ function FullPageMessageBubble({
               ))}
             </div>
           </div>
-        )}
+        ) : null}
 
-        {/* Quick Replies */}
-        {message.messageType === "QUICK_REPLIES" && message.metadata?.quickReplies && (
+        {message.messageType === "QUICK_REPLIES" && quickReplies.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {(message.metadata.quickReplies as QuickReply[]).map((reply) => (
-              <button
-                key={reply.value}
-                type="button"
-                onClick={() => onQuickReply(reply.value)}
-                className="px-4 py-2 bg-white border border-gold/30 text-gold-dark text-sm font-medium rounded-full hover:bg-gold/5 hover:border-gold/50 transition-all"
-              >
-                {reply.label}
-              </button>
-            ))}
+            {quickReplies.map((reply) => {
+              const label: string = reply.label;
+              return (
+                <button
+                  key={reply.value}
+                  type="button"
+                  onClick={() => onQuickReply(reply.value)}
+                  className="px-4 py-2 bg-white border border-gold/30 text-gold-dark text-sm font-medium rounded-full hover:bg-gold/5 hover:border-gold/50 transition-all"
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         )}
 
         {/* Occasion Picker */}
-        {message.messageType === "OCCASION_PICKER" && message.metadata?.occasions && (
+        {message.messageType === "OCCASION_PICKER" && metadata.occasions && (
           <div className="mt-3 grid grid-cols-3 gap-2">
-            {(message.metadata.occasions as OccasionOption[]).map((occ) => (
+            {(metadata.occasions as OccasionOption[]).map((occ) => (
               <button
                 key={occ.value}
                 type="button"
