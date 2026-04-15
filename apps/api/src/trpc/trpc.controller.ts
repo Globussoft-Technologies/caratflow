@@ -36,8 +36,11 @@ export class TrpcController {
       body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body),
     });
 
+    // Endpoint must match the full path prefix Nest sees.
+    // Global prefix 'api/v1' + controller 'trpc' => URL is '/api/v1/trpc/<procedure>'.
+    // fetchRequestHandler slices `endpoint.length` chars off to get the procedure.
     const fetchRes = await fetchRequestHandler({
-      endpoint: '/trpc',
+      endpoint: '/api/v1/trpc',
       req: fetchReq,
       router: this.trpcRouter.appRouter,
       createContext: () => context,
