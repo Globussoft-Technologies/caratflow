@@ -11,8 +11,10 @@ import { BackInStockService } from './back-in-stock.service';
 import { B2cFeaturesController } from './b2c-features.controller';
 import { B2cFeaturesTrpcRouter } from './b2c-features.trpc';
 import { B2cFeaturesEventHandler } from './b2c-features.event-handler';
+import { CrmModule } from '../crm/crm.module';
 
 @Module({
+  imports: [CrmModule],
   controllers: [B2cFeaturesController],
   providers: [
     WishlistService,
