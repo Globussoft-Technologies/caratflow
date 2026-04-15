@@ -8,6 +8,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { ChatbotIntentService } from './chatbot.intent.service';
 import { ChatbotResponseService } from './chatbot.response.service';
 import { ChatbotKnowledgeService } from './chatbot.knowledge.service';
+import { Prisma } from '@caratflow/db';
 import type {
   ChatPreferences,
   ChatMessageResponse,
@@ -76,7 +77,7 @@ export class ChatbotService extends TenantAwareService {
         role: 'ASSISTANT',
         content: greeting.content,
         messageType: greeting.messageType,
-        metadata: greeting.metadata,
+        metadata: greeting.metadata as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -116,7 +117,7 @@ export class ChatbotService extends TenantAwareService {
         role: 'USER',
         content,
         messageType: messageType as 'TEXT',
-        metadata: null,
+        metadata: Prisma.JsonNull,
       },
     });
 
@@ -334,7 +335,7 @@ export class ChatbotService extends TenantAwareService {
           intent.entities.faqKeywords?.join(' ') ?? '',
         );
 
-        if (faqMatches.length > 0) {
+        if (faqMatches.length > 0 && faqMatches[0]) {
           const topFaq = faqMatches[0];
           const faqResponse = this.responseService.generateFaqResponse(topFaq.question, topFaq.answer);
           responses.push(await this.saveAssistantMessage(sessionPk, faqResponse));
@@ -449,7 +450,7 @@ export class ChatbotService extends TenantAwareService {
         role: 'ASSISTANT',
         content: response.content,
         messageType: response.messageType as 'TEXT',
-        metadata: response.metadata,
+        metadata: response.metadata as unknown as Prisma.InputJsonValue,
       },
     });
     return this.mapMessageResponse(msg);

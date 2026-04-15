@@ -4,6 +4,7 @@
 
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Queue, Worker, type Job } from 'bullmq';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 
 interface ScheduledReportJob {
@@ -167,7 +168,7 @@ export class ReportingSchedulerService implements OnModuleInit, OnModuleDestroy 
         savedReportId: scheduledReport.savedReportId,
         reportType: scheduledReport.savedReport.reportType,
         status: 'RUNNING',
-        parameters: scheduledReport.savedReport.filters as Record<string, unknown> ?? {},
+        parameters: (scheduledReport.savedReport.filters ?? {}) as Prisma.InputJsonValue,
         startedAt: new Date(),
       },
     });

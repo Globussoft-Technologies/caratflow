@@ -33,57 +33,42 @@ export class StorefrontCouponService extends TenantAwareService {
 
     if (!coupon) {
       return {
-        isValid: false,
-        code,
-        discountType: null,
-        discountValue: null,
-        discountAmountPaise: 0,
-        reason: 'Coupon code not found',
+        valid: false,
+        discountPaise: 0,
+        errorMessage: 'Coupon code not found',
       };
     }
 
     if (!coupon.isActive) {
       return {
-        isValid: false,
-        code,
-        discountType: null,
-        discountValue: null,
-        discountAmountPaise: 0,
-        reason: 'Coupon code is inactive',
+        valid: false,
+        discountPaise: 0,
+        errorMessage: 'Coupon code is inactive',
       };
     }
 
     const now = new Date();
     if (now < coupon.validFrom || now > coupon.validTo) {
       return {
-        isValid: false,
-        code,
-        discountType: null,
-        discountValue: null,
-        discountAmountPaise: 0,
-        reason: 'Coupon code has expired or is not yet valid',
+        valid: false,
+        discountPaise: 0,
+        errorMessage: 'Coupon code has expired or is not yet valid',
       };
     }
 
     if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
       return {
-        isValid: false,
-        code,
-        discountType: null,
-        discountValue: null,
-        discountAmountPaise: 0,
-        reason: 'Coupon code usage limit reached',
+        valid: false,
+        discountPaise: 0,
+        errorMessage: 'Coupon code usage limit reached',
       };
     }
 
     if (coupon.minOrderPaise && cartTotalPaise < Number(coupon.minOrderPaise)) {
       return {
-        isValid: false,
-        code,
-        discountType: null,
-        discountValue: null,
-        discountAmountPaise: 0,
-        reason: `Minimum order amount not met. Required: ${Number(coupon.minOrderPaise)} paise`,
+        valid: false,
+        discountPaise: 0,
+        errorMessage: `Minimum order amount not met. Required: ${Number(coupon.minOrderPaise)} paise`,
       };
     }
 
@@ -98,12 +83,9 @@ export class StorefrontCouponService extends TenantAwareService {
       });
       if (previousOrders > 0) {
         return {
-          isValid: false,
-          code,
-          discountType: null,
-          discountValue: null,
-          discountAmountPaise: 0,
-          reason: 'This coupon is valid for first orders only',
+          valid: false,
+          discountPaise: 0,
+          errorMessage: 'This coupon is valid for first orders only',
         };
       }
     }
@@ -112,11 +94,15 @@ export class StorefrontCouponService extends TenantAwareService {
     const discountAmount = this.calculateDiscount(coupon, cartTotalPaise);
 
     return {
-      isValid: true,
-      code: coupon.code,
-      discountType: coupon.discountType as 'PERCENTAGE' | 'FIXED',
-      discountValue: coupon.discountValue,
-      discountAmountPaise: discountAmount,
+      valid: true,
+      discountPaise: discountAmount,
+      coupon: {
+        id: coupon.id,
+        code: coupon.code,
+        description: coupon.description ?? null,
+        discountType: coupon.discountType as 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FREE_SHIPPING',
+        discountValue: coupon.discountValue,
+      },
     };
   }
 
@@ -135,23 +121,24 @@ export class StorefrontCouponService extends TenantAwareService {
 
     if (!coupon || !coupon.isActive) {
       return {
-        isValid: false,
-        code,
-        discountType: null,
-        discountValue: null,
-        discountAmountPaise: 0,
-        reason: 'Invalid coupon',
+        valid: false,
+        discountPaise: 0,
+        errorMessage: 'Invalid coupon',
       };
     }
 
     const discountAmount = this.calculateDiscount(coupon, cartTotalPaise);
 
     return {
-      isValid: true,
-      code: coupon.code,
-      discountType: coupon.discountType as 'PERCENTAGE' | 'FIXED',
-      discountValue: coupon.discountValue,
-      discountAmountPaise: discountAmount,
+      valid: true,
+      discountPaise: discountAmount,
+      coupon: {
+        id: coupon.id,
+        code: coupon.code,
+        description: coupon.description ?? null,
+        discountType: coupon.discountType as 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FREE_SHIPPING',
+        discountValue: coupon.discountValue,
+      },
     };
   }
 
@@ -314,7 +301,7 @@ export class StorefrontCouponService extends TenantAwareService {
       id: c.id as string,
       code: c.code as string,
       description: (c.description as string) ?? null,
-      discountType: c.discountType as 'PERCENTAGE' | 'FIXED',
+      discountType: c.discountType as 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FREE_SHIPPING',
       discountValue: c.discountValue as number,
       minOrderPaise: c.minOrderPaise ? Number(c.minOrderPaise) : null,
       maxDiscountPaise: c.maxDiscountPaise ? Number(c.maxDiscountPaise) : null,

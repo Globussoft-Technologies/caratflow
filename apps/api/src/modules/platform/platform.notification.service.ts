@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { v4 as uuid } from 'uuid';
 import { TenantAwareService } from '../../common/base.service';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 
 type NotificationKind = 'INFO' | 'WARNING' | 'ERROR' | 'SUCCESS';
@@ -34,7 +35,7 @@ export class PlatformNotificationService extends TenantAwareService {
         message: input.message,
         type: input.type ?? 'INFO',
         link: input.link ?? null,
-        metadata: input.metadata ?? null,
+        metadata: (input.metadata ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         isRead: false,
       },
     });

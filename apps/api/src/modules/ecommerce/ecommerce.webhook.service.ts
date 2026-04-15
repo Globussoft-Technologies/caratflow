@@ -4,6 +4,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import type { WebhookPayload } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { TenantAwareService } from '../../common/base.service';
 import { EcommerceShopifyService } from './ecommerce.shopify.service';
@@ -43,7 +44,7 @@ export class EcommerceWebhookService extends TenantAwareService {
         gatewayId: gatewayId ?? null,
         source,
         eventType,
-        payload,
+        payload: payload as Prisma.InputJsonValue,
         status: 'RECEIVED',
       },
     });

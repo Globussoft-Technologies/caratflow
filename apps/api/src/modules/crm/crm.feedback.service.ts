@@ -4,6 +4,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { Prisma } from '@caratflow/db';
 import type { FeedbackInput } from '@caratflow/shared-types';
 
 @Injectable()
@@ -44,14 +45,14 @@ export class CrmFeedbackService extends TenantAwareService {
 
     const [items, total] = await Promise.all([
       this.prisma.feedback.findMany({
-        where: where as Parameters<typeof this.prisma.feedback.findMany>[0]['where'],
+        where: where as Prisma.FeedbackWhereInput,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
         include: { customer: { select: { firstName: true, lastName: true } } },
       }),
       this.prisma.feedback.count({
-        where: where as Parameters<typeof this.prisma.feedback.count>[0]['where'],
+        where: where as Prisma.FeedbackWhereInput,
       }),
     ]);
 
@@ -103,13 +104,13 @@ export class CrmFeedbackService extends TenantAwareService {
 
     const [result, byType] = await Promise.all([
       this.prisma.feedback.aggregate({
-        where: where as Parameters<typeof this.prisma.feedback.aggregate>[0]['where'],
+        where: where as Prisma.FeedbackWhereInput,
         _avg: { rating: true },
         _count: true,
       }),
       this.prisma.feedback.groupBy({
         by: ['feedbackType'],
-        where: where as Parameters<typeof this.prisma.feedback.groupBy>[0]['where'],
+        where: where as Prisma.FeedbackWhereInput,
         _avg: { rating: true },
         _count: true,
       }),

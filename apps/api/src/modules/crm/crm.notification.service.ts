@@ -5,6 +5,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { Prisma } from '@caratflow/db';
 import { EventBusService } from '../../event-bus/event-bus.service';
 import type {
   NotificationTemplateInput,
@@ -110,7 +111,7 @@ export class CrmNotificationService extends TenantAwareService {
         subject,
         body,
         status: 'QUEUED',
-        metadata: input.variables ? (input.variables as Record<string, unknown>) : undefined,
+        metadata: input.variables ? (input.variables as Prisma.InputJsonValue) : undefined,
         createdBy: userId,
         updatedBy: userId,
       },
@@ -266,14 +267,14 @@ export class CrmNotificationService extends TenantAwareService {
 
     const [items, total] = await Promise.all([
       this.prisma.notificationLog.findMany({
-        where: where as Parameters<typeof this.prisma.notificationLog.findMany>[0]['where'],
+        where: where as Prisma.NotificationLogWhereInput,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
         include: { customer: { select: { firstName: true, lastName: true } } },
       }),
       this.prisma.notificationLog.count({
-        where: where as Parameters<typeof this.prisma.notificationLog.count>[0]['where'],
+        where: where as Prisma.NotificationLogWhereInput,
       }),
     ]);
 

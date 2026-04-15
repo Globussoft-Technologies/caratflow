@@ -8,8 +8,8 @@ import type {
   ChatPreferences,
   ProductCardData,
   QuickReplyOption,
-  ChatMessageType,
 } from '@caratflow/shared-types';
+import { ChatMessageType } from '@caratflow/shared-types';
 
 interface GeneratedResponse {
   content: string;
@@ -96,7 +96,7 @@ export class ChatbotResponseService {
     if (products.length === 0) {
       return {
         content: this.getNoResultsMessage(preferences),
-        messageType: 'QUICK_REPLIES',
+        messageType: ChatMessageType.QUICK_REPLIES,
         metadata: {
           quickReplies: [
             { label: 'Browse All Jewelry', value: 'show me all jewelry' },
@@ -122,7 +122,7 @@ export class ChatbotResponseService {
 
     return {
       content: description,
-      messageType: 'PRODUCT_CARD',
+      messageType: ChatMessageType.PRODUCT_CARD,
       metadata: {
         products: productCards,
         totalFound: products.length,
@@ -153,7 +153,7 @@ export class ChatbotResponseService {
 
     return {
       content: greeting,
-      messageType: 'QUICK_REPLIES',
+      messageType: ChatMessageType.QUICK_REPLIES,
       metadata: {
         quickReplies: [
           { label: 'Browse by Occasion', value: 'show occasions' },
@@ -176,7 +176,7 @@ export class ChatbotResponseService {
     if (missing.includes('occasion') && !preferences.occasion) {
       return {
         content: 'What occasion are you shopping for? This will help me suggest the most suitable pieces.',
-        messageType: 'OCCASION_PICKER',
+        messageType: ChatMessageType.OCCASION_PICKER,
         metadata: {
           occasions: [
             { label: 'Wedding', value: 'wedding', icon: 'rings' },
@@ -193,7 +193,7 @@ export class ChatbotResponseService {
     if (missing.includes('budget') && !preferences.budgetMinPaise && !preferences.budgetMaxPaise) {
       return {
         content: 'What budget range are you comfortable with? I can find the best options within your range.',
-        messageType: 'BUDGET_SLIDER',
+        messageType: ChatMessageType.BUDGET_SLIDER,
         metadata: {
           minPaise: 500000,       // Rs 5,000
           maxPaise: 50000000,     // Rs 5,00,000
@@ -208,7 +208,7 @@ export class ChatbotResponseService {
     if (missing.includes('category') && !preferences.category) {
       return {
         content: 'What type of jewelry are you interested in?',
-        messageType: 'QUICK_REPLIES',
+        messageType: ChatMessageType.QUICK_REPLIES,
         metadata: {
           quickReplies: [
             { label: 'Rings', value: 'ring' },
@@ -227,7 +227,7 @@ export class ChatbotResponseService {
     if (missing.includes('metal') && !preferences.metalType) {
       return {
         content: 'Which metal do you prefer?',
-        messageType: 'QUICK_REPLIES',
+        messageType: ChatMessageType.QUICK_REPLIES,
         metadata: {
           quickReplies: [
             { label: 'Gold', value: 'gold' },
@@ -243,7 +243,7 @@ export class ChatbotResponseService {
     // Enough preferences gathered, proceed with suggestions
     return {
       content: 'Let me find the best pieces matching your preferences...',
-      messageType: 'TEXT',
+      messageType: ChatMessageType.TEXT,
       metadata: {},
     };
   }
@@ -254,7 +254,7 @@ export class ChatbotResponseService {
   generateFaqResponse(question: string, answer: string): GeneratedResponse {
     return {
       content: answer,
-      messageType: 'QUICK_REPLIES',
+      messageType: ChatMessageType.QUICK_REPLIES,
       metadata: {
         quickReplies: [
           { label: 'Browse Jewelry', value: 'show jewelry' },
@@ -271,7 +271,7 @@ export class ChatbotResponseService {
   generateFarewell(): GeneratedResponse {
     return {
       content: 'Thank you for visiting CaratFlow! We hope to see you again soon. If you need any help, just start a new chat anytime. Happy jewelry shopping!',
-      messageType: 'TEXT',
+      messageType: ChatMessageType.TEXT,
       metadata: {},
     };
   }
@@ -282,7 +282,7 @@ export class ChatbotResponseService {
   generateEscalationResponse(): GeneratedResponse {
     return {
       content: 'I understand you\'d like to speak with a human agent. Let me connect you with our customer support team. A representative will be with you shortly.',
-      messageType: 'TEXT',
+      messageType: ChatMessageType.TEXT,
       metadata: { escalated: true },
     };
   }

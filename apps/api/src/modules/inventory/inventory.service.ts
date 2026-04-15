@@ -26,6 +26,7 @@ import type {
   BatchLotListInput,
 } from '@caratflow/shared-types';
 import type { PaginatedResult } from '@caratflow/shared-types';
+import { MovementType } from '@caratflow/shared-types';
 import { v4 as uuid } from 'uuid';
 
 @Injectable()
@@ -395,7 +396,7 @@ export class InventoryService extends TenantAwareService {
       if (stockItem) {
         await this.recordMovement(tenantId, userId, {
           stockItemId: stockItem.id,
-          movementType: 'TRANSFER' as const,
+          movementType: MovementType.TRANSFER,
           quantityChange: -item.quantityRequested,
           referenceType: 'STOCK_TRANSFER',
           referenceId: transferId,
@@ -456,7 +457,7 @@ export class InventoryService extends TenantAwareService {
 
       await this.recordMovement(tenantId, userId, {
         stockItemId: destStockItem.id,
-        movementType: 'TRANSFER' as const,
+        movementType: MovementType.TRANSFER,
         quantityChange: item.quantitySent,
         referenceType: 'STOCK_TRANSFER',
         referenceId: transferId,
@@ -506,7 +507,7 @@ export class InventoryService extends TenantAwareService {
         if (stockItem) {
           await this.recordMovement(tenantId, userId, {
             stockItemId: stockItem.id,
-            movementType: 'RETURN' as const,
+            movementType: MovementType.RETURN,
             quantityChange: item.quantitySent,
             referenceType: 'STOCK_TRANSFER_CANCEL',
             referenceId: transferId,
@@ -691,7 +692,7 @@ export class InventoryService extends TenantAwareService {
         if (stockItem) {
           await this.recordMovement(tenantId, userId, {
             stockItemId: stockItem.id,
-            movementType: 'ADJUST' as const,
+            movementType: MovementType.ADJUST,
             quantityChange: item.varianceQuantity,
             referenceType: 'STOCK_TAKE',
             referenceId: stockTakeId,

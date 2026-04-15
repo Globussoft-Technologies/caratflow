@@ -180,7 +180,7 @@ export class CustomerPortalKycService extends TenantAwareService {
     customerId: string,
     purpose: string,
   ): Promise<KycRequirementsResponse> {
-    const requirements = KYC_REQUIREMENTS[purpose] ?? KYC_REQUIREMENTS['general'];
+    const requirements = KYC_REQUIREMENTS[purpose] ?? KYC_REQUIREMENTS['general'] ?? [];
 
     // Get current verification status
     const verifications = await this.prisma.kycVerification.findMany({
@@ -192,7 +192,7 @@ export class CustomerPortalKycService extends TenantAwareService {
       type: req.type as KycRequirementsResponse['requiredDocuments'][number]['type'],
       description: req.description,
       isMandatory: req.isMandatory,
-      isVerified: verifiedTypes.has(req.type),
+      isVerified: (verifiedTypes as Set<string>).has(req.type),
     }));
 
     const isComplete = requiredDocuments

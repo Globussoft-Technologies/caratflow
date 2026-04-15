@@ -5,6 +5,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import type { RepairOrderInput, RepairOrderResponse, RepairStatusUpdate, RepairListFilter } from '@caratflow/shared-types';
 import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
 import { RepairOrderStatus } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { TenantAwareService } from '../../common/base.service';
 import { EventBusService } from '../../event-bus/event-bus.service';
@@ -65,7 +66,7 @@ export class RetailRepairService extends TenantAwareService {
         status: 'RECEIVED',
         itemDescription: input.itemDescription,
         itemWeightMg: input.itemWeightMg ? BigInt(input.itemWeightMg) : null,
-        itemImages: input.itemImages ?? null,
+        itemImages: (input.itemImages ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         diagnosticNotes: input.diagnosticNotes ?? null,
         estimatePaise: input.estimatePaise ? BigInt(input.estimatePaise) : null,
         promisedDate: input.promisedDate ?? null,

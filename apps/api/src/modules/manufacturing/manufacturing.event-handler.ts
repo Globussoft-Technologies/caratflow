@@ -3,6 +3,7 @@ import { EventBusService } from '../../event-bus/event-bus.service';
 import type {
   RetailCustomOrderCreatedEvent,
   InventoryStockAdjustedEvent,
+  DomainEvent,
 } from '@caratflow/shared-types';
 
 @Injectable()
@@ -12,8 +13,8 @@ export class ManufacturingEventHandler implements OnModuleInit {
   constructor(private readonly eventBus: EventBusService) {}
 
   onModuleInit() {
-    this.eventBus.subscribe('retail.custom_order.created', this.handleCustomOrderCreated.bind(this));
-    this.eventBus.subscribe('inventory.stock.adjusted', this.handleStockAdjusted.bind(this));
+    this.eventBus.subscribe('retail.custom_order.created', (event: DomainEvent) => this.handleCustomOrderCreated(event as RetailCustomOrderCreatedEvent));
+    this.eventBus.subscribe('inventory.stock.adjusted', (event: DomainEvent) => this.handleStockAdjusted(event as InventoryStockAdjustedEvent));
   }
 
   private async handleCustomOrderCreated(event: RetailCustomOrderCreatedEvent) {

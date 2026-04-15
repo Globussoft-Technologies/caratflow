@@ -187,7 +187,7 @@ export class CustomerPortalController {
     const data = await this.profileService.updateNotificationPreferences(
       req.b2cTenantId!,
       req.customerId!,
-      body,
+      body as unknown as Parameters<typeof this.profileService.updateNotificationPreferences>[2],
     );
     return success(data);
   }
@@ -214,10 +214,10 @@ export class CustomerPortalController {
       req.b2cTenantId!,
       req.customerId!,
       {
-        page: query.page ? Number(query.page) : undefined,
-        limit: query.limit ? Number(query.limit) : undefined,
+        page: query.page ? Number(query.page) : 1,
+        limit: query.limit ? Number(query.limit) : 20,
         sortBy: query.sortBy,
-        sortOrder: query.sortOrder,
+        sortOrder: query.sortOrder ?? 'desc',
         status: query.status as unknown as undefined,
         dateFrom: query.dateFrom ? new Date(query.dateFrom) : undefined,
         dateTo: query.dateTo ? new Date(query.dateTo) : undefined,
@@ -400,7 +400,7 @@ export class CustomerPortalController {
     const data = await this.kycService.uploadDocument(
       req.b2cTenantId!,
       req.customerId!,
-      body,
+      body as unknown as Parameters<typeof this.kycService.uploadDocument>[2],
     );
     return success(data);
   }

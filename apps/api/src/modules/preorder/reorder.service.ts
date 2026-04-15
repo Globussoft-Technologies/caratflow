@@ -11,6 +11,7 @@ import type {
 } from '@caratflow/shared-types';
 import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
 import { PrismaService } from '../../common/prisma.service';
+import { Prisma } from '@caratflow/db';
 import { TenantAwareService } from '../../common/base.service';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -204,10 +205,10 @@ export class ReorderService extends TenantAwareService {
     customerId: string,
     pagination: Pagination,
   ): Promise<PaginatedResult<ReorderableOrder>> {
-    const where = {
+    const where: Prisma.OnlineOrderWhereInput = {
       tenantId,
       customerId,
-      status: { in: ['DELIVERED', 'CONFIRMED', 'SHIPPED'] as string[] },
+      status: { in: ['DELIVERED', 'CONFIRMED', 'SHIPPED'] as Prisma.EnumOnlineOrderStatusFilter['in'] },
     };
 
     const [orders, total] = await Promise.all([

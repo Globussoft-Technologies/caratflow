@@ -510,19 +510,22 @@ export class SearchService extends TenantAwareService {
     for (let i = 0; i <= a.length; i++) {
       matrix[i] = [i];
     }
+    const row0 = matrix[0]!;
     for (let j = 0; j <= b.length; j++) {
-      matrix[0][j] = j;
+      row0[j] = j;
     }
     for (let i = 1; i <= a.length; i++) {
+      const rowI = matrix[i]!;
+      const rowIm1 = matrix[i - 1]!;
       for (let j = 1; j <= b.length; j++) {
         const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j - 1] + cost,
+        rowI[j] = Math.min(
+          (rowIm1[j] ?? 0) + 1,
+          (rowI[j - 1] ?? 0) + 1,
+          (rowIm1[j - 1] ?? 0) + cost,
         );
       }
     }
-    return matrix[a.length][b.length];
+    return matrix[a.length]![b.length]!;
   }
 }

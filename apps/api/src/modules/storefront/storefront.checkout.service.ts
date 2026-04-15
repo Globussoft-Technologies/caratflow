@@ -4,6 +4,7 @@
 
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import type { CheckoutInput, OrderResponse } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { TenantAwareService } from '../../common/base.service';
 import { StorefrontPricingService } from './storefront.pricing.service';
@@ -120,8 +121,8 @@ export class StorefrontCheckoutService extends TenantAwareService {
         quickPricing.subtotalPaise,
         customerId,
       );
-      if (validation.isValid) {
-        couponDiscountPaise = validation.discountAmountPaise;
+      if (validation.valid) {
+        couponDiscountPaise = validation.discountPaise;
       }
     }
 
@@ -279,7 +280,7 @@ export class StorefrontCheckoutService extends TenantAwareService {
           data: {
             status: 'CAPTURED',
             externalPaymentId: paymentConfirmation.externalPaymentId,
-            gatewayResponse: paymentConfirmation.gatewayResponse ?? undefined,
+            gatewayResponse: (paymentConfirmation.gatewayResponse ?? undefined) as Prisma.InputJsonValue | undefined,
             completedAt: new Date(),
           },
         });

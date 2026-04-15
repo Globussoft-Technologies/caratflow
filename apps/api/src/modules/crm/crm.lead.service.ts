@@ -5,6 +5,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { Prisma } from '@caratflow/db';
 import type {
   LeadInput,
   LeadActivityInput,
@@ -75,7 +76,7 @@ export class CrmLeadService extends TenantAwareService {
 
     const [items, total] = await Promise.all([
       this.prisma.lead.findMany({
-        where: where as Parameters<typeof this.prisma.lead.findMany>[0]['where'],
+        where: where as Prisma.LeadWhereInput,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
@@ -85,7 +86,7 @@ export class CrmLeadService extends TenantAwareService {
         },
       }),
       this.prisma.lead.count({
-        where: where as Parameters<typeof this.prisma.lead.count>[0]['where'],
+        where: where as Prisma.LeadWhereInput,
       }),
     ]);
 

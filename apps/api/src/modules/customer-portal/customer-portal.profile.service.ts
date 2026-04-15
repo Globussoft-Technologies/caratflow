@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import type {
   CustomerProfileResponse,
   UpdateProfileInput,
@@ -179,20 +179,20 @@ export class CustomerPortalProfileService extends TenantAwareService {
     const notifPrefs = (prefs?.notificationPreferences ?? {}) as NotificationPreferencesInput;
 
     // Return defaults merged with stored preferences
-    const defaults: NotificationPreferencesInput = {
+    const defaults = {
       orders: { email: true, sms: true, whatsapp: false, push: true },
       promotions: { email: true, sms: false, whatsapp: false, push: true },
       schemes: { email: true, sms: true, whatsapp: false, push: true },
       loyalty: { email: true, sms: false, whatsapp: false, push: true },
       reminders: { email: true, sms: true, whatsapp: false, push: true },
-    };
+    } as const;
 
     return {
-      orders: { ...defaults.orders, ...notifPrefs.orders },
-      promotions: { ...defaults.promotions, ...notifPrefs.promotions },
-      schemes: { ...defaults.schemes, ...notifPrefs.schemes },
-      loyalty: { ...defaults.loyalty, ...notifPrefs.loyalty },
-      reminders: { ...defaults.reminders, ...notifPrefs.reminders },
+      orders: { ...defaults.orders, ...(notifPrefs.orders ?? {}) },
+      promotions: { ...defaults.promotions, ...(notifPrefs.promotions ?? {}) },
+      schemes: { ...defaults.schemes, ...(notifPrefs.schemes ?? {}) },
+      loyalty: { ...defaults.loyalty, ...(notifPrefs.loyalty ?? {}) },
+      reminders: { ...defaults.reminders, ...(notifPrefs.reminders ?? {}) },
     };
   }
 

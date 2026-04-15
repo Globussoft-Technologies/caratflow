@@ -4,6 +4,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { AppraisalInput, AppraisalResponse } from '@caratflow/shared-types';
 import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { TenantAwareService } from '../../common/base.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -43,7 +44,7 @@ export class RetailAppraisalService extends TenantAwareService {
         metalType: input.metalType ?? null,
         weightMg: input.weightMg ? BigInt(input.weightMg) : null,
         purityFineness: input.purityFineness ?? null,
-        stoneDetails: input.stoneDetails ?? null,
+        stoneDetails: (input.stoneDetails ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         appraisedValuePaise: BigInt(input.appraisedValuePaise),
         appraisedBy: input.appraisedBy,
         appraisedAt: new Date(),

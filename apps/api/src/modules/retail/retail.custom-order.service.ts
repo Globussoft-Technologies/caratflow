@@ -5,6 +5,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import type { CustomOrderInput, CustomOrderResponse } from '@caratflow/shared-types';
 import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
 import { CustomOrderStatus } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { TenantAwareService } from '../../common/base.service';
 import { EventBusService } from '../../event-bus/event-bus.service';
@@ -65,7 +66,7 @@ export class RetailCustomOrderService extends TenantAwareService {
         status: 'INQUIRY',
         description: input.description,
         designNotes: input.designNotes ?? null,
-        designImages: input.designImages ?? null,
+        designImages: (input.designImages ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         estimatePaise: input.estimatePaise ? BigInt(input.estimatePaise) : null,
         expectedDate: input.expectedDate ?? null,
         createdBy: userId,

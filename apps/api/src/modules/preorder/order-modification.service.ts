@@ -13,6 +13,7 @@ import type {
 import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
 import { ModificationStatus, ModificationType } from '@caratflow/shared-types';
 import { PrismaService } from '../../common/prisma.service';
+import { Prisma } from '@caratflow/db';
 import { TenantAwareService } from '../../common/base.service';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -89,8 +90,8 @@ export class OrderModificationService extends TenantAwareService {
         orderId: input.orderId,
         customerId: input.customerId,
         modificationType: input.modificationType,
-        originalData,
-        requestedData: input.requestedData,
+        originalData: originalData as Prisma.InputJsonValue,
+        requestedData: input.requestedData as unknown as Prisma.InputJsonValue,
         status: ModificationStatus.PENDING,
         reason: input.reason ?? null,
         autoApplyWindow,
@@ -146,12 +147,12 @@ export class OrderModificationService extends TenantAwareService {
     await this.prisma.onlineOrder.update({
       where: { id: request.orderId },
       data: {
-        ...(requestedData.shippingAddress && {
-          shippingAddress: requestedData.shippingAddress as object,
-        }),
-        ...(requestedData.billingAddress && {
-          billingAddress: requestedData.billingAddress as object,
-        }),
+        ...(requestedData.shippingAddress ? {
+          shippingAddress: requestedData.shippingAddress as Prisma.InputJsonValue,
+        } : {}),
+        ...(requestedData.billingAddress ? {
+          billingAddress: requestedData.billingAddress as Prisma.InputJsonValue,
+        } : {}),
         updatedBy: userId,
       },
     });
@@ -240,12 +241,12 @@ export class OrderModificationService extends TenantAwareService {
         await this.prisma.onlineOrder.update({
           where: { id: request.orderId },
           data: {
-            ...(requestedData.shippingAddress && {
-              shippingAddress: requestedData.shippingAddress as object,
-            }),
-            ...(requestedData.billingAddress && {
-              billingAddress: requestedData.billingAddress as object,
-            }),
+            ...(requestedData.shippingAddress ? {
+              shippingAddress: requestedData.shippingAddress as Prisma.InputJsonValue,
+            } : {}),
+            ...(requestedData.billingAddress ? {
+              billingAddress: requestedData.billingAddress as Prisma.InputJsonValue,
+            } : {}),
             updatedBy: userId,
           },
         });

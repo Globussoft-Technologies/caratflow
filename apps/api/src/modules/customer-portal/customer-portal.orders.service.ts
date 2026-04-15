@@ -76,7 +76,7 @@ export class CustomerPortalOrdersService extends TenantAwareService {
       let thumbnail: string | null = null;
       if (firstItem?.product?.images) {
         const images = firstItem.product.images as string[];
-        thumbnail = images.length > 0 ? images[0] : null;
+        thumbnail = images.length > 0 ? (images[0] ?? null) : null;
       }
 
       return {
@@ -145,7 +145,7 @@ export class CustomerPortalOrdersService extends TenantAwareService {
           unitPricePaise: Number(item.unitPricePaise),
           totalPaise: Number(item.totalPaise),
           weightMg: item.weightMg ? Number(item.weightMg) : null,
-          image: images.length > 0 ? images[0] : null,
+          image: images.length > 0 ? (images[0] ?? null) : null,
         };
       }),
       payments: order.payments.map((p) => ({

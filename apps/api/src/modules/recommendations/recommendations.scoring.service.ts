@@ -160,7 +160,7 @@ export class RecommendationsScoringService {
       let added = false;
 
       for (let i = 0; i < remaining.length; i++) {
-        const candidate = remaining[i];
+        const candidate = remaining[i]!;
         const catId = candidate.product.categoryId ?? 'uncategorized';
         const type = candidate.product.productType;
 

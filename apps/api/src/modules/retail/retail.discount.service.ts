@@ -5,6 +5,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { DiscountInput, DiscountResponse } from '@caratflow/shared-types';
 import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
 import { RetailDiscountType } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { TenantAwareService } from '../../common/base.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -25,8 +26,8 @@ export class RetailDiscountService extends TenantAwareService {
         value: input.value,
         minPurchasePaise: input.minPurchasePaise ? BigInt(input.minPurchasePaise) : null,
         maxDiscountPaise: input.maxDiscountPaise ? BigInt(input.maxDiscountPaise) : null,
-        applicableCategories: input.applicableCategories ?? null,
-        applicableProducts: input.applicableProducts ?? null,
+        applicableCategories: (input.applicableCategories ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        applicableProducts: (input.applicableProducts ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         startDate: input.startDate,
         endDate: input.endDate,
         isActive: input.isActive ?? true,

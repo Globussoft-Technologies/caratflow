@@ -4,6 +4,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { Prisma } from '@caratflow/db';
 import { CrmNotificationService } from './crm.notification.service';
 import type {
   CampaignInput,
@@ -30,8 +31,8 @@ export class CrmCampaignService extends TenantAwareService {
         channel: input.channel,
         templateId: input.templateId,
         audienceFilter: input.audienceFilter
-          ? (input.audienceFilter as Record<string, unknown>)
-          : undefined,
+          ? (input.audienceFilter as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
         scheduledAt: input.scheduledAt,
         status: input.scheduledAt ? 'SCHEDULED' : 'DRAFT',
         createdBy: userId,
@@ -49,7 +50,7 @@ export class CrmCampaignService extends TenantAwareService {
       data: {
         ...input,
         audienceFilter: input.audienceFilter
-          ? (input.audienceFilter as Record<string, unknown>)
+          ? (input.audienceFilter as unknown as Prisma.InputJsonValue)
           : undefined,
         updatedBy: userId,
       },
@@ -69,14 +70,14 @@ export class CrmCampaignService extends TenantAwareService {
 
     const [items, total] = await Promise.all([
       this.prisma.campaign.findMany({
-        where: where as Parameters<typeof this.prisma.campaign.findMany>[0]['where'],
+        where: where as Prisma.CampaignWhereInput,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
         include: { template: { select: { name: true } } },
       }),
       this.prisma.campaign.count({
-        where: where as Parameters<typeof this.prisma.campaign.count>[0]['where'],
+        where: where as Prisma.CampaignWhereInput,
       }),
     ]);
 
@@ -88,9 +89,9 @@ export class CrmCampaignService extends TenantAwareService {
   async previewAudience(tenantId: string, filter: AudienceFilterCriteria) {
     const where = this.buildAudienceWhere(tenantId, filter);
     const [count, samples] = await Promise.all([
-      this.prisma.customer.count({ where: where as Parameters<typeof this.prisma.customer.count>[0]['where'] }),
+      this.prisma.customer.count({ where: where as Prisma.CustomerWhereInput }),
       this.prisma.customer.findMany({
-        where: where as Parameters<typeof this.prisma.customer.findMany>[0]['where'],
+        where: where as Prisma.CustomerWhereInput,
         take: 10,
         select: { id: true, firstName: true, lastName: true, phone: true, email: true, city: true },
       }),
@@ -112,7 +113,7 @@ export class CrmCampaignService extends TenantAwareService {
     const filter = (campaign.audienceFilter as AudienceFilterCriteria) ?? {};
     const where = this.buildAudienceWhere(tenantId, filter);
     const customers = await this.prisma.customer.findMany({
-      where: where as Parameters<typeof this.prisma.customer.findMany>[0]['where'],
+      where: where as Prisma.CustomerWhereInput,
       select: { id: true, firstName: true, lastName: true },
     });
 

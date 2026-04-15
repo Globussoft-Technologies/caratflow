@@ -3,6 +3,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { EventBusService } from '../../event-bus/event-bus.service';
 import type {
@@ -33,7 +34,7 @@ export class CrmLoyaltyService extends TenantAwareService {
         name: input.name,
         pointsPerCurrencyUnit: input.pointsPerCurrencyUnit,
         redemptionRate: input.redemptionRate,
-        tiers: input.tiers as unknown as Record<string, unknown>[],
+        tiers: input.tiers as unknown as Prisma.InputJsonValue,
         isActive: input.isActive,
         createdBy: userId,
         updatedBy: userId,
@@ -49,7 +50,7 @@ export class CrmLoyaltyService extends TenantAwareService {
       where: { id: programId },
       data: {
         ...input,
-        tiers: input.tiers ? (input.tiers as unknown as Record<string, unknown>[]) : undefined,
+        tiers: input.tiers ? (input.tiers as unknown as Prisma.InputJsonValue) : undefined,
         updatedBy: userId,
       },
     });

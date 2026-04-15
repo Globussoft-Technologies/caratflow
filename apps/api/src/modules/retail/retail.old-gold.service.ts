@@ -5,6 +5,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import type { OldGoldInput, OldGoldPurchaseResponse } from '@caratflow/shared-types';
 import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
 import { OldGoldPurchaseStatus } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { TenantAwareService } from '../../common/base.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -74,7 +75,7 @@ export class RetailOldGoldService extends TenantAwareService {
         purityFineness: input.purityFineness,
         ratePaisePer10g: BigInt(input.ratePaisePer10g),
         totalValuePaise: BigInt(totalValuePaise),
-        deductions: input.deductions ?? null,
+        deductions: (input.deductions ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         finalAmountPaise: BigInt(finalAmountPaise),
         paymentMethod: input.paymentMethod ?? null,
         status: 'DRAFT',

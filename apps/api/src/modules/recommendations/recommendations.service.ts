@@ -114,13 +114,13 @@ export class RecommendationsService extends TenantAwareService {
     const scored = this.scoringService.scoreProducts(candidates.map((p) => ({
       product: p,
       baseScore: 500,
-    })), behavior);
+    })), behavior as unknown as Parameters<typeof this.scoringService.scoreProducts>[1]);
 
     const diversified = this.scoringService.diversifyResults(scored, limit);
     const filtered = this.scoringService.applyBusinessRules(diversified, tenantId);
 
     return {
-      products: filtered.map((item) => toRecommendedProduct(item.product as ProductRow, item.score)),
+      products: filtered.map((item) => toRecommendedProduct(item.product as unknown as ProductRow, item.score)),
       source: 'PERSONALIZED' as RecommendationType,
       algorithm: 'behavior-profile-scoring',
     };
@@ -487,11 +487,13 @@ export class RecommendationsService extends TenantAwareService {
     const productMap = new Map(products.map((p) => [p.id, p]));
     const results: RecommendedProduct[] = [];
     for (let i = 0; i < views.length; i++) {
-      const p = productMap.get(views[i].productId);
+      const view = views[i];
+      if (!view) continue;
+      const p = productMap.get(view.productId);
       if (p) {
         // More recent = higher score
         const score = Math.max(1000 - i * 60, 100);
-        results.push(toRecommendedProduct(p as ProductRow, score));
+        results.push(toRecommendedProduct(p as unknown as ProductRow, score));
       }
     }
 

@@ -7,6 +7,7 @@ import { v4 as uuid } from 'uuid';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
 import type { AuditMeta } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 
 type ImportEntityType = 'customer' | 'product' | 'supplier';
 
@@ -115,6 +116,7 @@ export class PlatformImportService extends TenantAwareService {
     for (let i = 0; i < rows.length; i++) {
       processedCount++;
       const rawRow = rows[i];
+      if (!rawRow) continue;
       try {
         // Apply column mapping
         const mapped = this.applyMapping(rawRow, mapping);
@@ -152,7 +154,7 @@ export class PlatformImportService extends TenantAwareService {
         processedRows: processedCount,
         successRows: successCount,
         errorRows: errors.length,
-        errors: errors as unknown as Record<string, unknown>[],
+        errors: errors as unknown as Prisma.InputJsonValue,
         completedAt: new Date(),
       },
     });
@@ -325,7 +327,7 @@ export class PlatformImportService extends TenantAwareService {
     if (existing) {
       return this.prisma.product.update({
         where: { id: existing.id },
-        data: { ...data, updatedBy: audit.userId },
+        data: { ...data, updatedBy: audit.userId } as unknown as Prisma.ProductUncheckedUpdateInput,
       });
     }
 
@@ -336,7 +338,7 @@ export class PlatformImportService extends TenantAwareService {
         sku,
         ...data,
         createdBy: audit.userId,
-      },
+      } as unknown as Prisma.ProductUncheckedCreateInput,
     });
   }
 

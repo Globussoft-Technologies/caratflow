@@ -557,7 +557,11 @@ export class StorefrontController {
   ): Promise<ApiResponse<AddressResponse>> {
     const ctx = extractContext(headers);
     if (!ctx.customerId) throw new BadRequestException('Customer login required');
-    const data = await this.addressService.createAddress(ctx.tenantId, ctx.customerId, body);
+    const data = await this.addressService.createAddress(ctx.tenantId, ctx.customerId, {
+      ...body,
+      label: body.label ?? '',
+      isDefault: body.isDefault ?? false,
+    });
     return success(data);
   }
 

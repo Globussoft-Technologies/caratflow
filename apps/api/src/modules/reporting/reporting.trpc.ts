@@ -25,6 +25,7 @@ import {
   InventoryReportInputSchema,
   ManufacturingReportInputSchema,
 } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 
 @Injectable()
@@ -63,7 +64,7 @@ export class ReportingTrpcRouter {
           this.salesService.salesByPeriod(
             ctx.tenantId,
             input.dateRange,
-            input.groupBy,
+            input.groupBy as 'day' | 'week' | 'month' | undefined,
             input.locationId,
           ),
         ),
@@ -352,7 +353,7 @@ export class ReportingTrpcRouter {
               name: input.name,
               description: input.description,
               reportType: input.reportType,
-              filters: input.filters ?? undefined,
+              filters: (input.filters ?? undefined) as Prisma.InputJsonValue | undefined,
               columns: input.columns ?? undefined,
               groupBy: input.groupBy ?? undefined,
               sortBy: input.sortBy ?? undefined,

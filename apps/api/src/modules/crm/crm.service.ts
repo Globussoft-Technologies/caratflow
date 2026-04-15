@@ -4,6 +4,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { Prisma } from '@caratflow/db';
 import type {
   Customer360Response,
   CrmDashboardResponse,
@@ -112,7 +113,7 @@ export class CrmService extends TenantAwareService {
       purchaseHistory: invoices.map((inv) => ({
         id: inv.id,
         invoiceNumber: inv.invoiceNumber,
-        totalPaise: Number(inv.totalAmountPaise),
+        totalPaise: Number(inv.totalPaise),
         date: inv.createdAt,
         itemCount: inv._count.lineItems,
       })),
@@ -200,13 +201,13 @@ export class CrmService extends TenantAwareService {
 
     const [items, total] = await Promise.all([
       this.prisma.customer.findMany({
-        where: where as Parameters<typeof this.prisma.customer.findMany>[0]['where'],
+        where: where as Prisma.CustomerWhereInput,
         skip: (page - 1) * limit,
         take: limit,
         orderBy: sortBy ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
       }),
       this.prisma.customer.count({
-        where: where as Parameters<typeof this.prisma.customer.count>[0]['where'],
+        where: where as Prisma.CustomerWhereInput,
       }),
     ]);
 
@@ -344,9 +345,9 @@ export class CrmService extends TenantAwareService {
   async evaluateSegment(tenantId: string, criteria: SegmentCriteria): Promise<{ count: number; sampleIds: string[] }> {
     const where = this.buildSegmentWhere(tenantId, criteria);
     const [count, samples] = await Promise.all([
-      this.prisma.customer.count({ where: where as Parameters<typeof this.prisma.customer.count>[0]['where'] }),
+      this.prisma.customer.count({ where: where as Prisma.CustomerWhereInput }),
       this.prisma.customer.findMany({
-        where: where as Parameters<typeof this.prisma.customer.findMany>[0]['where'],
+        where: where as Prisma.CustomerWhereInput,
         take: 5,
         select: { id: true },
       }),
@@ -362,7 +363,7 @@ export class CrmService extends TenantAwareService {
         tenantId,
         name: input.name,
         description: input.description,
-        criteria: input.criteria as Record<string, unknown>,
+        criteria: input.criteria as unknown as Prisma.InputJsonValue,
         customerCount: count,
         lastCalculatedAt: new Date(),
         createdBy: userId,

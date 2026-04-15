@@ -185,7 +185,7 @@ export class CmsController {
 
   private getTenantId(req: Request): string {
     // Tenant ID is extracted by TenantMiddleware
-    const tenantId = (req as Record<string, unknown>).tenantId as string;
+    const tenantId = (req as unknown as Record<string, unknown>).tenantId as string;
     if (!tenantId) {
       throw new Error('Tenant ID is required');
     }

@@ -244,8 +244,8 @@ export class ReportingForecastService extends TenantAwareService {
 
     for (const item of lineItems) {
       const month = item.sale.createdAt.getMonth();
-      monthlyTotals[month] += item.quantity;
-      monthlyCounts[month] += 1;
+      monthlyTotals[month] = (monthlyTotals[month] ?? 0) + item.quantity;
+      monthlyCounts[month] = (monthlyCounts[month] ?? 0) + 1;
     }
 
     // Average demand per month

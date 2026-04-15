@@ -6,6 +6,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { Prisma } from '@caratflow/db';
 
 /** Maximum similar products to store per product */
 const MAX_SIMILAR_PER_PRODUCT = 20;
@@ -102,7 +103,7 @@ export class RecommendationsSimilarityService extends TenantAwareService {
         id: { not: product.id },
         OR: [
           { categoryId: product.categoryId },
-          { productType: product.productType },
+          { productType: product.productType as Prisma.EnumProductTypeFilter<'Product'> },
         ],
       },
       select: {
@@ -254,10 +255,10 @@ export class RecommendationsSimilarityService extends TenantAwareService {
       // Generate all pairs
       for (let i = 0; i < products.length; i++) {
         for (let j = i + 1; j < products.length; j++) {
+          const pi = products[i]!;
+          const pj = products[j]!;
           // Ensure consistent key ordering
-          const [a, b] = products[i] < products[j]
-            ? [products[i], products[j]]
-            : [products[j], products[i]];
+          const [a, b] = pi < pj ? [pi, pj] : [pj, pi];
           const key = `${a}:${b}`;
           pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
         }
@@ -278,7 +279,7 @@ export class RecommendationsSimilarityService extends TenantAwareService {
 
     for (const [key, count] of pairCounts) {
       if (count < 2) continue;
-      const [productA, productB] = key.split(':');
+      const [productA, productB] = key.split(':') as [string, string];
       const score = Math.floor((count * 1000) / maxCount);
 
       // Insert both directions
@@ -344,9 +345,9 @@ export class RecommendationsSimilarityService extends TenantAwareService {
 
       for (let i = 0; i < products.length && i < 20; i++) {
         for (let j = i + 1; j < products.length && j < 20; j++) {
-          const [a, b] = products[i] < products[j]
-            ? [products[i], products[j]]
-            : [products[j], products[i]];
+          const pi = products[i]!;
+          const pj = products[j]!;
+          const [a, b] = pi < pj ? [pi, pj] : [pj, pi];
           const key = `${a}:${b}`;
           pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
         }
@@ -367,7 +368,7 @@ export class RecommendationsSimilarityService extends TenantAwareService {
 
     for (const [key, count] of pairCounts) {
       if (count < 3) continue;
-      const [productA, productB] = key.split(':');
+      const [productA, productB] = key.split(':') as [string, string];
       const score = Math.floor((count * 1000) / maxCount);
 
       inserts.push(

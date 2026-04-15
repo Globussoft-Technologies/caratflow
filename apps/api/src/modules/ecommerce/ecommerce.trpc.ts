@@ -3,6 +3,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
+import { Prisma } from '@caratflow/db';
 import { TrpcService } from '../../trpc/trpc.service';
 import { EcommerceService } from './ecommerce.service';
 import { EcommerceCatalogService } from './ecommerce.catalog.service';
@@ -68,7 +69,7 @@ export class EcommerceTrpcRouter {
               apiSecret: input.apiSecret ?? null,
               storeUrl: input.storeUrl ?? null,
               webhookSecret: input.webhookSecret ?? null,
-              settings: input.settings ?? undefined,
+              settings: (input.settings ?? undefined) as Prisma.InputJsonValue | undefined,
               isActive: input.isActive ?? true,
               createdBy: ctx.userId,
               updatedBy: ctx.userId,
@@ -147,10 +148,12 @@ export class EcommerceTrpcRouter {
           data: SalesChannelInputSchema.partial(),
         }))
         .mutation(async ({ ctx, input }) => {
+          const { settings: _settings, ...rest } = input.data;
           const updated = await this.prisma.salesChannel.update({
             where: { id: input.channelId },
             data: {
-              ...input.data,
+              ...rest,
+              settings: (_settings ?? undefined) as Prisma.InputJsonValue | undefined,
               updatedBy: ctx.userId,
             },
           });

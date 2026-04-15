@@ -11,6 +11,7 @@ import type {
   WholesaleConsignmentReturnedEvent,
   DomainEvent,
 } from '@caratflow/shared-types';
+import { MovementType } from '@caratflow/shared-types';
 
 @Injectable()
 export class InventoryEventHandler implements OnModuleInit {
@@ -42,7 +43,7 @@ export class InventoryEventHandler implements OnModuleInit {
           const stockItem = stockItems[0]!;
           await this.inventoryService.recordMovement(tenantId, userId, {
             stockItemId: stockItem.id,
-            movementType: 'OUT',
+            movementType: MovementType.OUT,
             quantityChange: -1,
             referenceType: 'RETAIL_SALE',
             referenceId: saleId,
@@ -68,7 +69,7 @@ export class InventoryEventHandler implements OnModuleInit {
         const stockItem = stockItems[0]!;
         await this.inventoryService.recordMovement(tenantId, userId, {
           stockItemId: stockItem.id,
-          movementType: 'PRODUCTION',
+          movementType: MovementType.PRODUCTION,
           quantityChange: 1,
           referenceType: 'MANUFACTURING_JOB',
           referenceId: jobOrderId,
@@ -94,7 +95,7 @@ export class InventoryEventHandler implements OnModuleInit {
           const stockItem = stockItems[0]!;
           await this.inventoryService.recordMovement(tenantId, userId, {
             stockItemId: stockItem.id,
-            movementType: 'RETURN',
+            movementType: MovementType.RETURN,
             quantityChange: 1,
             referenceType: 'CONSIGNMENT_RETURN',
             referenceId: consignmentId,

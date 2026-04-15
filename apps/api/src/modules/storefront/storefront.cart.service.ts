@@ -310,8 +310,8 @@ export class StorefrontCartService extends TenantAwareService {
       customerId,
     );
 
-    if (!validation.isValid) {
-      throw new BadRequestException(validation.reason ?? 'Invalid coupon code');
+    if (!validation.valid) {
+      throw new BadRequestException(validation.errorMessage ?? 'Invalid coupon code');
     }
 
     // Store coupon on cart
@@ -443,7 +443,7 @@ export class StorefrontCartService extends TenantAwareService {
     const couponCode = c.couponCode as string | null;
     if (couponCode) {
       const couponResult = await this.couponService.applyCoupon(tenantId, couponCode, subtotalPaise);
-      discountPaise = couponResult.discountAmountPaise;
+      discountPaise = couponResult.discountPaise;
     }
 
     const taxPaise = 0; // GST already included in item prices

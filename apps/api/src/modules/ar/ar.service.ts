@@ -9,6 +9,7 @@ import type {
 } from '@caratflow/shared-types';
 import { ArAssetType, ArProcessingStatus } from '@caratflow/shared-types';
 import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { TenantAwareService } from '../../common/base.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -238,11 +239,11 @@ export class ArService extends TenantAwareService {
         ...(data.thumbnailUrl !== undefined && { thumbnailUrl: data.thumbnailUrl }),
         ...(data.format !== undefined && { format: data.format }),
         ...(data.fileSizeBytes !== undefined && { fileSizeBytes: data.fileSizeBytes }),
-        ...(data.dimensions !== undefined && { dimensions: data.dimensions }),
+        ...(data.dimensions !== undefined && { dimensions: data.dimensions as Prisma.InputJsonValue }),
         ...(data.category !== undefined && { category: data.category }),
-        ...(data.metadata !== undefined && { metadata: data.metadata }),
+        ...(data.metadata !== undefined && { metadata: data.metadata as Prisma.InputJsonValue }),
         ...(data.isActive !== undefined && { isActive: data.isActive }),
-        ...(data.processingStatus !== undefined && { processingStatus: data.processingStatus }),
+        ...(data.processingStatus !== undefined && { processingStatus: data.processingStatus as ArProcessingStatus }),
         updatedBy: userId,
       },
     });

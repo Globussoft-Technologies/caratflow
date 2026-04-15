@@ -14,6 +14,7 @@ import type {
 } from '@caratflow/shared-types';
 import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
 import { BnplProviderName, BnplTransactionStatus } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { TenantAwareService } from '../../common/base.service';
 import { BnplEmiService } from './bnpl.emi.service';
@@ -51,7 +52,7 @@ export class BnplService extends TenantAwareService {
         maxOrderPaise: BigInt(input.maxOrderPaise),
         supportedTenures: input.supportedTenures,
         processingFeePct: input.processingFeePct ?? 0,
-        settings: input.settings ?? undefined,
+        settings: (input.settings ?? undefined) as Prisma.InputJsonValue | undefined,
         createdBy: userId,
         updatedBy: userId,
       },
@@ -103,7 +104,7 @@ export class BnplService extends TenantAwareService {
         maxOrderPaise: input.maxOrderPaise !== undefined ? BigInt(input.maxOrderPaise) : undefined,
         supportedTenures: input.supportedTenures ?? undefined,
         processingFeePct: input.processingFeePct ?? undefined,
-        settings: input.settings ?? undefined,
+        settings: (input.settings ?? undefined) as Prisma.InputJsonValue | undefined,
         updatedBy: userId,
       },
     });

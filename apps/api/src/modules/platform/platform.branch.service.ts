@@ -8,6 +8,7 @@ import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EventBusService } from '../../event-bus/event-bus.service';
 import type { AuditMeta } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 
 interface CreateBranchInput {
   name: string;
@@ -77,7 +78,7 @@ export class PlatformBranchService extends TenantAwareService {
         postalCode: input.postalCode ?? null,
         phone: input.phone ?? null,
         email: input.email ?? null,
-        settings: (input.settings as Record<string, unknown>) ?? null,
+        settings: (input.settings as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
         isActive: true,
         createdBy: audit.userId,
       },
@@ -179,7 +180,7 @@ export class PlatformBranchService extends TenantAwareService {
 
     return this.prisma.user.update({
       where: { id: userId },
-      data: { preferences },
+      data: { preferences: preferences as unknown as Prisma.InputJsonValue },
       select: { id: true, preferences: true },
     });
   }

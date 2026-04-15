@@ -7,6 +7,7 @@ import {
 import * as bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 import { TenantAwareService } from '../../common/base.service';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { EventBusService } from '../../event-bus/event-bus.service';
 import type { PaginatedResult, AuditMeta } from '@caratflow/shared-types';
@@ -215,7 +216,7 @@ export class PlatformUserService extends TenantAwareService {
       data: {
         ...(input.firstName !== undefined && { firstName: input.firstName }),
         ...(input.lastName !== undefined && { lastName: input.lastName }),
-        ...(input.preferences !== undefined && { preferences: input.preferences }),
+        ...(input.preferences !== undefined && { preferences: input.preferences as Prisma.InputJsonValue }),
         updatedBy: audit.userId,
       },
       select: {

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { v4 as uuid } from 'uuid';
 import { TenantAwareService } from '../../common/base.service';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import type { AuditMeta } from '@caratflow/shared-types';
 
@@ -38,7 +39,7 @@ export class PlatformExportService extends TenantAwareService {
         id: uuid(),
         tenantId,
         entityType: input.entityType,
-        filters: (input.filters as Record<string, unknown>) ?? null,
+        filters: (input.filters ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         format: input.format,
         status: 'PENDING',
         createdBy: audit.userId,
@@ -186,7 +187,7 @@ export class PlatformExportService extends TenantAwareService {
   private toCsv(data: Record<string, unknown>[]): string {
     if (data.length === 0) return '';
 
-    const headers = Object.keys(data[0]);
+    const headers = Object.keys(data[0]!);
     const rows = data.map((row) =>
       headers.map((h) => {
         const val = row[h];

@@ -45,8 +45,8 @@ export class StorefrontEventHandler implements OnModuleInit {
     });
 
     // ─── Metal Rate Updated ─────────────────────────────────────
-    this.eventBus.subscribe('india.metal_rate.updated', async (event) => {
-      if (event.type !== 'india.metal_rate.updated') return;
+    this.eventBus.subscribe('india.rates.updated', async (event) => {
+      if (event.type !== 'india.rates.updated') return;
 
       this.logger.log(
         `[Storefront] Metal rate updated for tenant=${event.tenantId}`,

@@ -7,6 +7,7 @@ import type {
   RetailSaleCompletedEvent,
   WholesalePurchaseCompletedEvent,
 } from '@caratflow/shared-types';
+import { FinancialInvoiceType } from '@caratflow/shared-types';
 
 /**
  * Listens for domain events from other modules and creates
@@ -48,7 +49,7 @@ export class FinancialEventHandler implements OnModuleInit {
       }));
 
       await this.financialService.createInvoice(event.tenantId, event.userId, {
-        invoiceType: 'SALES',
+        invoiceType: FinancialInvoiceType.SALES,
         customerId: event.payload.customerId,
         locationId: '', // Would need to be passed in event
         sourceState: 'MH', // Would come from tenant settings
@@ -72,7 +73,7 @@ export class FinancialEventHandler implements OnModuleInit {
       this.logger.log(`Processing wholesale purchase: ${event.payload.purchaseOrderId}`);
 
       await this.financialService.createInvoice(event.tenantId, event.userId, {
-        invoiceType: 'PURCHASE',
+        invoiceType: FinancialInvoiceType.PURCHASE,
         supplierId: event.payload.supplierId,
         locationId: '', // Would need to be passed in event
         sourceState: 'MH', // Would come from supplier

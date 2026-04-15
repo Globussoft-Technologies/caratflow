@@ -221,7 +221,7 @@ export class StorefrontCatalogService extends TenantAwareService {
       where: {
         tenantId,
         isActive: true,
-        attributes: { path: ['featured'], equals: true },
+        attributes: { path: '$.featured', equals: true },
       },
       include: {
         category: { select: { id: true, name: true } },

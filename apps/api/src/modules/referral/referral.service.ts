@@ -5,6 +5,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { Prisma } from '@caratflow/db';
 import { EventBusService } from '../../event-bus/event-bus.service';
 import type { ReferralProgramInput } from '@caratflow/shared-types';
 import { v4 as uuidv4 } from 'uuid';
@@ -412,7 +413,7 @@ export class ReferralService extends TenantAwareService {
 
     const [items, total] = await Promise.all([
       this.prisma.referral.findMany({
-        where: where as Parameters<typeof this.prisma.referral.findMany>[0]['where'],
+        where: where as Prisma.ReferralWhereInput,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
@@ -421,7 +422,7 @@ export class ReferralService extends TenantAwareService {
         },
       }),
       this.prisma.referral.count({
-        where: where as Parameters<typeof this.prisma.referral.count>[0]['where'],
+        where: where as Prisma.ReferralWhereInput,
       }),
     ]);
 
@@ -436,13 +437,13 @@ export class ReferralService extends TenantAwareService {
 
     const [items, total] = await Promise.all([
       this.prisma.referralPayout.findMany({
-        where: where as Parameters<typeof this.prisma.referralPayout.findMany>[0]['where'],
+        where: where as Prisma.ReferralPayoutWhereInput,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
       }),
       this.prisma.referralPayout.count({
-        where: where as Parameters<typeof this.prisma.referralPayout.count>[0]['where'],
+        where: where as Prisma.ReferralPayoutWhereInput,
       }),
     ]);
 

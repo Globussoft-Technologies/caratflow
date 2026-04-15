@@ -3,6 +3,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import type {
   AnalyticsDashboardResponse,
@@ -298,7 +299,7 @@ export class ReportingDashboardService extends TenantAwareService {
         userId,
         name: input.name,
         isDefault: input.isDefault,
-        layout: input.layout as unknown as Record<string, unknown>[],
+        layout: input.layout as unknown as Prisma.InputJsonValue,
         createdBy: userId,
       },
     });

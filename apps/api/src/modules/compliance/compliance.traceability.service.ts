@@ -3,6 +3,7 @@
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import type { ChainOfCustodyInput } from '@caratflow/shared-types';
 import { v4 as uuid } from 'uuid';
@@ -33,7 +34,7 @@ export class ComplianceTraceabilityService extends TenantAwareService {
         locationId: input.locationId ?? null,
         documentReference: input.documentReference ?? null,
         notes: input.notes ?? null,
-        metadata: input.metadata ?? null,
+        metadata: (input.metadata ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         createdBy: userId,
         updatedBy: userId,
       },

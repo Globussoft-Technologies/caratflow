@@ -3,6 +3,7 @@
 
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import type {
   InsurancePolicyInput,
@@ -38,7 +39,7 @@ export class ComplianceInsuranceService extends TenantAwareService {
         startDate: input.startDate,
         endDate: input.endDate,
         status: 'ACTIVE',
-        claimHistory: input.claimHistory ?? null,
+        claimHistory: (input.claimHistory ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         documentUrl: input.documentUrl ?? null,
         createdBy: userId,
         updatedBy: userId,
@@ -62,7 +63,7 @@ export class ComplianceInsuranceService extends TenantAwareService {
         premiumPaise: input.premiumPaise ? BigInt(input.premiumPaise) : undefined,
         startDate: input.startDate,
         endDate: input.endDate,
-        claimHistory: input.claimHistory,
+        claimHistory: input.claimHistory as Prisma.InputJsonValue | undefined,
         documentUrl: input.documentUrl,
         updatedBy: userId,
       },

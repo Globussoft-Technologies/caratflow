@@ -16,6 +16,7 @@ import type {
 import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
 import { OnlinePaymentStatus, PaymentGatewayType } from '@caratflow/shared-types';
 import { PrismaService } from '../../common/prisma.service';
+import { Prisma } from '@caratflow/db';
 import { TenantAwareService } from '../../common/base.service';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -49,8 +50,8 @@ export class EcommercePaymentService extends TenantAwareService {
         webhookSecret: input.webhookSecret ?? null,
         isActive: input.isActive ?? true,
         isDefault: input.isDefault ?? false,
-        supportedMethods: input.supportedMethods ?? undefined,
-        settings: input.settings ?? undefined,
+        supportedMethods: (input.supportedMethods ?? undefined) as unknown as Prisma.InputJsonValue,
+        settings: (input.settings ?? undefined) as unknown as Prisma.InputJsonValue,
         createdBy: userId,
         updatedBy: userId,
       },
@@ -107,8 +108,8 @@ export class EcommercePaymentService extends TenantAwareService {
         webhookSecret: input.webhookSecret ?? undefined,
         isActive: input.isActive ?? undefined,
         isDefault: input.isDefault ?? undefined,
-        supportedMethods: input.supportedMethods ?? undefined,
-        settings: input.settings ?? undefined,
+        supportedMethods: (input.supportedMethods ?? undefined) as unknown as Prisma.InputJsonValue,
+        settings: (input.settings ?? undefined) as unknown as Prisma.InputJsonValue,
         updatedBy: userId,
       },
     });
@@ -179,7 +180,7 @@ export class EcommercePaymentService extends TenantAwareService {
         externalPaymentId,
         status: 'CAPTURED',
         completedAt: new Date(),
-        gatewayResponse: gatewayResponse ?? undefined,
+        gatewayResponse: (gatewayResponse ?? undefined) as unknown as Prisma.InputJsonValue,
       },
     });
 

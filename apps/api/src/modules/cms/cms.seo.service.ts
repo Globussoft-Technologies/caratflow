@@ -9,6 +9,7 @@ import type {
 } from '@caratflow/shared-types';
 import { SeoPageType } from '@caratflow/shared-types';
 import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { TenantAwareService } from '../../common/base.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -36,7 +37,7 @@ export class CmsSeoService extends TenantAwareService {
           metaDescription: input.metaDescription ?? null,
           ogImage: input.ogImage ?? null,
           canonicalUrl: input.canonicalUrl ?? null,
-          structuredData: input.structuredData ?? undefined,
+          structuredData: (input.structuredData ?? undefined) as Prisma.InputJsonValue | undefined,
           updatedBy: userId,
         },
       });
@@ -53,7 +54,7 @@ export class CmsSeoService extends TenantAwareService {
         metaDescription: input.metaDescription ?? null,
         ogImage: input.ogImage ?? null,
         canonicalUrl: input.canonicalUrl ?? null,
-        structuredData: input.structuredData ?? undefined,
+        structuredData: (input.structuredData ?? undefined) as Prisma.InputJsonValue | undefined,
         createdBy: userId,
         updatedBy: userId,
       },

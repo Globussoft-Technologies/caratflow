@@ -13,6 +13,7 @@ import type {
 } from '@caratflow/shared-types';
 import { DgftLicenseStatus } from '@caratflow/shared-types';
 import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { TenantAwareService } from '../../common/base.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -130,7 +131,7 @@ export class ExportDutyService extends TenantAwareService {
           dutyRate,
           dutyAmountPaise,
           assessableValuePaise,
-          exemptions: exemptions.length > 0 ? exemptions : undefined,
+          exemptions: (exemptions.length > 0 ? exemptions : undefined) as Prisma.InputJsonValue | undefined,
           createdBy: userId,
           updatedBy: userId,
         },

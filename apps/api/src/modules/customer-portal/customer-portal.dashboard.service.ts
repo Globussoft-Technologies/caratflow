@@ -117,7 +117,7 @@ export class CustomerPortalDashboardService extends TenantAwareService {
       let thumbnail: string | null = null;
       if (firstItem?.product?.images) {
         const images = firstItem.product.images as string[];
-        thumbnail = images.length > 0 ? images[0] : null;
+        thumbnail = images.length > 0 ? (images[0] ?? null) : null;
       }
 
       return {

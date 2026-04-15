@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
 import type { PaginatedResult, AuditMeta } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 
 interface AuditLogEntry {
   action: string;
@@ -56,8 +57,8 @@ export class PlatformAuditService extends TenantAwareService {
         action: entry.action,
         entityType: entry.entityType,
         entityId: entry.entityId,
-        oldValues: entry.oldValues ?? null,
-        newValues: entry.newValues ?? null,
+        oldValues: (entry.oldValues ?? Prisma.JsonNull) as Prisma.InputJsonValue | typeof Prisma.JsonNull,
+        newValues: (entry.newValues ?? Prisma.JsonNull) as Prisma.InputJsonValue | typeof Prisma.JsonNull,
         ipAddress: audit.ipAddress ?? null,
         userAgent: audit.userAgent ?? null,
       },
@@ -128,7 +129,7 @@ export class PlatformAuditService extends TenantAwareService {
         userId: audit.userId,
         action: entry.action,
         description: entry.description ?? null,
-        metadata: entry.metadata ?? null,
+        metadata: (entry.metadata ?? Prisma.JsonNull) as Prisma.InputJsonValue | typeof Prisma.JsonNull,
         ipAddress: audit.ipAddress ?? null,
         userAgent: audit.userAgent ?? null,
       },

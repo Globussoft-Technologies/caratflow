@@ -123,7 +123,8 @@ const BUDGET_PATTERNS: Array<{ regex: RegExp; extract: (m: RegExpMatchArray) => 
   },
 ];
 
-function parseCurrencyValue(numStr: string, suffix?: string): number {
+function parseCurrencyValue(numStr: string | undefined, suffix?: string): number {
+  if (!numStr) return 0;
   const num = parseFloat(numStr.replace(/,/g, ''));
   if (isNaN(num)) return 0;
 

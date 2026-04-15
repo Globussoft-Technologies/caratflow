@@ -4,6 +4,7 @@ import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EventBusService } from '../../event-bus/event-bus.service';
 import type { AuditMeta } from '@caratflow/shared-types';
+import { Prisma } from '@caratflow/db';
 
 type SettingCategory = 'general' | 'billing' | 'tax' | 'pos' | 'notifications' | 'display';
 
@@ -98,7 +99,7 @@ export class PlatformSettingsService extends TenantAwareService {
           id: uuid(),
           tenantId,
           settingKey: s.key,
-          settingValue: s.value as Record<string, unknown>,
+          settingValue: s.value as unknown as Prisma.InputJsonValue,
           category: s.category,
           description: s.description,
         },
@@ -123,10 +124,8 @@ export class PlatformSettingsService extends TenantAwareService {
     // Group by category for easy frontend consumption
     const grouped: Record<string, Record<string, unknown>> = {};
     for (const s of settings) {
-      if (!grouped[s.category]) {
-        grouped[s.category] = {};
-      }
-      grouped[s.category][s.settingKey] = s.settingValue;
+      const bucket = grouped[s.category] ?? (grouped[s.category] = {});
+      bucket[s.settingKey] = s.settingValue;
     }
 
     return { settings, grouped };
@@ -160,12 +159,12 @@ export class PlatformSettingsService extends TenantAwareService {
           id: uuid(),
           tenantId,
           settingKey: input.key,
-          settingValue: input.value as Record<string, unknown>,
+          settingValue: input.value as unknown as Prisma.InputJsonValue,
           category: input.category,
           description: input.description ?? null,
         },
         update: {
-          settingValue: input.value as Record<string, unknown>,
+          settingValue: input.value as unknown as Prisma.InputJsonValue,
           ...(input.description !== undefined && { description: input.description }),
         },
       });

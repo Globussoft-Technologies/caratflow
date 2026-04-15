@@ -209,10 +209,8 @@ export class PlatformRoleService extends TenantAwareService {
 
     const grouped: Record<string, Array<{ resource: string; action: string; description: string | null }>> = {};
     for (const p of permissions) {
-      if (!grouped[p.module]) {
-        grouped[p.module] = [];
-      }
-      grouped[p.module].push({ resource: p.resource, action: p.action, description: p.description });
+      const bucket = grouped[p.module] ?? (grouped[p.module] = []);
+      bucket.push({ resource: p.resource, action: p.action, description: p.description });
     }
 
     return grouped;
@@ -372,8 +370,9 @@ export class PlatformRoleService extends TenantAwareService {
       if (parts.length < 3) continue;
       const key = parts.slice(0, -1).join('.');
       const action = parts[parts.length - 1];
-      if (!result[key]) result[key] = [];
-      if (!result[key].includes(action)) result[key].push(action);
+      if (!action) continue;
+      const bucket = result[key] ?? (result[key] = []);
+      if (!bucket.includes(action)) bucket.push(action);
     }
     return result;
   }

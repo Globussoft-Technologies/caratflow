@@ -102,7 +102,7 @@ export class PlatformEventHandler implements OnModuleInit {
   /** Extract entity information from an event for audit logging. */
   private extractEntityInfo(event: DomainEvent): { entityType: string; entityId: string; action: string } {
     const parts = event.type.split('.');
-    const action = parts.slice(-1)[0];
+    const action = parts.slice(-1)[0] ?? 'unknown';
     const entityType = parts.slice(0, -1).join('.');
     const payload = event.payload as Record<string, unknown>;
 

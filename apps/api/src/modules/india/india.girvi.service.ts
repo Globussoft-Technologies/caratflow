@@ -15,6 +15,7 @@ import type {
   GirviAuctionResultInput,
   GirviInterestCalcResult,
   GirviDashboardResponse,
+  GirviLoanResponse,
 } from '@caratflow/shared-types';
 
 @Injectable()
@@ -596,7 +597,7 @@ export class IndiaGirviService extends TenantAwareService {
       totalInterestAccruedPaise,
       overdueLoans: overdueCount,
       upcomingAuctions: upcomingAuctionCount,
-      recentLoans,
+      recentLoans: recentLoans as unknown as GirviLoanResponse[],
     };
   }
 }

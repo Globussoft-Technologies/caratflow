@@ -88,7 +88,7 @@ export class ComplianceHuidService extends TenantAwareService {
     for (const item of input.items) {
       try {
         const record = await this.register(tenantId, userId, item);
-        results.push({ huidNumber: item.huidNumber, success: true, id: record.id });
+        results.push({ huidNumber: item.huidNumber, success: true, id: record.id as string });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         results.push({ huidNumber: item.huidNumber, success: false, error: message });

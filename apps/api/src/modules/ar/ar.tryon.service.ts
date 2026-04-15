@@ -228,7 +228,7 @@ export class ArTryOnService extends TenantAwareService {
 
     const dailyMap = new Map<string, { sessions: number; conversions: number }>();
     for (const session of dailySessions) {
-      const dateKey = session.createdAt.toISOString().split('T')[0];
+      const dateKey = session.createdAt.toISOString().split('T')[0]!;
       const entry = dailyMap.get(dateKey) ?? { sessions: 0, conversions: 0 };
       entry.sessions++;
       if (session.addedToCart) entry.conversions++;

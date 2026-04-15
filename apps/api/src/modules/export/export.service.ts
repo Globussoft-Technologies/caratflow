@@ -226,7 +226,7 @@ export class ExportService extends TenantAwareService {
   // ─── Confirm Export Order ───────────────────────────────────────
 
   async confirmOrder(tenantId: string, userId: string, orderId: string): Promise<ExportOrderResponse> {
-    return this.updateOrderStatus(tenantId, userId, orderId, 'CONFIRMED');
+    return this.updateOrderStatus(tenantId, userId, orderId, ExportOrderStatus.CONFIRMED);
   }
 
   // ─── Update Status ──────────────────────────────────────────────
@@ -330,8 +330,14 @@ export class ExportService extends TenantAwareService {
   // ─── Dashboard ──────────────────────────────────────────────────
 
   async getDashboard(tenantId: string): Promise<ExportDashboardResponse> {
-    const activeStatuses = ['DRAFT', 'CONFIRMED', 'IN_PRODUCTION', 'READY', 'CUSTOMS_CLEARED'];
-    const shippedStatuses = ['SHIPPED'];
+    const activeStatuses: ExportOrderStatus[] = [
+      ExportOrderStatus.DRAFT,
+      ExportOrderStatus.CONFIRMED,
+      ExportOrderStatus.IN_PRODUCTION,
+      ExportOrderStatus.READY,
+      ExportOrderStatus.CUSTOMS_CLEARED,
+    ];
+    const shippedStatuses: ExportOrderStatus[] = [ExportOrderStatus.SHIPPED];
 
     const [
       activeOrders,
