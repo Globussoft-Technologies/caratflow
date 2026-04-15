@@ -11,7 +11,10 @@ function currentPeriod(): string {
 
 export default function Gstr3bPage() {
   const [period, setPeriod] = useState(currentPeriod());
-  const { data, isLoading } = trpc.financial.tax.gstr3b.useQuery({ period } as never);
+  const [yearStr, monthStr] = period.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const { data, isLoading } = trpc.financial.tax.gstr3b.useQuery({ period: { year, month } });
   return (
     <div className="space-y-6">
       <PageHeader title="GSTR-3B" description="Summary return." breadcrumbs={[

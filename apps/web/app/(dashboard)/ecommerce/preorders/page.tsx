@@ -10,7 +10,7 @@ import { formatPaise, formatDate } from '@/components/format';
 
 export default function PreordersPage() {
   const [page, setPage] = useState(1);
-  const { data, isLoading } = trpc.preorder.listPreOrders.useQuery({ page, limit: 20 } as never);
+  const { data, isLoading } = trpc.preorder.listPreOrders.useQuery({ pagination: { page, limit: 20 } });
   const d = data as { items?: Array<Record<string, unknown>>; totalPages?: number; page?: number; hasPrevious?: boolean; hasNext?: boolean } | undefined;
   const items = d?.items ?? [];
 
