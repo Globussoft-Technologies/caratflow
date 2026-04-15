@@ -26,6 +26,7 @@ import { B2cFeaturesTrpcRouter } from '../modules/b2c-features/b2c-features.trpc
 import { ExportTrpcRouter } from '../modules/export/export.trpc';
 import { HardwareTrpcRouter } from '../modules/hardware/hardware.trpc';
 import { IndiaTrpcRouter } from '../modules/india/india.trpc';
+import { PayrollTrpcRouter } from '../modules/payroll/payroll.trpc';
 
 @Injectable()
 export class TrpcRouter {
@@ -57,6 +58,7 @@ export class TrpcRouter {
     private readonly exportTrpc: ExportTrpcRouter,
     private readonly hardwareTrpc: HardwareTrpcRouter,
     private readonly indiaTrpc: IndiaTrpcRouter,
+    private readonly payrollTrpc: PayrollTrpcRouter,
   ) {}
 
   get appRouter() {
@@ -94,6 +96,7 @@ export class TrpcRouter {
       export: this.exportTrpc.router,
       hardware: this.hardwareTrpc.router,
       india: this.indiaTrpc.router,
+      payroll: this.payrollTrpc.router,
     });
   }
 }

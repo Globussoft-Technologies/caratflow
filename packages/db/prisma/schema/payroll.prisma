@@ -1,0 +1,189 @@
+// ─── CaratFlow Payroll Domain Schema ────────────────────────────
+// Employees (staff), monthly attendance, salary structures,
+// payroll periods, payslips with statutory deductions.
+
+// ─── Enums ────────────────────────────────────────────────────────
+
+enum EmployeeStatusEnum {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+}
+
+enum AttendanceStatusEnum {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  PAID_LEAVE
+  UNPAID_LEAVE
+  HOLIDAY
+  WEEKLY_OFF
+}
+
+enum AttendanceSourceEnum {
+  BIOMETRIC
+  MANUAL
+  MOBILE
+}
+
+enum PayrollPeriodStatusEnum {
+  DRAFT
+  PROCESSING
+  PROCESSED
+  PAID
+  CLOSED
+}
+
+enum PayslipStatusEnum {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+// ─── Employee ─────────────────────────────────────────────────────
+
+model Employee {
+  id                  String             @id @default(uuid()) @db.VarChar(36)
+  tenantId            String             @map("tenant_id") @db.VarChar(36)
+  userId              String?            @map("user_id") @db.VarChar(36)
+  employeeCode        String             @map("employee_code") @db.VarChar(50)
+  firstName           String             @map("first_name") @db.VarChar(100)
+  lastName            String             @map("last_name") @db.VarChar(100)
+  dob                 DateTime?          @map("dob")
+  gender              String?            @db.VarChar(20)
+  joinedAt            DateTime           @map("joined_at")
+  leftAt              DateTime?          @map("left_at")
+  designation         String?            @db.VarChar(100)
+  department          String?            @db.VarChar(100)
+  branchId            String?            @map("branch_id") @db.VarChar(36)
+  basicSalaryPaise    BigInt             @default(0) @map("basic_salary_paise")
+  hraPaise            BigInt             @default(0) @map("hra_paise")
+  daPaise             BigInt             @default(0) @map("da_paise")
+  conveyancePaise     BigInt             @default(0) @map("conveyance_paise")
+  medicalPaise        BigInt             @default(0) @map("medical_paise")
+  otherAllowancePaise BigInt             @default(0) @map("other_allowance_paise")
+  panNumber           String?            @map("pan_number") @db.VarChar(20)
+  aadhaarNumber       String?            @map("aadhaar_number") @db.VarChar(20)
+  pfNumber            String?            @map("pf_number") @db.VarChar(50)
+  esiNumber           String?            @map("esi_number") @db.VarChar(50)
+  bankAccountNumber   String?            @map("bank_account_number") @db.VarChar(50)
+  bankIfsc            String?            @map("bank_ifsc") @db.VarChar(20)
+  bankName            String?            @map("bank_name") @db.VarChar(100)
+  status              EmployeeStatusEnum @default(ACTIVE)
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+
+  attendance EmployeeAttendance[]
+  payslips   Payslip[]
+  salaryStructures SalaryStructure[]
+
+  @@unique([tenantId, employeeCode])
+  @@index([tenantId, status])
+  @@index([tenantId, branchId])
+  @@map("payroll_employees")
+}
+
+// ─── EmployeeAttendance ───────────────────────────────────────────
+
+model EmployeeAttendance {
+  id             String               @id @default(uuid()) @db.VarChar(36)
+  tenantId       String               @map("tenant_id") @db.VarChar(36)
+  employeeId     String               @map("employee_id") @db.VarChar(36)
+  date           DateTime             @db.Date
+  status         AttendanceStatusEnum
+  checkInTime    DateTime?            @map("check_in_time")
+  checkOutTime   DateTime?            @map("check_out_time")
+  hoursWorked    Float                @default(0) @map("hours_worked")
+  overtimeHours  Float                @default(0) @map("overtime_hours")
+  source         AttendanceSourceEnum @default(MANUAL)
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([tenantId, employeeId, date])
+  @@index([tenantId, date])
+  @@map("payroll_attendance")
+}
+
+// ─── PayrollPeriod ────────────────────────────────────────────────
+
+model PayrollPeriod {
+  id          String                  @id @default(uuid()) @db.VarChar(36)
+  tenantId    String                  @map("tenant_id") @db.VarChar(36)
+  periodLabel String                  @map("period_label") @db.VarChar(20)
+  startDate   DateTime                @map("start_date") @db.Date
+  endDate     DateTime                @map("end_date") @db.Date
+  status      PayrollPeriodStatusEnum @default(DRAFT)
+  processedAt DateTime?               @map("processed_at")
+  processedBy String?                 @map("processed_by") @db.VarChar(36)
+  createdAt   DateTime                @default(now()) @map("created_at")
+  updatedAt   DateTime                @updatedAt @map("updated_at")
+
+  payslips Payslip[]
+
+  @@unique([tenantId, periodLabel])
+  @@index([tenantId, status])
+  @@map("payroll_periods")
+}
+
+// ─── Payslip ──────────────────────────────────────────────────────
+
+model Payslip {
+  id               String            @id @default(uuid()) @db.VarChar(36)
+  tenantId         String            @map("tenant_id") @db.VarChar(36)
+  employeeId       String            @map("employee_id") @db.VarChar(36)
+  payrollPeriodId  String            @map("payroll_period_id") @db.VarChar(36)
+  basicSalary      BigInt            @default(0) @map("basic_salary")
+  hra              BigInt            @default(0) @map("hra")
+  allowances       Json?             @map("allowances")
+  grossSalary      BigInt            @default(0) @map("gross_salary")
+  pfDeduction      BigInt            @default(0) @map("pf_deduction")
+  esiDeduction     BigInt            @default(0) @map("esi_deduction")
+  tdsDeduction     BigInt            @default(0) @map("tds_deduction")
+  professionalTax  BigInt            @default(0) @map("professional_tax")
+  otherDeductions  Json?             @map("other_deductions")
+  totalDeductions  BigInt            @default(0) @map("total_deductions")
+  netSalary        BigInt            @default(0) @map("net_salary")
+  workDays         Int               @default(0) @map("work_days")
+  presentDays      Int               @default(0) @map("present_days")
+  leaveDays        Int               @default(0) @map("leave_days")
+  overtimeHours    Float             @default(0) @map("overtime_hours")
+  overtimePay      BigInt            @default(0) @map("overtime_pay")
+  status           PayslipStatusEnum @default(DRAFT)
+  paidAt           DateTime?         @map("paid_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+
+  employee      Employee      @relation(fields: [employeeId], references: [id])
+  payrollPeriod PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
+
+  @@unique([tenantId, employeeId, payrollPeriodId])
+  @@index([tenantId, payrollPeriodId])
+  @@index([tenantId, status])
+  @@map("payroll_payslips")
+}
+
+// ─── SalaryStructure ──────────────────────────────────────────────
+
+model SalaryStructure {
+  id                  String    @id @default(uuid()) @db.VarChar(36)
+  tenantId            String    @map("tenant_id") @db.VarChar(36)
+  employeeId          String?   @map("employee_id") @db.VarChar(36)
+  designation         String?   @db.VarChar(100)
+  branchId            String?   @map("branch_id") @db.VarChar(36)
+  name                String    @db.VarChar(100)
+  basicPercent        Float     @default(0) @map("basic_percent")
+  hraPercent          Float     @default(0) @map("hra_percent")
+  daPercent           Float     @default(0) @map("da_percent")
+  conveyancePaise     BigInt    @default(0) @map("conveyance_paise")
+  medicalPaise        BigInt    @default(0) @map("medical_paise")
+  otherAllowancePaise BigInt    @default(0) @map("other_allowance_paise")
+  effectiveFrom       DateTime  @map("effective_from")
+  effectiveTo         DateTime? @map("effective_to")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  employee Employee? @relation(fields: [employeeId], references: [id])
+
+  @@index([tenantId, employeeId])
+  @@index([tenantId, designation])
+  @@map("payroll_salary_structures")
+}
