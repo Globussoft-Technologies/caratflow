@@ -8,6 +8,7 @@ import { IndiaSchemeService } from './india.scheme.service';
 import { IndiaRatesService } from './india.rates.service';
 import { IndiaKycService } from './india.kyc.service';
 import { IndiaPaymentService } from './india.payment.service';
+import { RatePollerService } from './rate-poller.service';
 import { z } from 'zod';
 import {
   GirviLoanInputSchema,
@@ -27,6 +28,11 @@ import {
   MetalRateQuerySchema,
   KycVerificationInputSchema,
   KycVerifyInputSchema,
+  AadhaarVerifyInputSchema,
+  PanVerifyInputSchema,
+  AadhaarOtpRequestSchema,
+  AadhaarOtpConfirmSchema,
+  KycListInputSchema,
   UpiPaymentInputSchema,
   BankTransferTemplateInputSchema,
   UuidSchema,
@@ -41,6 +47,7 @@ export class IndiaTrpcRouter {
     private readonly ratesService: IndiaRatesService,
     private readonly kycService: IndiaKycService,
     private readonly paymentService: IndiaPaymentService,
+    private readonly ratePoller: RatePollerService,
   ) {}
 
   get router() {
@@ -238,6 +245,19 @@ export class IndiaTrpcRouter {
           .query(async ({ input }) => {
             return this.ratesService.getHistoricalRates(input);
           }),
+
+        // Admin-only manual refresh: trigger an immediate poll of the
+        // configured rate provider and persist the result. Useful for
+        // testing and force-updating rates outside the hourly cron.
+        refreshNow: this.trpc.authedProcedure
+          .input(
+            z
+              .object({ metalType: z.enum(['GOLD', 'SILVER']).optional() })
+              .optional(),
+          )
+          .mutation(async ({ input }) => {
+            return this.ratePoller.refreshNow(input?.metalType);
+          }),
       }),
 
       // ─── KYC Sub-Router ────────────────────────────────────
@@ -275,6 +295,37 @@ export class IndiaTrpcRouter {
         getPendingCount: this.trpc.authedProcedure.query(async ({ ctx }) => {
           return this.kycService.getPendingCount(ctx.tenantId);
         }),
+
+        // ─── Real eKYC Provider Calls (admin/staff only) ──────
+        verifyAadhaar: this.trpc.authedProcedure
+          .input(AadhaarVerifyInputSchema)
+          .mutation(async ({ ctx, input }) => {
+            return this.kycService.verifyAadhaar(ctx.tenantId, ctx.userId, input);
+          }),
+
+        verifyPan: this.trpc.authedProcedure
+          .input(PanVerifyInputSchema)
+          .mutation(async ({ ctx, input }) => {
+            return this.kycService.verifyPan(ctx.tenantId, ctx.userId, input);
+          }),
+
+        requestAadhaarOtp: this.trpc.authedProcedure
+          .input(AadhaarOtpRequestSchema)
+          .mutation(async ({ ctx, input }) => {
+            return this.kycService.requestAadhaarOtp(ctx.tenantId, ctx.userId, input);
+          }),
+
+        confirmAadhaarOtp: this.trpc.authedProcedure
+          .input(AadhaarOtpConfirmSchema)
+          .mutation(async ({ input }) => {
+            return this.kycService.confirmAadhaarOtp(input.refId, input.otp);
+          }),
+
+        list: this.trpc.authedProcedure
+          .input(KycListInputSchema)
+          .query(async ({ ctx, input }) => {
+            return this.kycService.listVerifications(ctx.tenantId, input);
+          }),
       }),
 
       // ─── Payments Sub-Router ───────────────────────────────
