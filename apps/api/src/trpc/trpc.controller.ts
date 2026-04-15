@@ -1,8 +1,17 @@
 import { Controller, All, Req, Res } from '@nestjs/common';
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { Request, Response } from 'express';
+import * as jwt from 'jsonwebtoken';
 import { TrpcRouter } from './trpc.router';
 import type { TrpcContext } from './trpc.service';
+
+interface JwtPayload {
+  sub: string;
+  tenantId: string;
+  email: string;
+  role: string;
+  permissions: string[];
+}
 
 @Controller('trpc')
 export class TrpcController {
@@ -10,12 +19,32 @@ export class TrpcController {
 
   @All('*')
   async handleTrpc(@Req() req: Request, @Res() res: Response) {
-    // Build the context from the already-processed middleware
+    // TenantMiddleware doesn't reliably match multi-segment paths like
+    // /api/v1/trpc/inventory.stockItems.list under Nest 11 + path-to-regexp
+    // v6, so parse the JWT inline to guarantee tenantId/userId on every call.
+    let tenantId = req.tenantId;
+    let userId = req.userId;
+    let userRole = req.userRole;
+    let userPermissions = req.userPermissions;
+    const authHeader = req.headers.authorization;
+    if (!userId && authHeader?.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.slice(7);
+        const secret = process.env.JWT_SECRET ?? 'dev-secret';
+        const payload = jwt.verify(token, secret) as JwtPayload;
+        tenantId = payload.tenantId;
+        userId = payload.sub;
+        userRole = payload.role;
+        userPermissions = payload.permissions;
+      } catch {
+        // Leave ctx unauthenticated; authedProcedure will return UNAUTHORIZED.
+      }
+    }
     const context: TrpcContext = {
-      tenantId: req.tenantId,
-      userId: req.userId,
-      userRole: req.userRole,
-      userPermissions: req.userPermissions,
+      tenantId,
+      userId,
+      userRole,
+      userPermissions,
     };
 
     // Convert Express request to Fetch API Request
