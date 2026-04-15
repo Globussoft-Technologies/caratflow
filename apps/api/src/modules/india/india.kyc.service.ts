@@ -2,9 +2,11 @@
 // KYC document recording, verification, validation, expiry tracking.
 // Placeholders for Aadhaar eKYC and PAN verification API integration.
 
-import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger, Inject, Optional } from '@nestjs/common';
+import { v4 as uuidv4 } from 'uuid';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { EventBusService } from '../../event-bus/event-bus.service';
 import { isValidAadhaar, isValidPan } from '@caratflow/utils';
 import type { Prisma } from '@caratflow/db';
 import type {
@@ -13,14 +15,40 @@ import type {
   KycStatusResponse,
   KycVerificationType,
   KycVerificationStatus,
+  KycResult,
+  KycListInput,
 } from '@caratflow/shared-types';
+import { KYC_PROVIDER_TOKEN } from './kyc-providers/kyc-provider.factory';
+import type { IKycProvider, AadhaarOtpHandle } from './kyc-providers/kyc-provider.interface';
+
+// In-memory store of Aadhaar OTP refId -> {tenantId, aadhaarNumber, customerId?}
+// so that confirmAadhaarOtp can persist the verification under the right
+// tenant/customer. A short TTL prevents leaks.
+interface OtpContext {
+  tenantId: string;
+  userId: string;
+  aadhaarNumber: string;
+  customerId?: string;
+  expiresAt: number;
+}
 
 @Injectable()
 export class IndiaKycService extends TenantAwareService {
   private readonly logger = new Logger(IndiaKycService.name);
+  private readonly otpContexts = new Map<string, OtpContext>();
+  private readonly OTP_TTL_MS = 10 * 60 * 1000; // 10 min
 
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    @Inject(KYC_PROVIDER_TOKEN) private readonly kycProvider: IKycProvider,
+    @Optional() private readonly eventBus?: EventBusService,
+  ) {
     super(prisma);
+  }
+
+  /** Exposed for diagnostics / tests. */
+  get providerName(): string {
+    return this.kycProvider.name;
   }
 
   // ─── Record KYC Document ─────────────────────────────────────
@@ -185,38 +213,208 @@ export class IndiaKycService extends TenantAwareService {
     });
   }
 
-  // ─── Aadhaar eKYC API (placeholder) ──────────────────────────
+  // ─── Real Aadhaar / PAN eKYC via pluggable provider ──────────
 
   /**
-   * Placeholder for Aadhaar eKYC API integration (UIDAI).
-   * In production, this would:
-   * 1. Send OTP to customer's Aadhaar-linked mobile
-   * 2. Customer provides OTP
-   * 3. Verify OTP with UIDAI API
-   * 4. Receive demographic data
-   * 5. Auto-verify the KYC record
+   * Verify an Aadhaar number via the configured eKYC provider.
+   * Persists a KycVerification row with the result and publishes an
+   * audit event. When the provider is `local` the verification is
+   * stored as PENDING with a LOCAL_ONLY note rather than VERIFIED.
    */
-  async initiateAadhaarEkyc(_aadhaarNumber: string): Promise<{ transactionId: string; message: string }> {
-    this.logger.log('Aadhaar eKYC: placeholder - integrate with UIDAI API');
+  async verifyAadhaar(
+    tenantId: string,
+    userId: string,
+    input: { customerId?: string; aadhaarNumber: string; name?: string; dob?: string },
+  ) {
+    if (!isValidAadhaar(input.aadhaarNumber)) {
+      throw new BadRequestException('Invalid Aadhaar number format');
+    }
+    const result = await this.kycProvider.verifyAadhaar(input.aadhaarNumber, input.name, input.dob);
+    return this.persistVerification(tenantId, userId, 'AADHAAR', input.aadhaarNumber, input.customerId, result);
+  }
+
+  /**
+   * Verify a PAN number via the configured eKYC provider.
+   */
+  async verifyPan(
+    tenantId: string,
+    userId: string,
+    input: { customerId?: string; panNumber: string; name?: string },
+  ) {
+    if (!isValidPan(input.panNumber)) {
+      throw new BadRequestException('Invalid PAN format');
+    }
+    const result = await this.kycProvider.verifyPan(input.panNumber, input.name);
+    return this.persistVerification(tenantId, userId, 'PAN', input.panNumber, input.customerId, result);
+  }
+
+  /**
+   * Step 1 of Aadhaar OTP flow: generate OTP at the provider. Returns
+   * a refId that the caller uses in `confirmAadhaarOtp`.
+   */
+  async requestAadhaarOtp(
+    tenantId: string,
+    userId: string,
+    input: { aadhaarNumber: string; customerId?: string },
+  ): Promise<AadhaarOtpHandle> {
+    if (!isValidAadhaar(input.aadhaarNumber)) {
+      throw new BadRequestException('Invalid Aadhaar number format');
+    }
+    const handle = await this.kycProvider.generateAadhaarOtp(input.aadhaarNumber);
+    this.otpContexts.set(handle.refId, {
+      tenantId,
+      userId,
+      aadhaarNumber: input.aadhaarNumber,
+      customerId: input.customerId,
+      expiresAt: Date.now() + this.OTP_TTL_MS,
+    });
+    this.pruneOtpContexts();
+    return handle;
+  }
+
+  /**
+   * Step 2 of Aadhaar OTP flow: verify OTP and persist.
+   */
+  async confirmAadhaarOtp(refId: string, otp: string) {
+    const ctx = this.otpContexts.get(refId);
+    if (!ctx) {
+      throw new NotFoundException('Unknown or expired OTP refId');
+    }
+    if (ctx.expiresAt < Date.now()) {
+      this.otpContexts.delete(refId);
+      throw new BadRequestException('OTP refId expired');
+    }
+    const result = await this.kycProvider.confirmAadhaarOtp(refId, otp);
+    const persisted = await this.persistVerification(
+      ctx.tenantId,
+      ctx.userId,
+      'AADHAAR',
+      ctx.aadhaarNumber,
+      ctx.customerId,
+      result,
+    );
+    if (result.verified) {
+      this.otpContexts.delete(refId);
+    }
+    return persisted;
+  }
+
+  /**
+   * List KYC verifications with optional filters (admin use).
+   */
+  async listVerifications(tenantId: string, input: KycListInput) {
+    return this.prisma.kycVerification.findMany({
+      where: {
+        tenantId,
+        ...(input.status ? { verificationStatus: input.status } : {}),
+        ...(input.customerId ? { customerId: input.customerId } : {}),
+      },
+      include: { customer: true },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+  }
+
+  // ─── Persistence helper ──────────────────────────────────────
+
+  private async persistVerification(
+    tenantId: string,
+    userId: string,
+    type: 'AADHAAR' | 'PAN',
+    documentNumber: string,
+    customerId: string | undefined,
+    result: KycResult,
+  ) {
+    const isLocal = result.source === 'local';
+    // VERIFIED only when provider successfully verified; local fallback
+    // is always PENDING so staff can clear it manually.
+    const status = (result.verified
+      ? 'VERIFIED'
+      : isLocal
+        ? 'PENDING'
+        : 'FAILED') as KycVerificationStatus;
+
+    // customerId is required by the DB model. If caller did not supply
+    // one (direct admin verification), we skip persistence and return
+    // the raw provider result keyed by a synthetic id.
+    if (!customerId) {
+      await this.emitAuditEvent(tenantId, userId, type, result, null);
+      return {
+        id: `ephemeral-${uuidv4()}`,
+        verificationType: type,
+        verificationStatus: status,
+        documentNumber,
+        provider: result.source,
+        verified: result.verified,
+        result,
+        persisted: false,
+      };
+    }
+
+    const notes = isLocal
+      ? 'LOCAL_ONLY: no eKYC provider configured; pending manual review'
+      : result.errorMessage ?? (result.verified ? 'Verified via provider' : 'Rejected by provider');
+
+    const record = await this.prisma.kycVerification.create({
+      data: {
+        tenantId,
+        customerId,
+        verificationType: type,
+        documentNumber,
+        verificationStatus: status,
+        verifiedAt: result.verified ? new Date() : null,
+        verifiedBy: result.verified ? userId : null,
+        ocrData: (result.raw ?? result) as Prisma.InputJsonValue,
+        notes,
+        createdBy: userId,
+        updatedBy: userId,
+      },
+    });
+
+    await this.emitAuditEvent(tenantId, userId, type, result, record.id);
+
     return {
-      transactionId: `EKYC-${Date.now()}`,
-      message: 'Aadhaar eKYC API integration pending. Use manual verification.',
+      ...record,
+      provider: result.source,
+      verified: result.verified,
+      result,
+      persisted: true,
     };
   }
 
-  // ─── PAN Verification API (placeholder) ──────────────────────
+  private async emitAuditEvent(
+    tenantId: string,
+    userId: string,
+    type: 'AADHAAR' | 'PAN',
+    result: KycResult,
+    verificationId: string | null,
+  ) {
+    if (!this.eventBus) return;
+    try {
+      await this.eventBus.publish({
+        id: uuidv4(),
+        tenantId,
+        userId,
+        timestamp: new Date().toISOString(),
+        type: result.verified ? 'india.kyc.verified' : 'india.kyc.failed',
+        payload: {
+          verificationType: type,
+          provider: result.source,
+          verificationId,
+          errorCode: result.errorCode,
+          errorMessage: result.errorMessage,
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to publish KYC audit event: ${(err as Error).message}`);
+    }
+  }
 
-  /**
-   * Placeholder for PAN verification API integration.
-   * In production, this would verify PAN against Income Tax database.
-   */
-  async verifyPanOnline(_panNumber: string): Promise<{ verified: boolean; name: string | null; message: string }> {
-    this.logger.log('PAN verification: placeholder - integrate with IT API');
-    return {
-      verified: false,
-      name: null,
-      message: 'PAN verification API integration pending. Use manual verification.',
-    };
+  private pruneOtpContexts() {
+    const now = Date.now();
+    for (const [key, ctx] of this.otpContexts.entries()) {
+      if (ctx.expiresAt < now) this.otpContexts.delete(key);
+    }
   }
 
   // ─── Helpers ─────────────────────────────────────────────────

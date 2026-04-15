@@ -395,6 +395,59 @@ export const KycVerifyInputSchema = z.object({
 });
 export type KycVerifyInput = z.infer<typeof KycVerifyInputSchema>;
 
+// ─── eKYC Provider Result ─────────────────────────────────────────
+
+export const KycProviderSourceSchema = z.enum(['cashfree', 'setu', 'karza', 'digilocker', 'local']);
+export type KycProviderSource = z.infer<typeof KycProviderSourceSchema>;
+
+export const KycResultSchema = z.object({
+  verified: z.boolean(),
+  name: z.string().optional(),
+  dob: z.string().optional(),
+  gender: z.string().optional(),
+  address: z.string().optional(),
+  source: KycProviderSourceSchema,
+  errorCode: z.string().optional(),
+  errorMessage: z.string().optional(),
+  raw: z.unknown().optional(),
+});
+export type KycResult = z.infer<typeof KycResultSchema>;
+
+// ─── eKYC tRPC Input Schemas ──────────────────────────────────────
+
+export const AadhaarVerifyInputSchema = z.object({
+  customerId: UuidSchema.optional(),
+  aadhaarNumber: z.string().regex(/^\d{12}$/, 'Aadhaar must be 12 digits'),
+  name: z.string().max(200).optional(),
+  dob: z.string().optional(),
+});
+export type AadhaarVerifyInput = z.infer<typeof AadhaarVerifyInputSchema>;
+
+export const PanVerifyInputSchema = z.object({
+  customerId: UuidSchema.optional(),
+  panNumber: z.string().regex(/^[A-Z]{5}\d{4}[A-Z]$/, 'Invalid PAN format'),
+  name: z.string().max(200).optional(),
+});
+export type PanVerifyInput = z.infer<typeof PanVerifyInputSchema>;
+
+export const AadhaarOtpRequestSchema = z.object({
+  customerId: UuidSchema.optional(),
+  aadhaarNumber: z.string().regex(/^\d{12}$/, 'Aadhaar must be 12 digits'),
+});
+export type AadhaarOtpRequestInput = z.infer<typeof AadhaarOtpRequestSchema>;
+
+export const AadhaarOtpConfirmSchema = z.object({
+  refId: z.string().min(1),
+  otp: z.string().regex(/^\d{4,8}$/),
+});
+export type AadhaarOtpConfirmInput = z.infer<typeof AadhaarOtpConfirmSchema>;
+
+export const KycListInputSchema = z.object({
+  status: z.enum(['PENDING', 'VERIFIED', 'FAILED', 'EXPIRED']).optional(),
+  customerId: UuidSchema.optional(),
+});
+export type KycListInput = z.infer<typeof KycListInputSchema>;
+
 export interface KycStatusResponse {
   customerId: string;
   verifications: Array<{
@@ -519,5 +572,27 @@ export interface IndiaMetalRateUpdatedEvent extends DomainEventBase {
     purity: number;
     ratePer10gPaise: number;
     source: string;
+  };
+}
+
+export interface IndiaKycVerifiedEvent extends DomainEventBase {
+  type: 'india.kyc.verified';
+  payload: {
+    verificationType: 'AADHAAR' | 'PAN';
+    provider: KycProviderSource;
+    verificationId: string | null;
+    errorCode?: string;
+    errorMessage?: string;
+  };
+}
+
+export interface IndiaKycFailedEvent extends DomainEventBase {
+  type: 'india.kyc.failed';
+  payload: {
+    verificationType: 'AADHAAR' | 'PAN';
+    provider: KycProviderSource;
+    verificationId: string | null;
+    errorCode?: string;
+    errorMessage?: string;
   };
 }

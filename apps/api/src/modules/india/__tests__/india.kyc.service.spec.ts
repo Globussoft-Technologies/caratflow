@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { IndiaKycService } from '../india.kyc.service';
-import { createMockPrismaService, TEST_TENANT_ID, TEST_USER_ID, resetAllMocks } from '../../../__tests__/setup';
+import { LocalOnlyKycProvider } from '../kyc-providers/local-only.provider';
+import type { IKycProvider, KycResult } from '../kyc-providers/kyc-provider.interface';
+import {
+  createMockPrismaService,
+  createMockEventBus,
+  TEST_TENANT_ID,
+  TEST_USER_ID,
+  resetAllMocks,
+} from '../../../__tests__/setup';
 
 // Mock validation utils
 vi.mock('@caratflow/utils', () => ({
@@ -8,9 +16,22 @@ vi.mock('@caratflow/utils', () => ({
   isValidPan: (pan: string) => /^[A-Z]{5}\d{4}[A-Z]$/.test(pan),
 }));
 
+function makeFakeProvider(overrides: Partial<IKycProvider> = {}): IKycProvider {
+  return {
+    name: 'cashfree',
+    verifyAadhaar: vi.fn().mockResolvedValue({ verified: true, source: 'cashfree', name: 'Ravi Kumar' } as KycResult),
+    verifyPan: vi.fn().mockResolvedValue({ verified: true, source: 'cashfree', name: 'Ravi Kumar' } as KycResult),
+    generateAadhaarOtp: vi.fn().mockResolvedValue({ refId: 'CF-123' }),
+    confirmAadhaarOtp: vi.fn().mockResolvedValue({ verified: true, source: 'cashfree', name: 'Ravi Kumar' } as KycResult),
+    ...overrides,
+  };
+}
+
 describe('IndiaKycService (Unit)', () => {
   let service: IndiaKycService;
   let mockPrisma: ReturnType<typeof createMockPrismaService>;
+  let mockProvider: IKycProvider;
+  let mockEventBus: ReturnType<typeof createMockEventBus>;
 
   beforeEach(() => {
     mockPrisma = createMockPrismaService();
@@ -22,7 +43,9 @@ describe('IndiaKycService (Unit)', () => {
       updateMany: vi.fn(),
       count: vi.fn(),
     };
-    service = new IndiaKycService(mockPrisma as any);
+    mockProvider = makeFakeProvider();
+    mockEventBus = createMockEventBus();
+    service = new IndiaKycService(mockPrisma as any, mockProvider, mockEventBus as any);
     resetAllMocks(mockPrisma);
   });
 
@@ -322,6 +345,207 @@ describe('IndiaKycService (Unit)', () => {
 
       const result = await service.getPendingCount(TEST_TENANT_ID);
       expect(result).toBe(5);
+    });
+  });
+
+  // ─── Real eKYC provider wiring ──────────────────────────────────
+
+  describe('verifyAadhaar (provider)', () => {
+    it('persists VERIFIED KycVerification when provider returns verified', async () => {
+      (mockPrisma as any).kycVerification.create.mockResolvedValue({
+        id: 'kyc-10',
+        verificationType: 'AADHAAR',
+        verificationStatus: 'VERIFIED',
+      });
+
+      const result = await service.verifyAadhaar(TEST_TENANT_ID, TEST_USER_ID, {
+        customerId: 'cust-1',
+        aadhaarNumber: '123456789012',
+        name: 'Ravi Kumar',
+      });
+
+      expect(mockProvider.verifyAadhaar).toHaveBeenCalledWith('123456789012', 'Ravi Kumar', undefined);
+      expect((mockPrisma as any).kycVerification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tenantId: TEST_TENANT_ID,
+            customerId: 'cust-1',
+            verificationType: 'AADHAAR',
+            documentNumber: '123456789012',
+            verificationStatus: 'VERIFIED',
+            verifiedAt: expect.any(Date),
+            verifiedBy: TEST_USER_ID,
+            ocrData: expect.anything(),
+          }),
+        }),
+      );
+      expect(result.verified).toBe(true);
+      expect(result.provider).toBe('cashfree');
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'india.kyc.verified' }),
+      );
+    });
+
+    it('persists FAILED when provider rejects non-local', async () => {
+      mockProvider = makeFakeProvider({
+        verifyAadhaar: vi.fn().mockResolvedValue({
+          verified: false,
+          source: 'cashfree',
+          errorCode: 'NOT_VERIFIED',
+          errorMessage: 'Mismatch',
+        }),
+      });
+      service = new IndiaKycService(mockPrisma as any, mockProvider, mockEventBus as any);
+      (mockPrisma as any).kycVerification.create.mockResolvedValue({ id: 'kyc-11' });
+
+      const result = await service.verifyAadhaar(TEST_TENANT_ID, TEST_USER_ID, {
+        customerId: 'cust-1',
+        aadhaarNumber: '123456789012',
+      });
+
+      expect((mockPrisma as any).kycVerification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            verificationStatus: 'FAILED',
+            verifiedAt: null,
+          }),
+        }),
+      );
+      expect(result.verified).toBe(false);
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'india.kyc.failed' }),
+      );
+    });
+
+    it('falls back to PENDING + LOCAL_ONLY note when provider is local', async () => {
+      const localService = new IndiaKycService(
+        mockPrisma as any,
+        new LocalOnlyKycProvider(),
+        mockEventBus as any,
+      );
+      (mockPrisma as any).kycVerification.create.mockResolvedValue({ id: 'kyc-12' });
+
+      const result = await localService.verifyAadhaar(TEST_TENANT_ID, TEST_USER_ID, {
+        customerId: 'cust-1',
+        aadhaarNumber: '123456789012',
+      });
+
+      expect((mockPrisma as any).kycVerification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            verificationStatus: 'PENDING',
+            notes: expect.stringContaining('LOCAL_ONLY'),
+          }),
+        }),
+      );
+      expect(result.verified).toBe(false);
+      expect(result.provider).toBe('local');
+    });
+
+    it('rejects invalid Aadhaar format before calling provider', async () => {
+      await expect(
+        service.verifyAadhaar(TEST_TENANT_ID, TEST_USER_ID, {
+          aadhaarNumber: '12345',
+        }),
+      ).rejects.toThrow('Invalid Aadhaar');
+      expect(mockProvider.verifyAadhaar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('verifyPan (provider)', () => {
+    it('calls provider.verifyPan and persists VERIFIED', async () => {
+      (mockPrisma as any).kycVerification.create.mockResolvedValue({ id: 'kyc-20' });
+
+      const result = await service.verifyPan(TEST_TENANT_ID, TEST_USER_ID, {
+        customerId: 'cust-1',
+        panNumber: 'ABCDE1234F',
+        name: 'Ravi',
+      });
+
+      expect(mockProvider.verifyPan).toHaveBeenCalledWith('ABCDE1234F', 'Ravi');
+      expect((mockPrisma as any).kycVerification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            verificationType: 'PAN',
+            verificationStatus: 'VERIFIED',
+          }),
+        }),
+      );
+      expect(result.verified).toBe(true);
+    });
+
+    it('rejects invalid PAN format before calling provider', async () => {
+      await expect(
+        service.verifyPan(TEST_TENANT_ID, TEST_USER_ID, { panNumber: 'BAD' }),
+      ).rejects.toThrow('Invalid PAN');
+      expect(mockProvider.verifyPan).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Aadhaar OTP flow', () => {
+    it('requestAadhaarOtp returns refId from provider', async () => {
+      const handle = await service.requestAadhaarOtp(TEST_TENANT_ID, TEST_USER_ID, {
+        aadhaarNumber: '123456789012',
+        customerId: 'cust-1',
+      });
+      expect(handle.refId).toBe('CF-123');
+      expect(mockProvider.generateAadhaarOtp).toHaveBeenCalledWith('123456789012');
+    });
+
+    it('confirmAadhaarOtp persists Aadhaar verification tied to original tenant/customer', async () => {
+      (mockPrisma as any).kycVerification.create.mockResolvedValue({ id: 'kyc-30' });
+      await service.requestAadhaarOtp(TEST_TENANT_ID, TEST_USER_ID, {
+        aadhaarNumber: '123456789012',
+        customerId: 'cust-77',
+      });
+      const result = await service.confirmAadhaarOtp('CF-123', '123456');
+
+      expect(mockProvider.confirmAadhaarOtp).toHaveBeenCalledWith('CF-123', '123456');
+      expect((mockPrisma as any).kycVerification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tenantId: TEST_TENANT_ID,
+            customerId: 'cust-77',
+            verificationType: 'AADHAAR',
+            verificationStatus: 'VERIFIED',
+          }),
+        }),
+      );
+      expect(result.verified).toBe(true);
+    });
+
+    it('confirmAadhaarOtp throws when refId is unknown', async () => {
+      await expect(service.confirmAadhaarOtp('does-not-exist', '1234')).rejects.toThrow('Unknown');
+    });
+  });
+
+  describe('listVerifications', () => {
+    it('queries KycVerification with filters', async () => {
+      (mockPrisma as any).kycVerification.findMany.mockResolvedValue([]);
+      await service.listVerifications(TEST_TENANT_ID, {
+        status: 'VERIFIED',
+        customerId: 'cust-1',
+      });
+      expect((mockPrisma as any).kycVerification.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            tenantId: TEST_TENANT_ID,
+            verificationStatus: 'VERIFIED',
+            customerId: 'cust-1',
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('providerName diagnostic', () => {
+    it('exposes configured provider name', () => {
+      expect(service.providerName).toBe('cashfree');
+    });
+
+    it('exposes local when using LocalOnlyKycProvider', () => {
+      const local = new IndiaKycService(mockPrisma as any, new LocalOnlyKycProvider());
+      expect(local.providerName).toBe('local');
     });
   });
 });
