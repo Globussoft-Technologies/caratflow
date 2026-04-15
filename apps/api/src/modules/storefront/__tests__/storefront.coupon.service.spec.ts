@@ -47,16 +47,16 @@ describe('StorefrontCouponService', () => {
       (mockPrisma as any).couponCode.findUnique.mockResolvedValue(baseCoupon);
 
       const result = await service.validateCoupon(TEST_TENANT_ID, 'SAVE10', 5000000, null);
-      expect(result.isValid).toBe(true);
-      expect(result.discountAmountPaise).toBe(500000); // 10% of 5000000
+      expect(result.valid).toBe(true);
+      expect(result.discountPaise).toBe(500000); // 10% of 5000000
     });
 
     it('rejects coupon not found', async () => {
       (mockPrisma as any).couponCode.findUnique.mockResolvedValue(null);
 
       const result = await service.validateCoupon(TEST_TENANT_ID, 'INVALID', 5000000, null);
-      expect(result.isValid).toBe(false);
-      expect(result.reason).toContain('not found');
+      expect(result.valid).toBe(false);
+      expect(result.errorMessage).toContain('not found');
     });
 
     it('rejects inactive coupon', async () => {
@@ -66,8 +66,8 @@ describe('StorefrontCouponService', () => {
       });
 
       const result = await service.validateCoupon(TEST_TENANT_ID, 'SAVE10', 5000000, null);
-      expect(result.isValid).toBe(false);
-      expect(result.reason).toContain('inactive');
+      expect(result.valid).toBe(false);
+      expect(result.errorMessage).toContain('inactive');
     });
 
     it('rejects expired coupon', async () => {
@@ -77,8 +77,8 @@ describe('StorefrontCouponService', () => {
       });
 
       const result = await service.validateCoupon(TEST_TENANT_ID, 'SAVE10', 5000000, null);
-      expect(result.isValid).toBe(false);
-      expect(result.reason).toContain('expired');
+      expect(result.valid).toBe(false);
+      expect(result.errorMessage).toContain('expired');
     });
 
     it('rejects coupon not yet valid', async () => {
@@ -88,7 +88,7 @@ describe('StorefrontCouponService', () => {
       });
 
       const result = await service.validateCoupon(TEST_TENANT_ID, 'SAVE10', 5000000, null);
-      expect(result.isValid).toBe(false);
+      expect(result.valid).toBe(false);
     });
 
     it('rejects coupon over usage limit', async () => {
@@ -99,8 +99,8 @@ describe('StorefrontCouponService', () => {
       });
 
       const result = await service.validateCoupon(TEST_TENANT_ID, 'SAVE10', 5000000, null);
-      expect(result.isValid).toBe(false);
-      expect(result.reason).toContain('usage limit');
+      expect(result.valid).toBe(false);
+      expect(result.errorMessage).toContain('usage limit');
     });
 
     it('enforces minimum order amount', async () => {
@@ -110,8 +110,8 @@ describe('StorefrontCouponService', () => {
       });
 
       const result = await service.validateCoupon(TEST_TENANT_ID, 'SAVE10', 5000000, null);
-      expect(result.isValid).toBe(false);
-      expect(result.reason).toContain('Minimum order amount');
+      expect(result.valid).toBe(false);
+      expect(result.errorMessage).toContain('Minimum order amount');
     });
 
     it('enforces first-order-only restriction', async () => {
@@ -122,8 +122,8 @@ describe('StorefrontCouponService', () => {
       (mockPrisma as any).onlineOrder.count.mockResolvedValue(2);
 
       const result = await service.validateCoupon(TEST_TENANT_ID, 'SAVE10', 5000000, 'cust-1');
-      expect(result.isValid).toBe(false);
-      expect(result.reason).toContain('first orders only');
+      expect(result.valid).toBe(false);
+      expect(result.errorMessage).toContain('first orders only');
     });
 
     it('allows first-order-only for new customers', async () => {
@@ -134,7 +134,7 @@ describe('StorefrontCouponService', () => {
       (mockPrisma as any).onlineOrder.count.mockResolvedValue(0);
 
       const result = await service.validateCoupon(TEST_TENANT_ID, 'SAVE10', 5000000, 'cust-new');
-      expect(result.isValid).toBe(true);
+      expect(result.valid).toBe(true);
     });
 
     it('calculates percentage discount: 10% of Rs 50,000', async () => {
@@ -145,7 +145,7 @@ describe('StorefrontCouponService', () => {
       });
 
       const result = await service.validateCoupon(TEST_TENANT_ID, 'SAVE10', 5000000, null);
-      expect(result.discountAmountPaise).toBe(500000);
+      expect(result.discountPaise).toBe(500000);
     });
 
     it('calculates fixed discount: Rs 1000 off', async () => {
@@ -156,7 +156,7 @@ describe('StorefrontCouponService', () => {
       });
 
       const result = await service.validateCoupon(TEST_TENANT_ID, 'SAVE10', 5000000, null);
-      expect(result.discountAmountPaise).toBe(100000);
+      expect(result.discountPaise).toBe(100000);
     });
 
     it('caps percentage discount at maxDiscountPaise', async () => {
@@ -169,7 +169,7 @@ describe('StorefrontCouponService', () => {
       });
 
       const result = await service.validateCoupon(TEST_TENANT_ID, 'SAVE10', 20000000, null);
-      expect(result.discountAmountPaise).toBe(1000000); // capped at Rs 10,000
+      expect(result.discountPaise).toBe(1000000); // capped at Rs 10,000
     });
 
     it('discount never exceeds cart total', async () => {
@@ -181,7 +181,7 @@ describe('StorefrontCouponService', () => {
 
       const cartTotal = 500000; // Rs 5,000
       const result = await service.validateCoupon(TEST_TENANT_ID, 'SAVE10', cartTotal, null);
-      expect(result.discountAmountPaise).toBeLessThanOrEqual(cartTotal);
+      expect(result.discountPaise).toBeLessThanOrEqual(cartTotal);
     });
   });
 
@@ -192,16 +192,16 @@ describe('StorefrontCouponService', () => {
       (mockPrisma as any).couponCode.findUnique.mockResolvedValue(baseCoupon);
 
       const result = await service.applyCoupon(TEST_TENANT_ID, 'SAVE10', 5000000);
-      expect(result.isValid).toBe(true);
-      expect(result.discountAmountPaise).toBe(500000);
+      expect(result.valid).toBe(true);
+      expect(result.discountPaise).toBe(500000);
     });
 
     it('returns zero for invalid/inactive coupon', async () => {
       (mockPrisma as any).couponCode.findUnique.mockResolvedValue(null);
 
       const result = await service.applyCoupon(TEST_TENANT_ID, 'GONE', 5000000);
-      expect(result.isValid).toBe(false);
-      expect(result.discountAmountPaise).toBe(0);
+      expect(result.valid).toBe(false);
+      expect(result.discountPaise).toBe(0);
     });
   });
 });

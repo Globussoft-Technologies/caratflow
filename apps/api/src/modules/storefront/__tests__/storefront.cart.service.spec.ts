@@ -388,9 +388,9 @@ describe('StorefrontCartService', () => {
       };
 
       mockCouponService.validateCoupon.mockResolvedValue({
-        isValid: false,
-        reason: 'Coupon code not found',
-        discountAmountPaise: 0,
+        valid: false,
+        errorMessage: 'Coupon code not found',
+        discountPaise: 0,
       });
 
       await expect(

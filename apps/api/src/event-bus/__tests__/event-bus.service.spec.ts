@@ -120,7 +120,7 @@ describe('EventBusService', () => {
 
       // Worker should be created for the inventory domain
       expect(Worker).toHaveBeenCalledWith(
-        'caratflow:inventory',
+        'caratflow-inventory',
         expect.any(Function),
         expect.any(Object),
       );

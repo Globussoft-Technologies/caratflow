@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Prisma } from '@caratflow/db';
 import { PlatformAuditService } from '../platform.audit.service';
 import {
   createMockPrismaService,
@@ -69,8 +70,8 @@ describe('PlatformAuditService (Unit)', () => {
       expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            oldValues: null,
-            newValues: null,
+            oldValues: Prisma.JsonNull,
+            newValues: Prisma.JsonNull,
           }),
         }),
       );

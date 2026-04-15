@@ -52,7 +52,7 @@ describe('StorefrontEventHandler', () => {
   it('subscribes to the correct event types', () => {
     expect(mockEventBus.subscribe).toHaveBeenCalledTimes(3);
     expect(subscribedHandlers.has('inventory.stock.adjusted')).toBe(true);
-    expect(subscribedHandlers.has('india.metal_rate.updated')).toBe(true);
+    expect(subscribedHandlers.has('india.rates.updated')).toBe(true);
     expect(subscribedHandlers.has('storefront.order.completed')).toBe(true);
   });
 
@@ -76,9 +76,9 @@ describe('StorefrontEventHandler', () => {
     );
   });
 
-  it('handles india.metal_rate.updated by invalidating rate cache', async () => {
+  it('handles india.rates.updated by invalidating rate cache', async () => {
     const event = {
-      type: 'india.metal_rate.updated',
+      type: 'india.rates.updated',
       tenantId: TEST_TENANT_ID,
       userId: TEST_USER_ID,
       payload: {
@@ -88,7 +88,7 @@ describe('StorefrontEventHandler', () => {
       },
     };
 
-    await subscribedHandlers.get('india.metal_rate.updated')!(event);
+    await subscribedHandlers.get('india.rates.updated')!(event);
 
     expect(mockPricingService.invalidateRateCache).toHaveBeenCalledWith(TEST_TENANT_ID);
   });

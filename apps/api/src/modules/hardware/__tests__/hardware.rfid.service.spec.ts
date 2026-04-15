@@ -15,10 +15,12 @@ function extendPrisma(base: ReturnType<typeof createMockPrismaService>) {
 describe('HardwareRfidService (Unit)', () => {
   let service: HardwareRfidService;
   let mockPrisma: ReturnType<typeof extendPrisma>;
+  let mockEventBus: { publish: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     mockPrisma = extendPrisma(createMockPrismaService());
-    service = new HardwareRfidService(mockPrisma as any);
+    mockEventBus = { publish: vi.fn().mockResolvedValue(undefined) };
+    service = new HardwareRfidService(mockPrisma as any, mockEventBus as any);
   });
 
   describe('lookupTag', () => {
