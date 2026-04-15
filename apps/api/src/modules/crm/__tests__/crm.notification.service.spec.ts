@@ -12,7 +12,10 @@ describe('CrmNotificationService', () => {
     resetMocks(prisma);
     eventBus = createMockEventBusService();
     ['notificationTemplate','notificationLog','customerOccasion'].forEach(m => { (prisma as any)[m] = { findFirst: vi.fn(), findFirstOrThrow: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), count: vi.fn() }; });
-    service = new CrmNotificationService(prisma as never, eventBus as never);
+    const whatsapp = { sendTextMessage: vi.fn() } as any;
+    const emailService = { sendEmail: vi.fn().mockResolvedValue({ success: true, externalId: 'em-1', statusCode: 202 }) } as any;
+    const smsService = { sendSms: vi.fn().mockResolvedValue({ success: true, provider: 'MSG91', externalId: 'sm-1', statusCode: 200 }) } as any;
+    service = new CrmNotificationService(prisma as never, eventBus as never, whatsapp, emailService, smsService);
   });
 
   describe('createTemplate', () => {

@@ -10,8 +10,15 @@ import { CrmCampaignService } from './crm.campaign.service';
 import { CrmLeadService } from './crm.lead.service';
 import { CrmFeedbackService } from './crm.feedback.service';
 import { VideoConsultationService } from './video-consultation.service';
+import { EmailService } from './email.service';
+import { SmsService } from './sms.service';
+import { WhatsAppService } from './whatsapp.service';
 import { z } from 'zod';
 import {
+  EmailTestInputSchema,
+  EmailSendInputSchema,
+  SmsTestInputSchema,
+  SmsSendInputSchema,
   CustomerSearchInputSchema,
   CustomerListFilterSchema,
   LoyaltyProgramInputSchema,
@@ -44,6 +51,9 @@ export class CrmTrpcRouter {
     private readonly leadService: CrmLeadService,
     private readonly feedbackService: CrmFeedbackService,
     private readonly videoConsultationService: VideoConsultationService,
+    private readonly emailService: EmailService,
+    private readonly smsService: SmsService,
+    private readonly whatsappService: WhatsAppService,
   ) {}
 
   get router() {
@@ -422,6 +432,73 @@ export class CrmTrpcRouter {
           return this.crmService.refreshSegment(ctx.tenantId, input.id);
         }),
 
+      // ─── Email gateway ──────────────────────────────────────
+      email: this.trpc.router({
+        test: authed
+          .input(EmailTestInputSchema)
+          .mutation(async ({ ctx, input }) => {
+            return this.emailService.sendEmail(ctx.tenantId, {
+              to: input.to,
+              subject: 'CaratFlow email gateway test',
+              html: '<p>This is a test email from CaratFlow.</p>',
+              text: 'This is a test email from CaratFlow.',
+            });
+          }),
+        send: authed
+          .input(EmailSendInputSchema)
+          .mutation(async ({ ctx, input }) => {
+            const prisma = (this.crmService as unknown as {
+              prisma: { customer: { findFirst: (args: unknown) => Promise<{ email: string | null } | null> } };
+            }).prisma;
+            const customer = await prisma.customer.findFirst({
+              where: { id: input.customerId, tenantId: ctx.tenantId },
+              select: { email: true },
+            });
+            if (!customer?.email) {
+              throw new Error(`Customer ${input.customerId} has no email`);
+            }
+            return this.emailService.sendEmail(ctx.tenantId, {
+              to: customer.email,
+              subject: input.subject,
+              html: input.html,
+              text: input.text,
+              cc: input.cc,
+              bcc: input.bcc,
+              replyTo: input.replyTo,
+            });
+          }),
+      }),
+
+      // ─── SMS gateway ────────────────────────────────────────
+      sms: this.trpc.router({
+        test: authed
+          .input(SmsTestInputSchema)
+          .mutation(async ({ ctx, input }) => {
+            return this.smsService.sendSms(ctx.tenantId, {
+              to: input.to,
+              body: 'CaratFlow SMS gateway test',
+            });
+          }),
+        send: authed
+          .input(SmsSendInputSchema)
+          .mutation(async ({ ctx, input }) => {
+            const prisma = (this.crmService as unknown as {
+              prisma: { customer: { findFirst: (args: unknown) => Promise<{ phone: string | null } | null> } };
+            }).prisma;
+            const customer = await prisma.customer.findFirst({
+              where: { id: input.customerId, tenantId: ctx.tenantId },
+              select: { phone: true },
+            } as unknown);
+            if (!customer?.phone) {
+              throw new Error(`Customer ${input.customerId} has no phone`);
+            }
+            return this.smsService.sendSms(ctx.tenantId, {
+              to: customer.phone,
+              body: input.body,
+            });
+          }),
+      }),
+
       // ─── Video Consultation (Live Shopping) ─────────────────
       videoConsultation: this.trpc.router({
         request: authed
@@ -479,6 +556,77 @@ export class CrmTrpcRouter {
           .input(z.object({ id: z.string().uuid() }))
           .mutation(async ({ ctx, input }) => {
             return this.videoConsultationService.markNoShow(ctx.tenantId, input.id);
+          }),
+      }),
+
+      // ─── WhatsApp Business Cloud API ───────────────────────
+      whatsapp: this.trpc.router({
+        testConnection: authed
+          .input(
+            z.object({
+              to: z
+                .string()
+                .regex(/^\+?[1-9]\d{7,14}$/, 'Must be a valid E.164 phone number'),
+            }),
+          )
+          .mutation(async ({ ctx, input }) => {
+            const result = await this.whatsappService.sendTextMessage(
+              ctx.tenantId,
+              input.to,
+              'CaratFlow test message - WhatsApp integration is working.',
+            );
+            return { success: true, messageId: result.messageId, waId: result.waId };
+          }),
+
+        sendTemplate: authed
+          .input(
+            z.object({
+              customerId: z.string().uuid(),
+              templateName: z.string().min(1).max(512),
+              languageCode: z.string().min(2).max(10),
+              params: z.array(z.string()).default([]),
+            }),
+          )
+          .mutation(async ({ ctx, input }) => {
+            const prisma = (
+              this.crmService as unknown as {
+                prisma: { customer: { findFirst: (args: unknown) => Promise<{ phone: string | null } | null> } };
+              }
+            ).prisma;
+            const customer = await prisma.customer.findFirst({
+              where: { id: input.customerId, tenantId: ctx.tenantId },
+              select: { phone: true },
+            });
+
+            if (!customer?.phone) {
+              throw new Error('Customer has no phone number');
+            }
+            const components =
+              input.params.length > 0
+                ? [
+                    {
+                      type: 'body' as const,
+                      parameters: input.params.map((p) => ({
+                        type: 'text' as const,
+                        text: p,
+                      })),
+                    },
+                  ]
+                : [];
+            const result = await this.whatsappService.sendTemplateMessage(
+              ctx.tenantId,
+              customer.phone,
+              input.templateName,
+              input.languageCode,
+              components,
+            );
+            return { success: true, messageId: result.messageId };
+          }),
+
+        getMessageStatus: authed
+          .input(z.object({ externalId: z.string().min(1) }))
+          .query(async ({ ctx, input }) => {
+            return this.whatsappService.getMessageStatus(ctx.tenantId, input.externalId);
           }),
       }),
     });

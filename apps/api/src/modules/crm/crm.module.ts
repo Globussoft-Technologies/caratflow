@@ -11,9 +11,13 @@ import { CrmFeedbackService } from './crm.feedback.service';
 import { VideoConsultationService } from './video-consultation.service';
 import { CrmTrpcRouter } from './crm.trpc';
 import { CrmEventHandler } from './crm.event-handler';
+import { EmailService } from './email.service';
+import { SmsService } from './sms.service';
+import { WhatsAppService } from './whatsapp.service';
+import { WhatsAppWebhookController } from './whatsapp.webhook.controller';
 
 @Module({
-  controllers: [],
+  controllers: [WhatsAppWebhookController],
   providers: [
     CrmService,
     CrmLoyaltyService,
@@ -24,6 +28,9 @@ import { CrmEventHandler } from './crm.event-handler';
     VideoConsultationService,
     CrmTrpcRouter,
     CrmEventHandler,
+    EmailService,
+    SmsService,
+    WhatsAppService,
   ],
   exports: [
     CrmService,
@@ -34,6 +41,9 @@ import { CrmEventHandler } from './crm.event-handler';
     CrmFeedbackService,
     VideoConsultationService,
     CrmTrpcRouter,
+    EmailService,
+    SmsService,
+    WhatsAppService,
   ],
 })
 export class CrmModule {}

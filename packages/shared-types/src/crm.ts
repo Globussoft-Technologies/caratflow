@@ -215,6 +215,35 @@ export const NotificationLogResponseSchema = z.object({
 });
 export type NotificationLogResponse = z.infer<typeof NotificationLogResponseSchema>;
 
+// ─── Email / SMS direct send (gateway smoke + manual send) ────
+
+export const EmailTestInputSchema = z.object({
+  to: z.string().email(),
+});
+export type EmailTestInput = z.infer<typeof EmailTestInputSchema>;
+
+export const EmailSendInputSchema = z.object({
+  customerId: z.string().uuid(),
+  subject: z.string().min(1).max(500),
+  html: z.string().min(1),
+  text: z.string().optional(),
+  cc: z.array(z.string().email()).optional(),
+  bcc: z.array(z.string().email()).optional(),
+  replyTo: z.string().email().optional(),
+});
+export type EmailSendInput = z.infer<typeof EmailSendInputSchema>;
+
+export const SmsTestInputSchema = z.object({
+  to: z.string().regex(/^\+[1-9]\d{6,14}$/u, 'Must be E.164 format'),
+});
+export type SmsTestInput = z.infer<typeof SmsTestInputSchema>;
+
+export const SmsSendInputSchema = z.object({
+  customerId: z.string().uuid(),
+  body: z.string().min(1).max(1600),
+});
+export type SmsSendInput = z.infer<typeof SmsSendInputSchema>;
+
 // ─── Campaign ──────────────────────────────────────────────────
 
 export const AudienceFilterCriteriaSchema = z.object({

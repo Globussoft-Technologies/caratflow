@@ -39,6 +39,9 @@ describe('CrmTrpcRouter (videoConsultation sub-router)', () => {
     leadService,
     feedbackService,
     videoConsultationService as never,
+    {} as never, // EmailService
+    {} as never, // SmsService
+    {} as never, // WhatsAppService
   );
   const caller = (routerInstance.router as never as ReturnType<typeof trpc.router>).createCaller(ctx);
 

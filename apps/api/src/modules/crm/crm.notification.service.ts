@@ -12,6 +12,9 @@ import type {
   SendNotificationInput,
 } from '@caratflow/shared-types';
 import { v4 as uuidv4 } from 'uuid';
+import { WhatsAppService, WhatsAppNotConfiguredError } from './whatsapp.service';
+import { EmailService } from './email.service';
+import { SmsService } from './sms.service';
 
 @Injectable()
 export class CrmNotificationService extends TenantAwareService {
@@ -20,6 +23,9 @@ export class CrmNotificationService extends TenantAwareService {
   constructor(
     prisma: PrismaService,
     private readonly eventBus: EventBusService,
+    private readonly whatsapp: WhatsAppService,
+    private readonly emailService: EmailService,
+    private readonly smsService: SmsService,
   ) {
     super(prisma);
   }
@@ -117,20 +123,28 @@ export class CrmNotificationService extends TenantAwareService {
       },
     });
 
-    // Send via provider (placeholder -- integrate Twilio, MSG91, SendGrid)
+    // Send via provider
     try {
       await this.dispatchToProvider(input.channel, {
         customerId: input.customerId,
         subject,
         body,
         tenantId,
+        logId: log.id,
       });
 
-      // Update status to SENT
-      await this.prisma.notificationLog.update({
+      // WhatsApp branch updates the log itself (with externalId). For
+      // SMS/EMAIL stubs, we still mark SENT here. Fetch the log again to
+      // avoid clobbering updates made by the provider branch.
+      const current = await this.prisma.notificationLog.findUnique({
         where: { id: log.id },
-        data: { status: 'SENT', sentAt: new Date() },
       });
+      if (current && current.status === 'QUEUED') {
+        await this.prisma.notificationLog.update({
+          where: { id: log.id },
+          data: { status: 'SENT', sentAt: new Date() },
+        });
+      }
 
       // Emit event
       await this.eventBus.publish({
@@ -289,17 +303,101 @@ export class CrmNotificationService extends TenantAwareService {
     });
   }
 
-  /** Placeholder for actual provider dispatch */
+  /** Dispatch notification to the correct provider based on channel. */
   private async dispatchToProvider(
     channel: string,
-    _payload: { customerId: string; subject?: string; body: string; tenantId: string },
+    payload: {
+      customerId: string;
+      subject?: string;
+      body: string;
+      tenantId: string;
+      logId: string;
+    },
   ): Promise<void> {
-    // Provider integration point:
-    // - WHATSAPP: Twilio WhatsApp API / WhatsApp Business API
-    // - SMS: Twilio / MSG91
-    // - EMAIL: SendGrid / AWS SES
-    this.logger.log(`[${channel}] Dispatching notification (provider integration pending)`);
-    // In production, this would call the actual provider SDK
-    // and throw on failure.
+    switch (channel) {
+      case 'WHATSAPP': {
+        // Resolve customer phone
+        const customer = await this.prisma.customer.findFirst({
+          where: { id: payload.customerId, tenantId: payload.tenantId },
+          select: { phone: true },
+        });
+        if (!customer?.phone) {
+          throw new Error(`Customer ${payload.customerId} has no phone for WhatsApp`);
+        }
+        try {
+          await this.whatsapp.sendTextMessage(
+            payload.tenantId,
+            customer.phone,
+            payload.body,
+            payload.logId,
+          );
+        } catch (err) {
+          if (err instanceof WhatsAppNotConfiguredError) {
+            this.logger.error(
+              `WhatsApp not configured for tenant ${payload.tenantId}`,
+            );
+          }
+          throw err;
+        }
+        return;
+      }
+      case 'SMS': {
+        const customer = await this.prisma.customer.findFirst({
+          where: { id: payload.customerId, tenantId: payload.tenantId },
+          select: { phone: true },
+        });
+        if (!customer?.phone) {
+          throw new Error(`Customer ${payload.customerId} has no phone for SMS`);
+        }
+        const result = await this.smsService.sendSms(payload.tenantId, {
+          to: customer.phone,
+          body: payload.body,
+        });
+        await this.prisma.notificationLog.update({
+          where: { id: payload.logId },
+          data: {
+            status: 'SENT',
+            sentAt: new Date(),
+            metadata: {
+              externalId: result.externalId,
+              provider: result.provider,
+            } as Prisma.InputJsonValue,
+          },
+        });
+        return;
+      }
+      case 'EMAIL': {
+        const customer = await this.prisma.customer.findFirst({
+          where: { id: payload.customerId, tenantId: payload.tenantId },
+          select: { email: true },
+        });
+        if (!customer?.email) {
+          throw new Error(`Customer ${payload.customerId} has no email`);
+        }
+        const result = await this.emailService.sendEmail(payload.tenantId, {
+          to: customer.email,
+          subject: payload.subject ?? '(no subject)',
+          html: payload.body,
+        });
+        await this.prisma.notificationLog.update({
+          where: { id: payload.logId },
+          data: {
+            status: 'SENT',
+            sentAt: new Date(),
+            metadata: {
+              externalId: result.externalId,
+              provider: 'SENDGRID',
+            } as Prisma.InputJsonValue,
+          },
+        });
+        return;
+      }
+      case 'PUSH': {
+        this.logger.log(`[PUSH] Dispatch pending (stub) for log ${payload.logId}`);
+        return;
+      }
+      default:
+        throw new Error(`Unsupported notification channel: ${channel}`);
+    }
   }
 }
