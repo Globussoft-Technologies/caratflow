@@ -549,3 +549,113 @@ export const BudgetInputSchema = z.object({
   totalBudgetPaise: z.number().int().min(0),
 });
 export type BudgetInput = z.infer<typeof BudgetInputSchema>;
+
+// ─── NIC e-Invoice (IRP) Schema 1.1 ───────────────────────────
+// Reference: https://einvoice1.gst.gov.in/Others/EInvPrintFormate
+// Only the fields CaratFlow populates from its own data model are included.
+
+export interface NicTranDtls {
+  TaxSch: 'GST';
+  SupTyp: 'B2B' | 'B2C' | 'SEZWP' | 'SEZWOP' | 'EXPWP' | 'EXPWOP' | 'DEXP';
+  RegRev?: 'Y' | 'N';
+  EcmGstin?: string | null;
+  IgstOnIntra?: 'Y' | 'N';
+}
+
+export interface NicDocDtls {
+  Typ: 'INV' | 'CRN' | 'DBN';
+  No: string;
+  Dt: string; // dd/MM/yyyy
+}
+
+export interface NicPartyDtls {
+  Gstin: string;
+  LglNm: string;
+  TrdNm?: string;
+  Addr1: string;
+  Addr2?: string;
+  Loc: string;
+  Pin: number;
+  Stcd: string; // 2-char state code
+  Ph?: string;
+  Em?: string;
+}
+
+export interface NicItemDtls {
+  SlNo: string;
+  PrdDesc: string;
+  IsServc: 'Y' | 'N';
+  HsnCd: string;
+  Qty: number;
+  Unit: string;
+  UnitPrice: number;
+  TotAmt: number;
+  Discount: number;
+  AssAmt: number;
+  GstRt: number;
+  IgstAmt: number;
+  CgstAmt: number;
+  SgstAmt: number;
+  CesRt?: number;
+  CesAmt?: number;
+  CesNonAdvlAmt?: number;
+  StateCesRt?: number;
+  StateCesAmt?: number;
+  StateCesNonAdvlAmt?: number;
+  OthChrg?: number;
+  TotItemVal: number;
+}
+
+export interface NicValDtls {
+  AssVal: number;
+  CgstVal: number;
+  SgstVal: number;
+  IgstVal: number;
+  CesVal: number;
+  StCesVal: number;
+  Discount: number;
+  OthChrg: number;
+  RndOffAmt: number;
+  TotInvVal: number;
+}
+
+export interface NicInvoicePayload {
+  Version: '1.1';
+  TranDtls: NicTranDtls;
+  DocDtls: NicDocDtls;
+  SellerDtls: NicPartyDtls;
+  BuyerDtls: NicPartyDtls;
+  ItemList: NicItemDtls[];
+  ValDtls: NicValDtls;
+}
+
+export type NicIrnStatus = 'ACT' | 'CNL' | 'DRAFT' | 'ERROR';
+
+export interface NicIrnResponse {
+  irn: string | null;
+  ackNo: string | null;
+  ackDate: string | null;
+  signedInvoice: string | null;
+  signedQrCode: string | null;
+  status: NicIrnStatus;
+  errorCode?: string;
+  errorMessage?: string;
+  rawPayload?: NicInvoicePayload;
+}
+
+export interface NicCancelResponse {
+  irn: string;
+  cancelDate: string;
+  status: 'CNL' | 'ERROR';
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+export interface NicIrnDetails {
+  irn: string;
+  ackNo: string;
+  ackDate: string;
+  status: NicIrnStatus;
+  signedInvoice?: string;
+  signedQrCode?: string;
+}
