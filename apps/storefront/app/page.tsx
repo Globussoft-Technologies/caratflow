@@ -68,29 +68,30 @@ const Mail = (p: IconProps) => (
 import { calculateProductPrice, formatRupees, cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
 
-// ─── Picsum Image Library ────────────────────────────────────
-// Deterministic, always-loads, professional photography for the
-// hackathon demo. Descriptive seeds keep image identity stable.
+// ─── Jewelry Photography Library ─────────────────────────────
+// Real jewelry photos sourced from Loremflickr (free Flickr proxy,
+// tag-matched, deterministic via ?lock). Falls back gracefully if
+// Loremflickr is rate-limited — picsum seeds remain in comments.
 
 const IMG = {
-  hero: "https://picsum.photos/seed/caratflow-hero-luxury/1920/800",
+  hero: "https://loremflickr.com/1920/800/luxury,jewelry,gold?lock=1",
   collections: {
-    bridal: "https://picsum.photos/seed/caratflow-bridal/800/600",
-    daily: "https://picsum.photos/seed/caratflow-daily/800/600",
-    festive: "https://picsum.photos/seed/caratflow-festive/800/600",
+    bridal: "https://loremflickr.com/800/600/bridal,jewelry,indian?lock=2",
+    daily: "https://loremflickr.com/800/600/gold,jewelry,elegant?lock=3",
+    festive: "https://loremflickr.com/800/600/diamond,necklace,luxury?lock=4",
   },
   categories: {
-    rings: "https://picsum.photos/seed/caratflow-cat-rings/600/600",
-    necklaces: "https://picsum.photos/seed/caratflow-cat-necklaces/600/600",
-    earrings: "https://picsum.photos/seed/caratflow-cat-earrings/600/600",
-    bangles: "https://picsum.photos/seed/caratflow-cat-bangles/600/600",
-    pendants: "https://picsum.photos/seed/caratflow-cat-pendants/600/600",
-    chains: "https://picsum.photos/seed/caratflow-cat-chains/600/600",
+    rings: "https://loremflickr.com/600/600/gold,ring,diamond?lock=11",
+    necklaces: "https://loremflickr.com/600/600/gold,necklace?lock=12",
+    earrings: "https://loremflickr.com/600/600/gold,earring?lock=13",
+    bangles: "https://loremflickr.com/600/600/gold,bangle,bracelet?lock=14",
+    pendants: "https://loremflickr.com/600/600/gold,pendant,locket?lock=15",
+    chains: "https://loremflickr.com/600/600/gold,chain,jewelry?lock=16",
   },
   avatars: {
-    a1: "https://picsum.photos/seed/caratflow-avatar-1/100/100",
-    a2: "https://picsum.photos/seed/caratflow-avatar-2/100/100",
-    a3: "https://picsum.photos/seed/caratflow-avatar-3/100/100",
+    a1: "https://loremflickr.com/100/100/portrait,woman,indian?lock=21",
+    a2: "https://loremflickr.com/100/100/portrait,woman,smile?lock=22",
+    a3: "https://loremflickr.com/100/100/portrait,man,professional?lock=23",
   },
 };
 
@@ -105,8 +106,23 @@ const PRODUCT_SLUGS = [
   "pearl-drops",
 ] as const;
 
-const productImg = (slug: string) =>
-  `https://picsum.photos/seed/caratflow-prod-${slug}/600/600`;
+// Map each product to the most visually-fitting jewelry tag.
+const PRODUCT_TAGS: Record<string, string> = {
+  "solitaire-ring": "solitaire,diamond,ring",
+  "kundan-necklace": "kundan,necklace,indian",
+  "temple-bangle": "temple,bangle,gold",
+  "diamond-stud": "diamond,stud,earring",
+  "gold-chain": "gold,chain,jewelry",
+  "ruby-pendant": "ruby,pendant,gemstone",
+  "emerald-ring": "emerald,ring,green",
+  "pearl-drops": "pearl,drop,earring",
+};
+
+const productImg = (slug: string) => {
+  const tags = PRODUCT_TAGS[slug] ?? "gold,jewelry";
+  const lock = 30 + PRODUCT_SLUGS.indexOf(slug as (typeof PRODUCT_SLUGS)[number]);
+  return `https://loremflickr.com/600/600/${tags}?lock=${lock}`;
+};
 
 // ─── Featured Collections ────────────────────────────────────
 const COLLECTIONS = [
