@@ -28,6 +28,7 @@ import { B2cFeaturesModule } from '../modules/b2c-features/b2c-features.module';
 import { ExportModule } from '../modules/export/export.module';
 import { HardwareModule } from '../modules/hardware/hardware.module';
 import { IndiaModule } from '../modules/india/india.module';
+import { PayrollModule } from '../modules/payroll/payroll.module';
 
 @Global()
 @Module({
@@ -58,6 +59,7 @@ import { IndiaModule } from '../modules/india/india.module';
     forwardRef(() => ExportModule),
     forwardRef(() => HardwareModule),
     forwardRef(() => IndiaModule),
+    forwardRef(() => PayrollModule),
   ],
   controllers: [TrpcController],
   providers: [TrpcService, TrpcRouter],
