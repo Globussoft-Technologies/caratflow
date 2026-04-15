@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>{{documentType}} {{documentNumber}}</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #222; margin: 24px; }
+  h1 { text-align: center; font-size: 18px; text-transform: uppercase; margin: 0 0 4px 0; }
+  h2 { font-size: 12px; margin: 12px 0 4px 0; border-bottom: 1px solid #888; padding-bottom: 2px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
+  th { background: #eee; }
+  .muted { color: #666; font-size: 10px; }
+  .sign { margin-top: 36px; display: flex; justify-content: space-between; }
+  .sign .box { width: 40%; border-top: 1px solid #333; padding-top: 4px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>{{documentType}}</h1>
+  <div style="text-align:center" class="muted">Document No: {{documentNumber}} &nbsp;|&nbsp; Issued: {{issuedDate}}</div>
+
+  <div class="grid">
+    <div>
+      <h2>Exporter</h2>
+      <div><strong>{{exporterName}}</strong></div>
+      <div>{{exporterAddress}}</div>
+      <div>IEC: {{iecCode}}</div>
+      <div>GSTIN: {{exporterGstin}}</div>
+    </div>
+    <div>
+      <h2>Consignee</h2>
+      <div><strong>{{consigneeName}}</strong></div>
+      <div>{{consigneeAddress}}</div>
+      <div>Country: {{destinationCountry}}</div>
+    </div>
+  </div>
+
+  <h2>Shipment Details</h2>
+  <table>
+    <tr><th>Order No</th><td>{{orderNumber}}</td><th>Currency</th><td>{{currency}}</td></tr>
+    <tr><th>Port of Loading</th><td>{{portOfLoading}}</td><th>Port of Discharge</th><td>{{portOfDischarge}}</td></tr>
+    <tr><th>Vessel / Flight</th><td>{{vessel}}</td><th>Incoterm</th><td>{{incoterm}}</td></tr>
+  </table>
+
+  <h2>Packages</h2>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Description</th><th>HS Code</th><th>Qty</th><th>Gross Wt (kg)</th><th>Net Wt (kg)</th><th>Value</th></tr>
+    </thead>
+    <tbody>
+      {{lineItemsRows}}
+    </tbody>
+  </table>
+
+  <h2>Declaration</h2>
+  <div class="muted">{{declaration}}</div>
+
+  <div class="sign">
+    <div class="box">Exporter Signature</div>
+    <div class="box">Authorized Dealer</div>
+  </div>
+</body>
+</html>

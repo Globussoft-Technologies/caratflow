@@ -5,10 +5,11 @@
 // printer is the responsibility of a local print agent that
 // picks up the raw command string returned by these endpoints.
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional, BadRequestException } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EventBusService } from '../../event-bus/event-bus.service';
+import { PlatformPdfService } from '../platform/platform.pdf.service';
 import type {
   CreateLabelTemplate,
   UpdateLabelTemplate,
@@ -37,8 +38,40 @@ export class HardwarePrinterService extends TenantAwareService {
   constructor(
     prisma: PrismaService,
     private readonly eventBus: EventBusService,
+    @Optional() private readonly pdfService?: PlatformPdfService,
   ) {
     super(prisma);
+  }
+
+  /**
+   * Render a jewelry tag label as a PDF buffer (alternate to ZPL/TSPL).
+   * Useful when the connected printer is a regular desktop PDF printer
+   * rather than a Zebra/TSC label printer.
+   */
+  async renderLabelPdf(
+    _tenantId: string,
+    data: {
+      sku: string;
+      productName?: string;
+      purity?: string;
+      weight?: string;
+      price?: string;
+      currency?: string;
+      huid?: string;
+    },
+  ): Promise<Buffer> {
+    if (!this.pdfService) {
+      throw new BadRequestException('PDF service not available');
+    }
+    return this.pdfService.renderTemplate('label', {
+      sku: data.sku,
+      productName: data.productName ?? '',
+      purity: data.purity ?? '',
+      weight: data.weight ?? '',
+      price: data.price ?? '',
+      currency: data.currency ?? 'INR',
+      huid: data.huid ?? '',
+    });
   }
 
   // ─── Template Management ────────────────────────────────────

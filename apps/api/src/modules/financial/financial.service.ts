@@ -2,9 +2,10 @@
 // Core accounting operations: journal entries, invoices, payments.
 // All money values in paise (BigInt). Double-entry must always balance.
 
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
+import { PlatformPdfService } from '../platform/platform.pdf.service';
 import { parsePagination, buildPaginatedResult } from '../../common/pagination.helper';
 import type { Prisma } from '@caratflow/db';
 import type {
@@ -20,8 +21,83 @@ import type {
 
 @Injectable()
 export class FinancialService extends TenantAwareService {
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    @Optional() private readonly pdfService?: PlatformPdfService,
+  ) {
     super(prisma);
+  }
+
+  /**
+   * Render an invoice as a PDF buffer. Loads the invoice with line
+   * items + customer, builds the template data, delegates to the
+   * global PlatformPdfService.
+   */
+  async generateInvoicePdf(tenantId: string, invoiceId: string): Promise<Buffer> {
+    if (!this.pdfService) {
+      throw new BadRequestException('PDF service not available');
+    }
+    const invoice = await this.getInvoice(tenantId, invoiceId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const inv = invoice as any;
+    const lineItems: ReadonlyArray<Record<string, unknown>> = (inv.lineItems ?? []).map(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (li: any) => ({
+        description: li.description ?? li.product?.name ?? '',
+        hsn: li.hsnCode ?? '7113',
+        huid: li.huid ?? '',
+        purity: li.purity ?? '',
+        weight: li.weightMg ? (Number(li.weightMg) / 1000).toFixed(3) : '',
+        qty: li.quantity ?? 1,
+        rate: li.rate ?? li.unitPrice ?? '',
+        amount: li.amount ?? li.lineTotal ?? '',
+      }),
+    );
+
+    const rows = this.pdfService.buildTableRows(lineItems, [
+      'description',
+      'hsn',
+      'huid',
+      'purity',
+      'weight',
+      'qty',
+      'rate',
+      'amount',
+    ]);
+
+    return this.pdfService.renderTemplate('invoice', {
+      tenantName: inv.tenantName ?? 'CaratFlow Jewellery',
+      tenantAddress: inv.tenantAddress ?? '',
+      tenantGstin: inv.tenantGstin ?? '',
+      tenantPan: inv.tenantPan ?? '',
+      tenantContact: inv.tenantContact ?? '',
+      invoiceNumber: inv.invoiceNumber,
+      invoiceDate: inv.invoiceDate
+        ? new Date(inv.invoiceDate).toISOString().slice(0, 10)
+        : '',
+      dueDate: inv.dueDate ? new Date(inv.dueDate).toISOString().slice(0, 10) : '',
+      invoiceType: inv.invoiceType,
+      status: inv.status,
+      customerName: inv.customer?.firstName
+        ? `${inv.customer.firstName} ${inv.customer.lastName ?? ''}`
+        : inv.customer?.name ?? '',
+      customerAddress: inv.customer?.address ?? '',
+      customerGstin: inv.customer?.gstin ?? '',
+      customerState: inv.customer?.state ?? '',
+      lineItemsRows: rows,
+      subtotal: inv.subtotalPaise ? (Number(inv.subtotalPaise) / 100).toFixed(2) : '0.00',
+      cgst: inv.cgstPaise ? (Number(inv.cgstPaise) / 100).toFixed(2) : '0.00',
+      sgst: inv.sgstPaise ? (Number(inv.sgstPaise) / 100).toFixed(2) : '0.00',
+      igst: inv.igstPaise ? (Number(inv.igstPaise) / 100).toFixed(2) : '0.00',
+      makingCharges: inv.makingChargesPaise
+        ? (Number(inv.makingChargesPaise) / 100).toFixed(2)
+        : '0.00',
+      discount: inv.discountPaise ? (Number(inv.discountPaise) / 100).toFixed(2) : '0.00',
+      total: inv.totalPaise ? (Number(inv.totalPaise) / 100).toFixed(2) : '0.00',
+      currency: inv.currency ?? 'INR',
+      paymentTerms: inv.paymentTerms ?? 'Net 30',
+      generatedAt: new Date().toISOString(),
+    });
   }
 
   // ─── Number Generation ────────────────────────────────────────

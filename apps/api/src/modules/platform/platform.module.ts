@@ -15,6 +15,7 @@ import { PlatformFileService } from './platform.file.service';
 import { PlatformI18nService } from './platform.i18n.service';
 import { PlatformTrpc } from './platform.trpc';
 import { PlatformEventHandler } from './platform.event-handler';
+import { RealtimeGateway } from './realtime.gateway';
 
 @Module({
   providers: [
@@ -30,6 +31,7 @@ import { PlatformEventHandler } from './platform.event-handler';
     PlatformI18nService,
     PlatformTrpc,
     PlatformEventHandler,
+    RealtimeGateway,
   ],
   exports: [
     PlatformUserService,
@@ -41,6 +43,7 @@ import { PlatformEventHandler } from './platform.event-handler';
     PlatformFileService,
     PlatformI18nService,
     PlatformTrpc,
+    RealtimeGateway,
   ],
 })
 export class PlatformModule {}

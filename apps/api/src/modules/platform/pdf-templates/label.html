@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Label {{sku}}</title>
+<style>
+  @page { size: 50mm 30mm; margin: 1mm; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 8px; margin: 0; padding: 1mm; width: 48mm; }
+  .sku { font-weight: bold; font-size: 10px; }
+  .price { font-weight: bold; font-size: 11px; text-align: right; }
+  .row { display: flex; justify-content: space-between; margin: 1px 0; }
+  .barcode { font-family: 'Libre Barcode 39', monospace; font-size: 18px; text-align: center; letter-spacing: 1px; border: 1px dashed #999; padding: 1px; }
+  .huid { font-size: 7px; color: #444; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <span class="sku">{{sku}}</span>
+    <span class="price">{{price}} {{currency}}</span>
+  </div>
+  <div>{{productName}}</div>
+  <div class="row">
+    <span>{{purity}}</span>
+    <span>{{weight}}</span>
+  </div>
+  <div class="huid">HUID: {{huid}}</div>
+  <div class="barcode">*{{sku}}*</div>
+</body>
+</html>

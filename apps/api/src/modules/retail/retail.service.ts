@@ -1,7 +1,8 @@
 // ─── Retail Sale Service ───────────────────────────────────────
 // Core POS sale operations: create, list, get, void.
 
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
+import { PlatformPdfService } from '../platform/platform.pdf.service';
 import type { SaleInput, SaleResponse, SaleListFilter } from '@caratflow/shared-types';
 import type { PaginatedResult, Pagination } from '@caratflow/shared-types';
 import { SaleStatus, SalePaymentStatus } from '@caratflow/shared-types';
@@ -19,8 +20,68 @@ export class RetailService extends TenantAwareService {
     private readonly eventBus: EventBusService,
     private readonly pricingService: RetailPricingService,
     private readonly ratesService: IndiaRatesService,
+    @Optional() private readonly pdfService?: PlatformPdfService,
   ) {
     super(prisma);
+  }
+
+  /**
+   * Render a POS sale receipt as an 80mm thermal-style PDF buffer.
+   */
+  async generateSaleReceipt(tenantId: string, saleId: string): Promise<Buffer> {
+    if (!this.pdfService) {
+      throw new BadRequestException('PDF service not available');
+    }
+    const sale = await this.getSale(tenantId, saleId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const s = sale as any;
+
+    const items: ReadonlyArray<Record<string, unknown>> = (s.lineItems ?? []).map(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (li: any) => ({
+        item: li.description ?? li.productName ?? li.productId ?? '',
+        qty: li.quantity ?? 1,
+        amt: li.totalPaise
+          ? (Number(li.totalPaise) / 100).toFixed(2)
+          : li.amount ?? '',
+      }),
+    );
+
+    const rowsHtml = items
+      .map(
+        (it) =>
+          `<tr><td>${this.pdfService!.escapeHtml(String(it.item))}</td>` +
+          `<td class="right">${it.qty}</td>` +
+          `<td class="right">${it.amt}</td></tr>`,
+      )
+      .join('\n');
+
+    const firstPayment = s.payments?.[0];
+    return this.pdfService.renderTemplate('sale-receipt', {
+      tenantName: s.tenantName ?? 'CaratFlow Jewellery',
+      tenantAddress: s.tenantAddress ?? '',
+      tenantGstin: s.tenantGstin ?? '',
+      tenantContact: s.tenantContact ?? '',
+      saleNumber: s.saleNumber,
+      saleDate: s.createdAt
+        ? new Date(s.createdAt).toISOString().replace('T', ' ').slice(0, 16)
+        : '',
+      cashier: s.userId ?? '',
+      customerName: s.customerName ?? '',
+      locationName: s.locationName ?? '',
+      lineItemsRows: rowsHtml,
+      subtotal: s.subtotalPaise ? (Number(s.subtotalPaise) / 100).toFixed(2) : '0.00',
+      gst: s.taxPaise ? (Number(s.taxPaise) / 100).toFixed(2) : '0.00',
+      discount: s.discountPaise ? (Number(s.discountPaise) / 100).toFixed(2) : '0.00',
+      total: s.totalPaise ? (Number(s.totalPaise) / 100).toFixed(2) : '0.00',
+      currency: s.currency ?? 'INR',
+      paymentMethod: firstPayment?.method ?? '',
+      paid: firstPayment?.amountPaise
+        ? (Number(firstPayment.amountPaise) / 100).toFixed(2)
+        : '0.00',
+      change: s.changePaise ? (Number(s.changePaise) / 100).toFixed(2) : '0.00',
+      generatedAt: new Date().toISOString(),
+    });
   }
 
   /**

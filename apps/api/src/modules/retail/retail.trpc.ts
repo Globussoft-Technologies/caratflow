@@ -61,6 +61,21 @@ export class RetailTrpcRouter {
           this.retailService.getSale(ctx.tenantId, input.saleId),
         ),
 
+      downloadReceipt: this.trpc.authedProcedure
+        .input(z.object({ saleId: z.string().uuid() }))
+        .query(async ({ ctx, input }) => {
+          const buf = await this.retailService.generateSaleReceipt(
+            ctx.tenantId,
+            input.saleId,
+          );
+          return {
+            filename: `receipt-${input.saleId}.pdf`,
+            mimeType: 'application/pdf',
+            base64: buf.toString('base64'),
+            size: buf.length,
+          };
+        }),
+
       listSales: this.trpc.authedProcedure
         .input(z.object({ filters: SaleListFilterSchema.optional(), pagination: PaginationSchema.optional() }))
         .query(({ ctx, input }) =>

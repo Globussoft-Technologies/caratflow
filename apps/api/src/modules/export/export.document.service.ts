@@ -3,7 +3,8 @@
 // bill of lading, certificate of origin, ARE-1/ARE-3 forms, GR form.
 // Track document status.
 
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
+import { PlatformPdfService } from '../platform/platform.pdf.service';
 import type {
   ShippingDocumentInput,
   ShippingDocumentResponse,
@@ -23,8 +24,45 @@ export class ExportDocumentService extends TenantAwareService {
   constructor(
     prisma: PrismaService,
     private readonly eventBus: EventBusService,
+    @Optional() private readonly pdfService?: PlatformPdfService,
   ) {
     super(prisma);
+  }
+
+  /**
+   * Render an existing shipping document as a PDF using the generic
+   * export-doc template. Returns the raw PDF buffer.
+   */
+  async renderDocumentPdf(tenantId: string, docId: string): Promise<Buffer> {
+    if (!this.pdfService) {
+      throw new BadRequestException('PDF service not available');
+    }
+    const doc = await this.getDocument(tenantId, docId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const d = doc as any;
+    return this.pdfService.renderTemplate('export-doc', {
+      documentType: d.documentType ?? 'EXPORT DOCUMENT',
+      documentNumber: d.documentNumber ?? d.id,
+      issuedDate: d.issuedDate
+        ? new Date(d.issuedDate).toISOString().slice(0, 10)
+        : '',
+      exporterName: d.exporterName ?? 'CaratFlow Tenant',
+      exporterAddress: d.exporterAddress ?? '',
+      exporterGstin: d.exporterGstin ?? '',
+      iecCode: d.iecCode ?? '',
+      consigneeName: d.consigneeName ?? '',
+      consigneeAddress: d.consigneeAddress ?? '',
+      destinationCountry: d.destinationCountry ?? '',
+      orderNumber: d.exportOrder?.orderNumber ?? '',
+      currency: d.currency ?? 'USD',
+      portOfLoading: d.portOfLoading ?? '',
+      portOfDischarge: d.portOfDischarge ?? '',
+      vessel: d.vessel ?? '',
+      incoterm: d.incoterm ?? '',
+      declaration:
+        d.notes ?? 'We declare that the information furnished is true and correct.',
+      lineItemsRows: '',
+    });
   }
 
   // ─── Create Shipping Document ───────────────────────────────────

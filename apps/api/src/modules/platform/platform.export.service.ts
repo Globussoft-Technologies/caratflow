@@ -2,12 +2,14 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Optional,
 } from '@nestjs/common';
 import { v4 as uuid } from 'uuid';
 import { TenantAwareService } from '../../common/base.service';
 import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import type { AuditMeta } from '@caratflow/shared-types';
+import { PlatformPdfService } from './platform.pdf.service';
 
 type ExportEntityType = 'customer' | 'product' | 'supplier' | 'invoice' | 'stock';
 type ExportFormatType = 'CSV' | 'XLSX' | 'PDF';
@@ -28,7 +30,10 @@ interface CreateExportInput {
 
 @Injectable()
 export class PlatformExportService extends TenantAwareService {
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    @Optional() private readonly pdfService?: PlatformPdfService,
+  ) {
     super(prisma);
   }
 
@@ -70,23 +75,51 @@ export class PlatformExportService extends TenantAwareService {
       const data = await this.fetchEntityData(tenantId, input.entityType, input.filters);
 
       // Generate file content based on format
-      let fileContent: string;
+      let fileContent: string | Buffer;
       let fileName: string;
+      let fileSize = 0;
 
       switch (input.format) {
         case 'CSV':
           fileContent = this.toCsv(data);
           fileName = `${input.entityType}_export_${Date.now()}.csv`;
+          fileSize = Buffer.byteLength(fileContent, 'utf-8');
           break;
         case 'XLSX':
           // In production, use a library like exceljs
           fileContent = this.toCsv(data); // Fallback to CSV for now
           fileName = `${input.entityType}_export_${Date.now()}.xlsx`;
+          fileSize = Buffer.byteLength(fileContent, 'utf-8');
           break;
         case 'PDF':
-          // In production, use pdfkit or puppeteer
-          fileContent = JSON.stringify(data, null, 2);
+          if (!this.pdfService) {
+            throw new BadRequestException(
+              'PDF export not available: PlatformPdfService not wired',
+            );
+          }
+          fileContent = await this.pdfService.renderTemplate('export-doc', {
+            documentType: `${input.entityType.toUpperCase()} EXPORT`,
+            documentNumber: `EXP-${Date.now()}`,
+            issuedDate: new Date().toISOString().slice(0, 10),
+            exporterName: 'CaratFlow Tenant',
+            exporterAddress: '',
+            consigneeName: '',
+            consigneeAddress: '',
+            destinationCountry: '',
+            orderNumber: input.entityType,
+            currency: 'INR',
+            portOfLoading: '',
+            portOfDischarge: '',
+            vessel: '',
+            incoterm: '',
+            declaration: `Data export of ${data.length} ${input.entityType} records.`,
+            lineItemsRows: this.pdfService.buildTableRows(
+              data.slice(0, 100),
+              Object.keys(data[0] ?? {}).slice(0, 6),
+            ),
+          });
           fileName = `${input.entityType}_export_${Date.now()}.pdf`;
+          fileSize = fileContent.length;
           break;
         default:
           throw new BadRequestException(`Unsupported format: ${input.format}`);
@@ -94,7 +127,9 @@ export class PlatformExportService extends TenantAwareService {
 
       // In production, upload to S3/MinIO and store the URL
       const fileUrl = `/exports/${fileName}`;
-      console.warn(`[Export] Generated file: ${fileName} with ${data.length} rows`);
+      console.warn(
+        `[Export] Generated file: ${fileName} with ${data.length} rows (${fileSize} bytes)`,
+      );
 
       await this.prisma.exportJob.update({
         where: { id: jobId },

@@ -8,9 +8,11 @@ import { FinancialReportingService } from './financial.reporting.service';
 import { FinancialBankService } from './financial.bank.service';
 import { FinancialTrpcRouter } from './financial.trpc';
 import { FinancialEventHandler } from './financial.event-handler';
+import { EInvoiceService } from './einvoice.service';
+import { FinancialController } from './financial.controller';
 
 @Module({
-  controllers: [],
+  controllers: [FinancialController],
   providers: [
     FinancialService,
     FinancialTaxService,
@@ -18,6 +20,7 @@ import { FinancialEventHandler } from './financial.event-handler';
     FinancialBankService,
     FinancialTrpcRouter,
     FinancialEventHandler,
+    EInvoiceService,
   ],
   exports: [
     FinancialService,
@@ -25,6 +28,7 @@ import { FinancialEventHandler } from './financial.event-handler';
     FinancialReportingService,
     FinancialBankService,
     FinancialTrpcRouter,
+    EInvoiceService,
   ],
 })
 export class FinancialModule {}

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Tax Invoice {{invoiceNumber}}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #222; margin: 24px; }
+  h1 { font-size: 18px; margin: 0 0 4px 0; }
+  h2 { font-size: 13px; margin: 12px 0 4px 0; border-bottom: 1px solid #888; padding-bottom: 2px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #333; padding-bottom: 8px; }
+  .header .right { text-align: right; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; vertical-align: top; }
+  th { background: #eee; }
+  .totals { width: 50%; margin-left: auto; margin-top: 8px; }
+  .totals td { border: none; padding: 2px 6px; }
+  .totals tr.grand td { border-top: 2px solid #333; font-weight: bold; font-size: 13px; }
+  .muted { color: #666; font-size: 10px; }
+  .footer { margin-top: 24px; border-top: 1px solid #999; padding-top: 6px; font-size: 10px; color: #555; }
+  .pill { display: inline-block; padding: 1px 6px; border-radius: 8px; background: #eef; font-size: 10px; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>{{tenantName}}</h1>
+      <div>{{tenantAddress}}</div>
+      <div>GSTIN: {{tenantGstin}} &nbsp; PAN: {{tenantPan}}</div>
+      <div>{{tenantContact}}</div>
+    </div>
+    <div class="right">
+      <h1>TAX INVOICE</h1>
+      <div><strong>#{{invoiceNumber}}</strong></div>
+      <div>Date: {{invoiceDate}}</div>
+      <div>Due: {{dueDate}}</div>
+      <div><span class="pill">{{invoiceType}}</span> <span class="pill">{{status}}</span></div>
+    </div>
+  </div>
+
+  <h2>Bill To</h2>
+  <div>
+    <strong>{{customerName}}</strong><br/>
+    {{customerAddress}}<br/>
+    GSTIN: {{customerGstin}} &nbsp; State: {{customerState}}
+  </div>
+
+  <h2>Line Items</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Description</th>
+        <th>HSN</th>
+        <th>HUID</th>
+        <th>Purity</th>
+        <th>Weight (g)</th>
+        <th>Qty</th>
+        <th>Rate</th>
+        <th>Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{lineItemsRows}}
+    </tbody>
+  </table>
+
+  <table class="totals">
+    <tr><td>Subtotal</td><td style="text-align:right">{{subtotal}}</td></tr>
+    <tr><td>CGST</td><td style="text-align:right">{{cgst}}</td></tr>
+    <tr><td>SGST</td><td style="text-align:right">{{sgst}}</td></tr>
+    <tr><td>IGST</td><td style="text-align:right">{{igst}}</td></tr>
+    <tr><td>Making Charges</td><td style="text-align:right">{{makingCharges}}</td></tr>
+    <tr><td>Discount</td><td style="text-align:right">-{{discount}}</td></tr>
+    <tr class="grand"><td>Total ({{currency}})</td><td style="text-align:right">{{total}}</td></tr>
+  </table>
+
+  <h2>Payment Terms</h2>
+  <div class="muted">{{paymentTerms}}</div>
+
+  <div class="footer">
+    This is a computer-generated invoice issued under Rule 46 of the CGST Rules, 2017.
+    HSN 7113 (jewellery of gold, silver or platinum) attracts GST @ 3%; making charges @ 5%.
+    <br/>Generated on {{generatedAt}} by CaratFlow.
+  </div>
+</body>
+</html>

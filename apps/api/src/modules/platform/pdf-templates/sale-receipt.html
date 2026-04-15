@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Receipt {{saleNumber}}</title>
+<style>
+  @page { size: 80mm auto; margin: 4mm; }
+  body { font-family: 'Courier New', monospace; font-size: 10px; color: #000; margin: 0; width: 72mm; }
+  h1 { font-size: 13px; text-align: center; margin: 0 0 2px 0; }
+  .center { text-align: center; }
+  .right { text-align: right; }
+  hr { border: none; border-top: 1px dashed #000; margin: 4px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 1px 0; }
+  .meta td { font-size: 9px; }
+  .items td { border-bottom: 1px dotted #aaa; vertical-align: top; }
+  .total { font-weight: bold; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>{{tenantName}}</h1>
+  <div class="center">{{tenantAddress}}</div>
+  <div class="center">GSTIN: {{tenantGstin}}</div>
+  <div class="center">{{tenantContact}}</div>
+  <hr/>
+  <table class="meta">
+    <tr><td>Receipt:</td><td class="right">{{saleNumber}}</td></tr>
+    <tr><td>Date:</td><td class="right">{{saleDate}}</td></tr>
+    <tr><td>Cashier:</td><td class="right">{{cashier}}</td></tr>
+    <tr><td>Customer:</td><td class="right">{{customerName}}</td></tr>
+    <tr><td>Location:</td><td class="right">{{locationName}}</td></tr>
+  </table>
+  <hr/>
+  <table class="items">
+    <thead>
+      <tr><td>Item</td><td class="right">Qty</td><td class="right">Amt</td></tr>
+    </thead>
+    <tbody>
+      {{lineItemsRows}}
+    </tbody>
+  </table>
+  <hr/>
+  <table>
+    <tr><td>Subtotal</td><td class="right">{{subtotal}}</td></tr>
+    <tr><td>GST</td><td class="right">{{gst}}</td></tr>
+    <tr><td>Discount</td><td class="right">-{{discount}}</td></tr>
+    <tr class="total"><td>TOTAL</td><td class="right">{{total}} {{currency}}</td></tr>
+    <tr><td>Paid ({{paymentMethod}})</td><td class="right">{{paid}}</td></tr>
+    <tr><td>Change</td><td class="right">{{change}}</td></tr>
+  </table>
+  <hr/>
+  <div class="center">Thank you for shopping with us!</div>
+  <div class="center">Returns within 7 days with receipt.</div>
+  <div class="center">{{generatedAt}}</div>
+</body>
+</html>

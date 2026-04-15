@@ -15,10 +15,11 @@ import { RetailAppraisalService } from './retail.appraisal.service';
 import { RetailDiscountService } from './retail.discount.service';
 import { RetailTrpcRouter } from './retail.trpc';
 import { RetailEventHandler } from './retail.event-handler';
+import { RetailController } from './retail.controller';
 
 @Module({
   imports: [IndiaModule],
-  controllers: [],
+  controllers: [RetailController],
   providers: [
     RetailService,
     RetailPricingService,

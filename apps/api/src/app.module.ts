@@ -15,6 +15,7 @@ import { EcommerceModule } from './modules/ecommerce/ecommerce.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
 import { ReportingModule } from './modules/reporting/reporting.module';
 import { PlatformModule } from './modules/platform/platform.module';
+import { PdfModule } from './modules/platform/pdf.module';
 import { CmsModule } from './modules/cms/cms.module';
 import { DigitalGoldModule } from './modules/digital-gold/digital-gold.module';
 import { ReferralModule } from './modules/referral/referral.module';
@@ -31,6 +32,7 @@ import { ExportModule } from './modules/export/export.module';
 import { HardwareModule } from './modules/hardware/hardware.module';
 import { IndiaModule } from './modules/india/india.module';
 import { RecommendationsModule } from './modules/recommendations/recommendations.module';
+import { PayrollModule } from './modules/payroll/payroll.module';
 
 @Module({
   imports: [
@@ -49,6 +51,7 @@ import { RecommendationsModule } from './modules/recommendations/recommendations
     ComplianceModule,
     ReportingModule,
     PlatformModule,
+    PdfModule,
     CmsModule,
     DigitalGoldModule,
     ReferralModule,
@@ -65,6 +68,7 @@ import { RecommendationsModule } from './modules/recommendations/recommendations
     HardwareModule,
     IndiaModule,
     RecommendationsModule,
+    PayrollModule,
   ],
 })
 export class AppModule implements NestModule {

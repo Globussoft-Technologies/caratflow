@@ -139,6 +139,21 @@ export class ExportTrpcRouter {
           this.documentService.getDocument(ctx.tenantId, input.documentId),
         ),
 
+      downloadDocumentPdf: this.trpc.authedProcedure
+        .input(z.object({ docId: z.string().uuid() }))
+        .query(async ({ ctx, input }) => {
+          const buf = await this.documentService.renderDocumentPdf(
+            ctx.tenantId,
+            input.docId,
+          );
+          return {
+            filename: `export-doc-${input.docId}.pdf`,
+            mimeType: 'application/pdf',
+            base64: buf.toString('base64'),
+            size: buf.length,
+          };
+        }),
+
       listDocuments: this.trpc.authedProcedure
         .input(z.object({
           filters: z.object({

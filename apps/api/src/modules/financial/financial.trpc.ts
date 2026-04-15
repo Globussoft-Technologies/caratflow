@@ -8,6 +8,7 @@ import { FinancialService } from './financial.service';
 import { FinancialTaxService } from './financial.tax.service';
 import { FinancialReportingService } from './financial.reporting.service';
 import { FinancialBankService } from './financial.bank.service';
+import { EInvoiceService } from './einvoice.service';
 import { z } from 'zod';
 import {
   JournalEntryInputSchema,
@@ -35,6 +36,7 @@ export class FinancialTrpcRouter {
     private readonly taxService: FinancialTaxService,
     private readonly reportingService: FinancialReportingService,
     private readonly bankService: FinancialBankService,
+    private readonly einvoiceService: EInvoiceService,
   ) {}
 
   get router() {
@@ -104,6 +106,21 @@ export class FinancialTrpcRouter {
           .input(InvoiceListInputSchema)
           .query(async ({ ctx, input }) => {
             return this.financialService.listInvoices(ctx.tenantId, input);
+          }),
+
+        downloadPdf: this.trpc.authedProcedure
+          .input(z.object({ invoiceId: UuidSchema }))
+          .query(async ({ ctx, input }) => {
+            const buf = await this.financialService.generateInvoicePdf(
+              ctx.tenantId,
+              input.invoiceId,
+            );
+            return {
+              filename: `invoice-${input.invoiceId}.pdf`,
+              mimeType: 'application/pdf',
+              base64: buf.toString('base64'),
+              size: buf.length,
+            };
           }),
       }),
 
@@ -242,6 +259,42 @@ export class FinancialTrpcRouter {
           }))
           .query(async ({ ctx, input }) => {
             return this.bankService.listBankTransactions(ctx.tenantId, input.bankAccountId, input);
+          }),
+      }),
+
+      // ─── E-Invoice (NIC IRP) ────────────────────────────────
+      einvoice: this.trpc.router({
+        submit: this.trpc.authedProcedure
+          .input(z.object({ invoiceId: UuidSchema }))
+          .mutation(async ({ ctx, input }) => {
+            return this.einvoiceService.submitToIrp(ctx.tenantId, input.invoiceId);
+          }),
+
+        cancel: this.trpc.authedProcedure
+          .input(z.object({
+            invoiceId: UuidSchema,
+            reason: z.string().min(1).max(10),
+            remarks: z.string().min(1).max(255),
+          }))
+          .mutation(async ({ ctx, input }) => {
+            return this.einvoiceService.cancelEInvoice(
+              ctx.tenantId,
+              input.invoiceId,
+              input.reason,
+              input.remarks,
+            );
+          }),
+
+        status: this.trpc.authedProcedure
+          .input(z.object({ invoiceId: UuidSchema }))
+          .query(async ({ ctx, input }) => {
+            return this.einvoiceService.getEInvoiceStatus(ctx.tenantId, input.invoiceId);
+          }),
+
+        previewPayload: this.trpc.authedProcedure
+          .input(z.object({ invoiceId: UuidSchema }))
+          .query(async ({ ctx, input }) => {
+            return this.einvoiceService.prepareInvoicePayload(ctx.tenantId, input.invoiceId);
           }),
       }),
 
