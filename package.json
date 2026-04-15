@@ -20,6 +20,7 @@
     "db:generate": "pnpm --filter @caratflow/db generate",
     "db:push": "pnpm --filter @caratflow/db db:push",
     "db:seed": "pnpm --filter @caratflow/db seed",
+    "db:demo-seed": "pnpm --filter @caratflow/db demo-seed",
     "db:studio": "pnpm --filter @caratflow/db studio",
     "clean": "turbo run clean && rimraf node_modules"
   },

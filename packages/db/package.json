@@ -18,6 +18,7 @@
     "db:reset": "prisma migrate reset",
     "studio": "prisma studio",
     "seed": "tsx src/seed.ts",
+    "demo-seed": "tsx src/demo-seed.ts",
     "build": "tsc -p tsconfig.build.json",
     "clean": "rimraf dist"
   },
