@@ -336,6 +336,8 @@ import type {
   IndiaGirviLoanClosedEvent,
   IndiaSchemeInstallmentDueEvent,
   IndiaMetalRateUpdatedEvent,
+  IndiaKycVerifiedEvent,
+  IndiaKycFailedEvent,
 } from './india';
 
 // ─── Digital Gold Events (defined in digital-gold.ts, imported here for union) ──
@@ -418,6 +420,8 @@ export type DomainEvent =
   | IndiaGirviLoanClosedEvent
   | IndiaSchemeInstallmentDueEvent
   | IndiaMetalRateUpdatedEvent
+  | IndiaKycVerifiedEvent
+  | IndiaKycFailedEvent
   // Digital Gold
   | DigitalGoldBoughtEvent
   | DigitalGoldSoldEvent
@@ -438,3 +442,27 @@ export type DomainEvent =
   | HardwareDeviceStatusChangedEvent;
 
 export type DomainEventType = DomainEvent['type'];
+
+// ─── Realtime Broadcast Whitelist ──────────────────────────────
+// Event types in this set are safe to broadcast via the public
+// tenant-scoped WebSocket gateway. Only public state changes with
+// non-sensitive payloads should be listed here. Any event carrying
+// payment details, KYC data, PII, or auth-related information must
+// be excluded (default behavior).
+export const BROADCASTABLE_EVENT_TYPES: ReadonlySet<DomainEventType> = new Set<DomainEventType>([
+  'inventory.stock.adjusted',
+  'inventory.item.created',
+  'inventory.item.updated',
+  'inventory.transfer.completed',
+  'retail.sale.completed',
+  'manufacturing.job.created',
+  'manufacturing.job.completed',
+  'crm.customer.updated',
+  'wholesale.purchase.completed',
+  'compliance.huid.registered',
+]);
+
+/** Returns true if the given event type is safe to broadcast to tenant clients. */
+export function isBroadcastableEventType(type: DomainEventType): boolean {
+  return BROADCASTABLE_EVENT_TYPES.has(type);
+}

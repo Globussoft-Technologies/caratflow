@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { PageHeader, StatusBadge, getStatusVariant, EmptyState } from '@caratflow/ui';
 import { Receipt, Plus } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
+import { useRealtime } from '@/lib/realtime';
 import { PaginationControls } from '@/components/pagination-controls';
 import { formatPaise, formatDateTime } from '@/components/format';
 
@@ -12,10 +13,19 @@ export default function SalesPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
 
-  const { data, isLoading } = trpc.retail.listSales.useQuery({
+  const query = trpc.retail.listSales.useQuery({
     filters: { search: search || undefined },
     pagination: { page, limit: 20, sortOrder: 'desc' },
   });
+  const { data, isLoading } = query;
+
+  // Live refetch when another terminal completes a sale.
+  useRealtime(
+    'retail.sale.completed',
+    useCallback(() => {
+      void query.refetch();
+    }, [query]),
+  );
   const items = ((data?.items as Array<Record<string, unknown>>) ?? []);
 
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import Link from "next/link";
 import { STORE_API } from "@/lib/constants";
 import { formatPrice } from "@/lib/utils";
@@ -309,7 +309,33 @@ function FullPageMessageBubble({
 }) {
   const isUser = message.role === "USER";
   const metadata: Record<string, unknown> = message.metadata ?? {};
-  const quickReplies = (metadata.quickReplies as QuickReply[] | undefined) ?? [];
+  const rawQuickReplies = metadata.quickReplies;
+  const quickReplies: QuickReply[] = Array.isArray(rawQuickReplies)
+    ? (rawQuickReplies as QuickReply[])
+    : [];
+  const hasQuickReplies: boolean = quickReplies.length > 0;
+
+  const renderQuickReplies = (): ReactNode => {
+    if (message.messageType !== "QUICK_REPLIES" || !hasQuickReplies) return null;
+    return (
+      <div className="mt-3 flex flex-wrap gap-2">
+        {quickReplies.map((reply: QuickReply) => {
+          const label: string = String(reply.label);
+          const value: string = String(reply.value);
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => onQuickReply(value)}
+              className="px-4 py-2 bg-white border border-gold/30 text-gold-dark text-sm font-medium rounded-full hover:bg-gold/5 hover:border-gold/50 transition-all"
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <div className={`flex items-start gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
@@ -379,40 +405,29 @@ function FullPageMessageBubble({
           </div>
         ) : null}
 
-        {message.messageType === "QUICK_REPLIES" && quickReplies.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {quickReplies.map((reply) => {
-              const label: string = reply.label;
+        {renderQuickReplies()}
+
+        {/* Occasion Picker */}
+        {message.messageType === "OCCASION_PICKER" && Array.isArray(metadata.occasions) ? (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {(metadata.occasions as OccasionOption[]).map((occ) => {
+              const icon: string = String(occ.icon ?? "");
+              const label: string = String(occ.label ?? "");
+              const value: string = String(occ.value ?? "");
               return (
                 <button
-                  key={reply.value}
+                  key={value}
                   type="button"
-                  onClick={() => onQuickReply(reply.value)}
-                  className="px-4 py-2 bg-white border border-gold/30 text-gold-dark text-sm font-medium rounded-full hover:bg-gold/5 hover:border-gold/50 transition-all"
+                  onClick={() => onOccasionPick(value)}
+                  className="flex flex-col items-center gap-1.5 p-3 bg-white border border-gray-100 rounded-xl hover:border-gold/30 hover:bg-gold/5 transition-all"
                 >
-                  {label}
+                  <span className="text-xl">{OCCASION_ICONS[icon] ?? "\u2728"}</span>
+                  <span className="text-xs font-medium text-navy">{label}</span>
                 </button>
               );
             })}
           </div>
-        )}
-
-        {/* Occasion Picker */}
-        {message.messageType === "OCCASION_PICKER" && metadata.occasions && (
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {(metadata.occasions as OccasionOption[]).map((occ) => (
-              <button
-                key={occ.value}
-                type="button"
-                onClick={() => onOccasionPick(occ.value)}
-                className="flex flex-col items-center gap-1.5 p-3 bg-white border border-gray-100 rounded-xl hover:border-gold/30 hover:bg-gold/5 transition-all"
-              >
-                <span className="text-xl">{OCCASION_ICONS[occ.icon] ?? "\u2728"}</span>
-                <span className="text-xs font-medium text-navy">{occ.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        ) : null}
 
         {/* Budget Slider */}
         {message.messageType === "BUDGET_SLIDER" && message.metadata && (

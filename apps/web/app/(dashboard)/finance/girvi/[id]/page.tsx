@@ -8,7 +8,14 @@ import { formatPaise, formatDate } from '@/components/format';
 export default function GirviDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id ?? '';
-  const { data, isLoading } = trpc.india.girvi.getById.useQuery({ id }, { enabled: Boolean(id) });
+  // Cast through `unknown` to avoid TS2589 (excessively deep instantiation from tRPC + Zod schema recursion).
+  const query = (trpc.india.girvi.getById as unknown as {
+    useQuery: (
+      input: { id: string },
+      opts: { enabled: boolean },
+    ) => { data: unknown; isLoading: boolean };
+  }).useQuery({ id }, { enabled: Boolean(id) });
+  const { data, isLoading } = query;
 
   if (isLoading || !data) return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
   const g = data as Record<string, unknown>;

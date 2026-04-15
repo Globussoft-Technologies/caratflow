@@ -1,20 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { PageHeader, StatusBadge, getStatusVariant, EmptyState } from '@caratflow/ui';
 import { Plus, Hammer } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
+import { useRealtime } from '@/lib/realtime';
 import { PaginationControls } from '@/components/pagination-controls';
 import { formatDate } from '@/components/format';
 
 export default function JobOrdersPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
-  const { data, isLoading } = trpc.manufacturing.job.list.useQuery({
+  const query = trpc.manufacturing.job.list.useQuery({
     pagination: { page, limit: 20, sortOrder: 'desc' },
     filter: status ? ({ status: status as never } as never) : undefined,
   });
+  const { data, isLoading } = query;
+
+  // Live refetch on job status changes (created / completed broadcasts).
+  const refetchJobs = useCallback(() => {
+    void query.refetch();
+  }, [query]);
+  useRealtime('manufacturing.job.completed', refetchJobs);
+  useRealtime('manufacturing.job.created', refetchJobs);
   const items = ((data?.items as Array<Record<string, unknown>>) ?? []);
 
   return (

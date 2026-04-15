@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { PageHeader, DataTable, StatusBadge, getStatusVariant } from '@caratflow/ui';
 import { Activity } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
+import { useRealtime } from '@/lib/realtime';
 import type { ColumnDef } from '@caratflow/ui';
 import { MovementType } from '@caratflow/shared-types';
 
@@ -25,11 +26,20 @@ export default function MovementsPage() {
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState('');
 
-  const { data, isLoading } = trpc.inventory.movements.list.useQuery({
+  const query = trpc.inventory.movements.list.useQuery({
     page,
     limit: 20,
     movementType: typeFilter ? (typeFilter as MovementType) : undefined,
   });
+  const { data, isLoading } = query;
+
+  // Live refetch when stock is adjusted elsewhere in the tenant.
+  useRealtime(
+    'inventory.stock.adjusted',
+    useCallback(() => {
+      void query.refetch();
+    }, [query]),
+  );
 
   const columns: ColumnDef<MovementRow, unknown>[] = [
     {
