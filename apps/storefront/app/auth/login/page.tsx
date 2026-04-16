@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { AUTH_API } from "@/lib/constants";
+import { setTokens } from "@/lib/api";
+
+type AuthTokens = { accessToken?: string; refreshToken?: string };
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,29 +17,80 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleEmailLogin() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/v1/auth/login", {
+      const res = await fetch(`${AUTH_API}/login/email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, tenantSlug: "sharma-jewellers" }),
+        body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      if (data.success && data.data?.accessToken) {
-        localStorage.setItem("accessToken", data.data.accessToken);
-        localStorage.setItem("refreshToken", data.data.refreshToken);
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error?.message || data?.message || "Login failed");
+      }
+      const tokens = data.data as AuthTokens | undefined;
+      if (tokens?.accessToken) {
+        setTokens(tokens.accessToken, tokens.refreshToken);
         router.push("/account");
       } else {
-        setError(data.message || "Login failed");
+        throw new Error("Login response missing access token");
       }
-    } catch {
-      setError("Network error");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handlePhoneOtp() {
+    setLoading(true);
+    setError("");
+    try {
+      if (!phone || phone.length < 10) {
+        throw new Error("Enter a valid 10-digit phone number");
+      }
+      const fullPhone = `+91${phone}`;
+      // Backend enum OtpPurpose is uppercase (LOGIN). Send identifier
+      // so it maps cleanly to the OtpSendDto on /b2c/auth/otp/send.
+      const res = await fetch(`${AUTH_API}/otp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: fullPhone, phone: fullPhone, purpose: "LOGIN" }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || (data && data.success === false)) {
+        throw new Error(data?.error?.message || data?.message || "Could not send OTP");
+      }
+      router.push(
+        `/auth/verify-otp?phone=${encodeURIComponent(fullPhone)}&purpose=LOGIN`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (loginMethod === "email") {
+      await handleEmailLogin();
+    } else {
+      await handlePhoneOtp();
+    }
+  }
+
+  function handleSocialLogin(provider: "google" | "facebook" | "apple") {
+    const startUrl = `${AUTH_API}/oauth/${provider}/start`;
+    // Social login endpoints may not yet be configured on the backend.
+    // We redirect optimistically -- the backend 404 will surface to the user
+    // via its own error page. Warn in dev tools so the gap is visible.
+    console.warn(
+      `Social login not configured -- redirecting to ${startUrl}. If the backend 404s, set up the ${provider} OAuth start route.`,
+    );
+    window.location.href = startUrl;
   }
 
   return (
@@ -55,13 +110,14 @@ export default function LoginPage() {
           {/* Social login */}
           <div className="space-y-2.5 mb-6">
             {[
-              { label: "Continue with Google", bg: "bg-white border border-gray-200 text-navy hover:bg-gray-50" },
-              { label: "Continue with Facebook", bg: "bg-[#1877F2] text-white hover:bg-[#166FE5]" },
-              { label: "Continue with Apple", bg: "bg-black text-white hover:bg-gray-900" },
+              { provider: "google" as const, label: "Continue with Google", bg: "bg-white border border-gray-200 text-navy hover:bg-gray-50" },
+              { provider: "facebook" as const, label: "Continue with Facebook", bg: "bg-[#1877F2] text-white hover:bg-[#166FE5]" },
+              { provider: "apple" as const, label: "Continue with Apple", bg: "bg-black text-white hover:bg-gray-900" },
             ].map((social) => (
               <button
                 key={social.label}
                 type="button"
+                onClick={() => handleSocialLogin(social.provider)}
                 className={`w-full py-2.5 rounded-lg text-sm font-medium transition-colors ${social.bg}`}
               >
                 {social.label}
@@ -159,9 +215,10 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              className="w-full bg-gold text-white font-semibold py-3 rounded-lg hover:bg-gold-dark transition-colors"
+              disabled={loading}
+              className="w-full bg-gold text-white font-semibold py-3 rounded-lg hover:bg-gold-dark transition-colors disabled:opacity-60"
             >
-              {loading ? "Signing in..." : loginMethod === "email" ? "Sign In" : "Send OTP"}
+              {loading ? "Please wait..." : loginMethod === "email" ? "Sign In" : "Send OTP"}
             </button>
           </form>
         </div>
