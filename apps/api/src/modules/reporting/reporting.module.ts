@@ -12,8 +12,12 @@ import { ReportingSchedulerService } from './reporting.scheduler.service';
 import { ReportingDashboardService } from './reporting.dashboard.service';
 import { ReportingTrpcRouter } from './reporting.trpc';
 import { ReportingEventHandler } from './reporting.event-handler';
+import { PlatformModule } from '../platform/platform.module';
+import { CrmModule } from '../crm/crm.module';
+import { PdfModule } from '../platform/pdf.module';
 
 @Module({
+  imports: [PlatformModule, PdfModule, CrmModule],
   controllers: [],
   providers: [
     ReportingSalesService,
