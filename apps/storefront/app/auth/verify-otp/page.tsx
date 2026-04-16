@@ -1,10 +1,23 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, Suspense } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { AUTH_API, TENANT_SLUG } from "@/lib/constants";
+import { setTokens } from "@/lib/api";
 
-export default function VerifyOtpPage() {
+type AuthTokens = { accessToken: string; refreshToken?: string };
+
+function VerifyOtpPageInner() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const identifier = params.get("phone") ?? params.get("email") ?? params.get("identifier") ?? "";
+  const purpose = params.get("purpose") ?? "PHONE_VERIFICATION";
+
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   function handleChange(index: number, value: string) {
@@ -23,11 +36,69 @@ export default function VerifyOtpPage() {
     }
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError("");
+    setSuccess("");
     const code = otp.join("");
-    if (code.length === 6) {
-      alert(`Verifying OTP: ${code}. Integration pending.`);
+    if (code.length !== 6) {
+      setError("Please enter the 6-digit code");
+      return;
+    }
+    if (!identifier) {
+      setError("Missing phone/email. Please restart the verification flow.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const body: Record<string, unknown> = {
+        identifier,
+        otp: code,
+        purpose,
+      };
+      if (purpose === "LOGIN") body.tenantSlug = TENANT_SLUG;
+      const res = await fetch(`${AUTH_API}/otp/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error?.message || data?.message || "OTP verification failed");
+      }
+      const tokens = data.data as AuthTokens | { verified?: boolean } | undefined;
+      if (tokens && "accessToken" in tokens && tokens.accessToken) {
+        setTokens(tokens.accessToken, tokens.refreshToken);
+      }
+      setSuccess("Verified. Redirecting...");
+      router.push("/account");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResend() {
+    setError("");
+    setSuccess("");
+    if (!identifier) {
+      setError("Missing phone/email. Please restart the verification flow.");
+      return;
+    }
+    try {
+      const res = await fetch(`${AUTH_API}/otp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier, purpose }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error?.message || data?.message || "Could not resend OTP");
+      }
+      setSuccess("A new OTP has been sent.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
     }
   }
 
@@ -36,10 +107,14 @@ export default function VerifyOtpPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-navy" style={{ fontFamily: "var(--font-serif)" }}>Verify OTP</h1>
-          <p className="text-sm text-navy/50 mt-1">Enter the 6-digit code sent to your phone</p>
+          <p className="text-sm text-navy/50 mt-1">
+            Enter the 6-digit code sent to {identifier ? <span className="font-medium text-navy/80">{identifier}</span> : "your phone"}
+          </p>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
+          {success && <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm rounded-lg p-3 mb-4">{success}</div>}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="flex justify-center gap-2.5">
               {otp.map((digit, idx) => (
@@ -57,15 +132,15 @@ export default function VerifyOtpPage() {
               ))}
             </div>
 
-            <button type="submit" className="w-full bg-gold text-white font-semibold py-3 rounded-lg hover:bg-gold-dark transition-colors">
-              Verify
+            <button type="submit" disabled={loading} className="w-full bg-gold text-white font-semibold py-3 rounded-lg hover:bg-gold-dark transition-colors disabled:opacity-60">
+              {loading ? "Verifying..." : "Verify"}
             </button>
           </form>
 
           <div className="text-center mt-4">
             <p className="text-xs text-navy/40">
               Didn't receive the code?{" "}
-              <button type="button" className="text-gold font-medium hover:text-gold-dark transition-colors">
+              <button type="button" onClick={handleResend} className="text-gold font-medium hover:text-gold-dark transition-colors">
                 Resend OTP
               </button>
             </p>
@@ -79,5 +154,13 @@ export default function VerifyOtpPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function VerifyOtpPage() {
+  return (
+    <Suspense fallback={<div className="min-h-[80vh]" />}>
+      <VerifyOtpPageInner />
+    </Suspense>
   );
 }
