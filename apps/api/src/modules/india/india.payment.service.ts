@@ -1,17 +1,42 @@
 // ─── India Payment Service ─────────────────────────────────────
-// UPI QR generation, bank transfer templates, Razorpay placeholder.
+// UPI QR generation, bank transfer templates, and real Razorpay
+// integration (orders, signature verify, capture, refund).
+//
+// Razorpay credentials are loaded per-tenant from the Setting
+// table (keys: razorpay_key_id, razorpay_key_secret,
+// razorpay_webhook_secret) with env-var fallback
+// (RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET).
 
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
+import { createHmac, timingSafeEqual } from 'crypto';
+import Razorpay from 'razorpay';
 import type {
   UpiPaymentInput,
   UpiQrData,
   BankTransferTemplateInput,
   BankTransferTemplate,
 } from '@caratflow/shared-types';
+import { PrismaService } from '../../common/prisma.service';
+
+export interface RazorpayOrderResult {
+  orderId: string;
+  keyId: string;
+  amount: number;
+  currency: string;
+}
+
+export interface RazorpayTenantCredentials {
+  keyId: string;
+  keySecret: string;
+  webhookSecret: string | null;
+}
 
 @Injectable()
 export class IndiaPaymentService {
   private readonly logger = new Logger(IndiaPaymentService.name);
+  private readonly clientCache = new Map<string, Razorpay>();
+
+  constructor(@Optional() private readonly prisma?: PrismaService) {}
 
   // ─── UPI Payment ─────────────────────────────────────────────
 
@@ -54,11 +79,6 @@ export class IndiaPaymentService {
     this.logger.log(
       `UPI callback: txn=${transactionId}, status=${status}, upiRef=${upiRefId}`,
     );
-    // Implementation would:
-    // 1. Look up pending payment by transactionId/referenceId
-    // 2. Validate callback signature (if using PSP webhook)
-    // 3. Update payment status to COMPLETED/FAILED
-    // 4. Emit financial.payment.received event if successful
   }
 
   // ─── Bank Transfer Templates ─────────────────────────────────
@@ -107,41 +127,263 @@ export class IndiaPaymentService {
     return /^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifscCode);
   }
 
-  // ─── Razorpay Integration (placeholder) ──────────────────────
+  // ─── Razorpay: Credential Resolution ─────────────────────────
 
   /**
-   * Placeholder for Razorpay payment gateway integration.
-   * In production, this would:
-   * 1. Create a Razorpay order
-   * 2. Return order_id + key for client-side SDK
-   * 3. Handle webhook for payment confirmation
+   * Resolve Razorpay credentials for a tenant. Reads from the
+   * Setting table first, falls back to env vars, throws if none
+   * are configured.
+   */
+  async getRazorpayCredentials(tenantId: string): Promise<RazorpayTenantCredentials> {
+    let tenantKeyId: string | null = null;
+    let tenantKeySecret: string | null = null;
+    let tenantWebhookSecret: string | null = null;
+
+    if (this.prisma) {
+      const settings = await this.prisma.setting.findMany({
+        where: {
+          tenantId,
+          settingKey: {
+            in: ['razorpay_key_id', 'razorpay_key_secret', 'razorpay_webhook_secret'],
+          },
+        },
+      });
+      for (const s of settings) {
+        const val = typeof s.settingValue === 'string' ? s.settingValue : null;
+        if (!val) continue;
+        if (s.settingKey === 'razorpay_key_id') tenantKeyId = val;
+        if (s.settingKey === 'razorpay_key_secret') tenantKeySecret = val;
+        if (s.settingKey === 'razorpay_webhook_secret') tenantWebhookSecret = val;
+      }
+    }
+
+    const keyId = tenantKeyId ?? process.env.RAZORPAY_KEY_ID ?? null;
+    const keySecret = tenantKeySecret ?? process.env.RAZORPAY_KEY_SECRET ?? null;
+    const webhookSecret = tenantWebhookSecret ?? process.env.RAZORPAY_WEBHOOK_SECRET ?? null;
+
+    if (!keyId || !keySecret) {
+      throw new BadRequestException(`Razorpay not configured for tenant ${tenantId}`);
+    }
+
+    return { keyId, keySecret, webhookSecret };
+  }
+
+  private async getClient(tenantId: string): Promise<{ client: Razorpay; keyId: string; keySecret: string; webhookSecret: string | null }> {
+    const creds = await this.getRazorpayCredentials(tenantId);
+    const cacheKey = `${tenantId}:${creds.keyId}`;
+    let client = this.clientCache.get(cacheKey);
+    if (!client) {
+      client = new Razorpay({ key_id: creds.keyId, key_secret: creds.keySecret });
+      this.clientCache.set(cacheKey, client);
+    }
+    return { client, keyId: creds.keyId, keySecret: creds.keySecret, webhookSecret: creds.webhookSecret };
+  }
+
+  /**
+   * Clear cached Razorpay client for a tenant. Call after a tenant
+   * rotates their credentials so the next request picks up fresh values.
+   */
+  invalidateCredentialCache(tenantId?: string): void {
+    if (!tenantId) {
+      this.clientCache.clear();
+      return;
+    }
+    for (const key of Array.from(this.clientCache.keys())) {
+      if (key.startsWith(`${tenantId}:`)) this.clientCache.delete(key);
+    }
+  }
+
+  // ─── Razorpay: Orders ────────────────────────────────────────
+
+  /**
+   * Create a Razorpay order. `amountPaise` is amount in the smallest
+   * unit (paise for INR). Returns the order id + keyId for the
+   * client-side checkout.js handoff.
+   *
+   * Backwards-compatible signature: callers may pass `(amountPaise,
+   * currency, receipt)` or `(tenantId, amountPaise, currency, receipt,
+   * notes)`. When the first arg is a UUID/non-numeric we treat it as
+   * the tenant id.
    */
   async createRazorpayOrder(
-    _amountPaise: number,
-    _currency: string,
-    _receipt: string,
-  ): Promise<{ orderId: string; keyId: string; message: string }> {
-    this.logger.log('Razorpay: placeholder - integrate with Razorpay API');
+    tenantIdOrAmount: string | number,
+    amountPaiseOrCurrency: number | string,
+    currencyOrReceipt?: string,
+    receipt?: string,
+    notes?: Record<string, string>,
+  ): Promise<RazorpayOrderResult> {
+    const { tenantId, amountPaise, currency, receiptStr, notesObj } =
+      this.normaliseCreateOrderArgs(
+        tenantIdOrAmount,
+        amountPaiseOrCurrency,
+        currencyOrReceipt,
+        receipt,
+        notes,
+      );
+
+    const { client, keyId } = await this.getClient(tenantId);
+
+    const order = await client.orders.create({
+      amount: amountPaise,
+      currency,
+      receipt: receiptStr,
+      notes: notesObj,
+    });
+
+    this.logger.log(`Razorpay order created: ${order.id} (tenant=${tenantId}, receipt=${receiptStr})`);
+
     return {
-      orderId: `order_placeholder_${Date.now()}`,
-      keyId: 'rzp_placeholder',
-      message: 'Razorpay integration pending. Use UPI or bank transfer.',
+      orderId: order.id,
+      keyId,
+      amount: Number(order.amount),
+      currency: order.currency,
+    };
+  }
+
+  private normaliseCreateOrderArgs(
+    a: string | number,
+    b: number | string,
+    c: string | undefined,
+    d: string | undefined,
+    e: Record<string, string> | undefined,
+  ): { tenantId: string; amountPaise: number; currency: string; receiptStr: string; notesObj: Record<string, string> } {
+    if (typeof a === 'string') {
+      return {
+        tenantId: a,
+        amountPaise: Number(b),
+        currency: (c ?? 'INR').toUpperCase(),
+        receiptStr: d ?? `CF-${Date.now()}`,
+        notesObj: e ?? {},
+      };
+    }
+    // Legacy signature: (amountPaise, currency, receipt)
+    const envTenant = process.env.RAZORPAY_DEFAULT_TENANT_ID;
+    if (!envTenant) {
+      throw new Error('Razorpay: tenantId is required (or set RAZORPAY_DEFAULT_TENANT_ID for legacy calls)');
+    }
+    return {
+      tenantId: envTenant,
+      amountPaise: Number(a),
+      currency: (typeof b === 'string' ? b : 'INR').toUpperCase(),
+      receiptStr: (c ?? `CF-${Date.now()}`),
+      notesObj: {},
+    };
+  }
+
+  // ─── Razorpay: Signature Verification ────────────────────────
+
+  /**
+   * Verify the checkout-side HMAC signature returned by Razorpay
+   * after payment success. The signature is HMAC-SHA256 of
+   * `${orderId}|${paymentId}` using the tenant's key_secret.
+   */
+  async verifySignature(
+    orderId: string,
+    paymentId: string,
+    signature: string,
+    tenantId?: string,
+  ): Promise<boolean> {
+    let keySecret: string | null = null;
+    if (tenantId) {
+      try {
+        const creds = await this.getRazorpayCredentials(tenantId);
+        keySecret = creds.keySecret;
+      } catch {
+        keySecret = null;
+      }
+    }
+    if (!keySecret) keySecret = process.env.RAZORPAY_KEY_SECRET ?? null;
+    if (!keySecret) return false;
+
+    const expected = createHmac('sha256', keySecret)
+      .update(`${orderId}|${paymentId}`)
+      .digest('hex');
+
+    return this.safeCompareHex(expected, signature);
+  }
+
+  /**
+   * Legacy alias kept so older callers compile. Returns the shape
+   * `{ verified, message }` that the placeholder used to produce.
+   */
+  async verifyRazorpayPayment(
+    orderId: string,
+    paymentId: string,
+    signature: string,
+    tenantId?: string,
+  ): Promise<{ verified: boolean; message: string }> {
+    const verified = await this.verifySignature(orderId, paymentId, signature, tenantId);
+    return {
+      verified,
+      message: verified ? 'Signature verified' : 'Signature mismatch',
     };
   }
 
   /**
-   * Verify Razorpay payment signature.
-   * Called after client-side payment completion.
+   * Verify a Razorpay webhook signature. Webhook signatures are
+   * HMAC-SHA256 of the raw request body using the webhook_secret.
    */
-  async verifyRazorpayPayment(
-    _orderId: string,
-    _paymentId: string,
-    _signature: string,
-  ): Promise<{ verified: boolean; message: string }> {
-    this.logger.log('Razorpay verification: placeholder');
-    return {
-      verified: false,
-      message: 'Razorpay integration pending.',
-    };
+  verifyWebhookSignature(rawBody: string, signature: string | undefined, webhookSecret: string): boolean {
+    if (!signature || !webhookSecret) return false;
+    const expected = createHmac('sha256', webhookSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+    return this.safeCompareHex(expected, signature);
+  }
+
+  private safeCompareHex(expectedHex: string, receivedHex: string): boolean {
+    try {
+      const a = Buffer.from(expectedHex, 'hex');
+      const b = Buffer.from(receivedHex, 'hex');
+      if (a.length === 0 || a.length !== b.length) return false;
+      return timingSafeEqual(a, b);
+    } catch {
+      return false;
+    }
+  }
+
+  // ─── Razorpay: Capture & Refund ──────────────────────────────
+
+  /**
+   * Manually capture an authorized payment. Razorpay auto-captures
+   * orders created with `payment_capture: 1` (the SDK default), but
+   * this is available for two-step flows.
+   */
+  async capturePayment(
+    tenantId: string,
+    paymentId: string,
+    amountPaise: number,
+    currency = 'INR',
+  ): Promise<unknown> {
+    const { client } = await this.getClient(tenantId);
+    const captured = await client.payments.capture(paymentId, amountPaise, currency);
+    this.logger.log(`Razorpay payment captured: ${paymentId} (tenant=${tenantId}, ${amountPaise} ${currency})`);
+    return captured;
+  }
+
+  /**
+   * Refund a captured payment. Pass `amountPaise` for a partial
+   * refund; omit to refund the full captured amount.
+   */
+  async refundPayment(
+    tenantId: string,
+    paymentId: string,
+    amountPaise?: number,
+  ): Promise<unknown> {
+    const { client } = await this.getClient(tenantId);
+    const refund = amountPaise !== undefined
+      ? await client.payments.refund(paymentId, { amount: amountPaise })
+      : await client.payments.refund(paymentId, {});
+    this.logger.log(`Razorpay payment refunded: ${paymentId} (tenant=${tenantId}, amount=${amountPaise ?? 'full'})`);
+    return refund;
+  }
+
+  /**
+   * Fetch a payment by id (used by the webhook controller to
+   * reconcile captured amounts).
+   */
+  async fetchPayment(tenantId: string, paymentId: string): Promise<unknown> {
+    const { client } = await this.getClient(tenantId);
+    return client.payments.fetch(paymentId);
   }
 }
