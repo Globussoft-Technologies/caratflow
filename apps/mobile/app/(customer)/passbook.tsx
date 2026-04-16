@@ -1,59 +1,56 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, RefreshControl, Pressable } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useApiQuery } from '@/hooks/useApi';
+import { trpc } from '@/lib/trpc';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { MoneyDisplay } from '@/components/MoneyDisplay';
 import { formatDate } from '@/utils/date';
-import { useAuthStore } from '@/store/auth-store';
 
-interface PassbookData {
-  loyaltyPoints: number;
-  loyaltyTier: string | null;
-  schemes: Array<{
-    id: string;
-    type: 'GOLD_SAVINGS' | 'KITTY';
-    schemeName: string;
-    totalPaidPaise: number;
-    totalDuePaise: number;
-    installmentsPaid: number;
-    totalInstallments: number;
-    nextDueDate: string | null;
-    status: string;
-  }>;
-  purchaseHistory: Array<{
-    id: string;
-    invoiceNumber: string;
-    totalPaise: number;
-    date: string;
-    itemCount: number;
-  }>;
-}
-
+/**
+ * Passbook
+ * ------------------------------------------------------------------
+ * Real customerPortal dashboard: loyalty balance + scheme memberships
+ * + recent orders. The previous REST endpoint (/crm/customer-passbook)
+ * never existed on the server.
+ */
 export default function PassbookScreen() {
-  const { user } = useAuthStore();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data, isLoading, refetch } = useApiQuery<PassbookData>(
-    ['customer', 'passbook', user?.id],
-    '/api/v1/crm/customer-passbook',
-    { customerId: user?.id },
-  );
+  const dashboard = trpc.customerPortal.dashboard.useQuery();
+  const schemes = trpc.customerPortal.schemes.list.useQuery();
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  }, [refetch]);
+    try {
+      await Promise.all([dashboard.refetch(), schemes.refetch()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [dashboard, schemes]);
 
-  const passbook = data ?? {
-    loyaltyPoints: 0,
-    loyaltyTier: null,
-    schemes: [],
-    purchaseHistory: [],
-  };
+  const dash = dashboard.data;
+  const schemeList = schemes.data?.activeSchemes ?? [];
+  const recentOrders = dash?.recentOrders ?? [];
+  const isLoading = dashboard.isLoading || schemes.isLoading;
+
+  if (isLoading && !dash) {
+    return (
+      <SafeAreaView className="flex-1 bg-surface-50">
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#d4af37" />
+          <Text className="mt-3 text-surface-500 text-sm">Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-surface-50">
@@ -70,9 +67,7 @@ export default function PassbookScreen() {
           />
         }
       >
-        <Text className="text-2xl font-bold text-surface-900 mb-4">
-          Passbook
-        </Text>
+        <Text className="text-2xl font-bold text-surface-900 mb-4">Passbook</Text>
 
         {/* Loyalty Summary */}
         <Card
@@ -83,33 +78,41 @@ export default function PassbookScreen() {
             <View>
               <Text className="text-xs text-surface-500">Loyalty Points</Text>
               <Text className="text-2xl font-bold text-primary-500">
-                {passbook.loyaltyPoints}
+                {dash?.loyalty?.currentPoints ?? 0}
               </Text>
             </View>
-            {passbook.loyaltyTier && (
-              <Badge label={passbook.loyaltyTier} variant="gold" size="md" />
+            {dash?.loyalty?.tier && (
+              <Badge label={dash.loyalty.tier} variant="gold" size="md" />
             )}
           </View>
-          <Text className="text-xs text-primary-400 mt-1">
-            Tap to view details and history
-          </Text>
+          {dash?.loyalty?.pointsExpiringSoon ? (
+            <Text className="text-xs text-amber-600 mt-1">
+              {dash.loyalty.pointsExpiringSoon} pts expiring soon
+            </Text>
+          ) : (
+            <Text className="text-xs text-primary-400 mt-1">
+              Tap to view details and history
+            </Text>
+          )}
         </Card>
 
         {/* Active Schemes */}
         <Text className="text-sm font-semibold text-surface-700 mb-2">
-          My Schemes ({passbook.schemes.length})
+          My Schemes ({schemeList.length})
         </Text>
-        {passbook.schemes.map((scheme) => {
+        {schemeList.map((scheme) => {
           const progress =
             scheme.totalInstallments > 0
-              ? (scheme.installmentsPaid / scheme.totalInstallments) * 100
+              ? (scheme.paidInstallments / scheme.totalInstallments) * 100
               : 0;
           return (
             <Card
               key={scheme.id}
               className="mb-3"
               onPress={() =>
-                router.push(`/(customer)/passbook/scheme/${scheme.id}` as never)
+                router.push(
+                  `/(customer)/passbook/scheme/${scheme.id}` as never,
+                )
               }
             >
               <View className="flex-row items-center justify-between mb-2">
@@ -117,7 +120,7 @@ export default function PassbookScreen() {
                   {scheme.schemeName}
                 </Text>
                 <Badge
-                  label={scheme.type.replace('_', ' ')}
+                  label={scheme.schemeType.replace('_', ' ')}
                   variant="info"
                   size="sm"
                 />
@@ -133,10 +136,11 @@ export default function PassbookScreen() {
 
               <View className="flex-row justify-between">
                 <Text className="text-xs text-surface-500">
-                  {scheme.installmentsPaid}/{scheme.totalInstallments} installments
+                  {scheme.paidInstallments}/{scheme.totalInstallments}{' '}
+                  installments
                 </Text>
                 <MoneyDisplay
-                  amountPaise={scheme.totalPaidPaise}
+                  amountPaise={Number(scheme.totalPaidPaise)}
                   short
                   className="text-xs font-medium text-surface-700"
                 />
@@ -149,7 +153,7 @@ export default function PassbookScreen() {
             </Card>
           );
         })}
-        {passbook.schemes.length === 0 && (
+        {schemeList.length === 0 && (
           <Card className="mb-4">
             <Text className="text-sm text-surface-400 text-center py-3">
               No active schemes. Ask your jeweler about savings plans.
@@ -157,29 +161,35 @@ export default function PassbookScreen() {
           </Card>
         )}
 
-        {/* Purchase History */}
+        {/* Recent Orders */}
         <Text className="text-sm font-semibold text-surface-700 mb-2 mt-2">
-          Purchase History
+          Recent Orders
         </Text>
-        {passbook.purchaseHistory.slice(0, 15).map((purchase) => (
-          <Card key={purchase.id} className="mb-2">
+        {recentOrders.map((order) => (
+          <Card key={order.id} className="mb-2">
             <View className="flex-row items-center justify-between">
               <View>
                 <Text className="text-sm font-medium text-surface-800">
-                  {purchase.invoiceNumber}
+                  {order.orderNumber}
                 </Text>
                 <Text className="text-xs text-surface-500">
-                  {formatDate(purchase.date)} | {purchase.itemCount} items
+                  {order.placedAt
+                    ? formatDate(order.placedAt)
+                    : formatDate(order.createdAt)}{' '}
+                  | {order.itemCount} item{order.itemCount === 1 ? '' : 's'}
                 </Text>
               </View>
-              <MoneyDisplay
-                amountPaise={purchase.totalPaise}
-                className="text-sm font-semibold text-surface-900"
-              />
+              <View className="items-end">
+                <MoneyDisplay
+                  amountPaise={Number(order.totalPaise)}
+                  className="text-sm font-semibold text-surface-900"
+                />
+                <Badge label={order.status} variant="info" size="sm" />
+              </View>
             </View>
           </Card>
         ))}
-        {passbook.purchaseHistory.length === 0 && (
+        {recentOrders.length === 0 && (
           <Card className="mb-4">
             <Text className="text-sm text-surface-400 text-center py-3">
               No purchases yet

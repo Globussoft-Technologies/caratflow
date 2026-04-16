@@ -1,81 +1,167 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Alert, Pressable } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  Alert,
+  Pressable,
+  Switch,
+  Linking,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Card } from '@/components/Card';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { Avatar } from '@/components/Avatar';
-import { Badge } from '@/components/Badge';
 import { useAuthStore } from '@/store/auth-store';
-import { useApiMutation, useApiQuery } from '@/hooks/useApi';
-import { formatDate } from '@/utils/date';
+import { trpc } from '@/lib/trpc';
 
-interface CustomerProfile {
-  firstName: string;
-  lastName: string;
-  email: string | null;
-  phone: string | null;
-  dateOfBirth: string | null;
-  anniversary: string | null;
-  city: string | null;
-  occasions: Array<{
-    id: string;
-    occasionType: string;
-    date: string;
-    description: string | null;
-  }>;
-  notificationPreferences: {
-    sms: boolean;
-    email: boolean;
-    whatsapp: boolean;
-    push: boolean;
-  };
-}
+const SUPPORT_PHONE = '+911800123456';
 
+type NotifToggles = {
+  email: boolean;
+  sms: boolean;
+  whatsapp: boolean;
+  push: boolean;
+};
+
+type NotifCategory = 'orders' | 'promotions' | 'schemes' | 'loyalty' | 'reminders';
+
+const NOTIF_CATEGORIES: { key: NotifCategory; label: string }[] = [
+  { key: 'orders', label: 'Orders' },
+  { key: 'promotions', label: 'Promotions' },
+  { key: 'schemes', label: 'Schemes' },
+  { key: 'loyalty', label: 'Loyalty' },
+  { key: 'reminders', label: 'Reminders' },
+];
+
+const DEFAULT_TOGGLES: NotifToggles = {
+  email: true,
+  sms: true,
+  whatsapp: false,
+  push: true,
+};
+
+/**
+ * Profile screen powered by customerPortal.profile tRPC: real profile
+ * load + update, notification preferences toggles, and a working
+ * "Contact Support" link via Linking.
+ */
 export default function ProfileScreen() {
   const { user, logout } = useAuthStore();
-  const fullName = user ? `${user.firstName} ${user.lastName}` : '';
+  const utils = trpc.useContext();
 
-  const { data: profile } = useApiQuery<CustomerProfile>(
-    ['customer', 'profile', user?.id],
-    `/api/v1/crm/customers/${user?.id}/profile`,
-    undefined,
-    { enabled: !!user?.id },
-  );
+  const profileQuery = trpc.customerPortal.profile.get.useQuery();
+  const prefsQuery =
+    trpc.customerPortal.profile.getNotificationPreferences.useQuery();
 
-  const [showAddOccasion, setShowAddOccasion] = useState(false);
-  const [occasionType, setOccasionType] = useState('BIRTHDAY');
-  const [occasionDate, setOccasionDate] = useState('');
-  const [occasionDesc, setOccasionDesc] = useState('');
-
-  const addOccasionMutation = useApiMutation<{
-    customerId: string;
-    occasionType: string;
-    date: string;
-    description?: string;
-  }>('/api/v1/crm/occasions', {
-    invalidateKeys: [['customer', 'profile']],
+  const updateProfile = trpc.customerPortal.profile.update.useMutation({
+    onSuccess: async () => {
+      await utils.customerPortal.profile.get.invalidate();
+      Alert.alert('Saved', 'Your profile has been updated.');
+    },
+    onError: (err) => Alert.alert('Error', err.message),
   });
 
-  const handleAddOccasion = () => {
-    if (!occasionDate || !user?.id) return;
-    addOccasionMutation.mutate(
-      {
-        customerId: user.id,
-        occasionType,
-        date: occasionDate,
-        description: occasionDesc || undefined,
+  const updatePrefs =
+    trpc.customerPortal.profile.updateNotificationPreferences.useMutation({
+      onSuccess: async () => {
+        await utils.customerPortal.profile.getNotificationPreferences.invalidate();
       },
-      {
-        onSuccess: () => {
-          setShowAddOccasion(false);
-          setOccasionDate('');
-          setOccasionDesc('');
-          Alert.alert('Success', 'Occasion added.');
+      onError: (err) => Alert.alert('Error', err.message),
+    });
+
+  const profile = profileQuery.data;
+
+  // Editable fields
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [city, setCity] = useState('');
+
+  useEffect(() => {
+    if (profile) {
+      setFirstName(profile.firstName ?? '');
+      setLastName(profile.lastName ?? '');
+      setEmail(profile.email ?? '');
+      setPhone(profile.phone ?? '');
+      setCity(profile.city ?? '');
+    }
+  }, [profile]);
+
+  // Notification preferences - initialize category toggles from server
+  const [prefs, setPrefs] = useState<Record<NotifCategory, NotifToggles>>({
+    orders: DEFAULT_TOGGLES,
+    promotions: DEFAULT_TOGGLES,
+    schemes: DEFAULT_TOGGLES,
+    loyalty: DEFAULT_TOGGLES,
+    reminders: DEFAULT_TOGGLES,
+  });
+
+  useEffect(() => {
+    if (prefsQuery.data) {
+      const src = prefsQuery.data as Partial<
+        Record<NotifCategory, Partial<NotifToggles>>
+      >;
+      setPrefs((p) => ({
+        orders: { ...DEFAULT_TOGGLES, ...p.orders, ...src.orders },
+        promotions: { ...DEFAULT_TOGGLES, ...p.promotions, ...src.promotions },
+        schemes: { ...DEFAULT_TOGGLES, ...p.schemes, ...src.schemes },
+        loyalty: { ...DEFAULT_TOGGLES, ...p.loyalty, ...src.loyalty },
+        reminders: { ...DEFAULT_TOGGLES, ...p.reminders, ...src.reminders },
+      }));
+    }
+  }, [prefsQuery.data]);
+
+  const fullName = `${firstName} ${lastName}`.trim() || 'Customer';
+
+  const handleSave = () => {
+    updateProfile.mutate({
+      firstName: firstName || undefined,
+      lastName: lastName || undefined,
+      email: email || undefined,
+      phone: phone || undefined,
+      city: city || undefined,
+    });
+  };
+
+  const toggleChannel = (
+    category: NotifCategory,
+    channel: keyof NotifToggles,
+  ) => {
+    const current = prefs[category];
+    const next = { ...current, [channel]: !current[channel] };
+    const nextAll = { ...prefs, [category]: next };
+    setPrefs(nextAll);
+    // Persist just the touched category
+    updatePrefs.mutate({ [category]: next } as never);
+  };
+
+  const handleContactSupport = () => {
+    Alert.alert(
+      'Contact Support',
+      'How would you like to reach us?',
+      [
+        {
+          text: 'Call Support',
+          onPress: () => {
+            Linking.openURL(`tel:${SUPPORT_PHONE}`).catch(() =>
+              Alert.alert(
+                'Unable to call',
+                `Please dial ${SUPPORT_PHONE} manually.`,
+              ),
+            );
+          },
         },
-        onError: (err) => Alert.alert('Error', err.message),
-      },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ],
+      { cancelable: true },
     );
   };
 
@@ -93,6 +179,17 @@ export default function ProfileScreen() {
     ]);
   };
 
+  if (profileQuery.isLoading && !profile) {
+    return (
+      <SafeAreaView className="flex-1 bg-surface-50">
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#d4af37" />
+          <Text className="mt-3 text-surface-500 text-sm">Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView className="flex-1 bg-surface-50">
       <ScrollView
@@ -100,120 +197,138 @@ export default function ProfileScreen() {
         contentContainerStyle={{ padding: 16 }}
         showsVerticalScrollIndicator={false}
       >
-        <Text className="text-2xl font-bold text-surface-900 mb-4">
-          Profile
-        </Text>
+        <Text className="text-2xl font-bold text-surface-900 mb-4">Profile</Text>
 
-        {/* Profile Card */}
+        {/* Profile Header */}
         <Card className="mb-4 items-center">
           <Avatar name={fullName} size="lg" />
           <Text className="text-lg font-bold text-surface-900 mt-2">
             {fullName}
           </Text>
           <Text className="text-sm text-surface-500">
-            {profile?.phone ?? user?.email ?? ''}
+            {profile?.phone ?? profile?.email ?? user?.email ?? ''}
           </Text>
           {profile?.city && (
             <Text className="text-xs text-surface-400">{profile.city}</Text>
           )}
+          {profile?.loyaltyTier ? (
+            <Text className="text-xs text-primary-500 mt-1">
+              {profile.loyaltyTier} | {profile.loyaltyPoints} pts
+            </Text>
+          ) : null}
         </Card>
 
-        {/* Occasions */}
+        {/* Edit Profile */}
         <Card className="mb-4">
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-sm font-semibold text-surface-700">
-              My Occasions
-            </Text>
-            <Pressable onPress={() => setShowAddOccasion(!showAddOccasion)}>
-              <Text className="text-xs text-primary-500 font-medium">
-                + Add
-              </Text>
-            </Pressable>
-          </View>
+          <Text className="text-sm font-semibold text-surface-700 mb-3">
+            Personal Information
+          </Text>
+          <Input
+            label="First name"
+            value={firstName}
+            onChangeText={setFirstName}
+            placeholder="First name"
+          />
+          <Input
+            label="Last name"
+            value={lastName}
+            onChangeText={setLastName}
+            placeholder="Last name"
+          />
+          <Input
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="you@example.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+          <Input
+            label="Phone"
+            value={phone}
+            onChangeText={setPhone}
+            placeholder="+91..."
+            keyboardType="phone-pad"
+          />
+          <Input
+            label="City"
+            value={city}
+            onChangeText={setCity}
+            placeholder="City"
+          />
+          <Button
+            title="Save Profile"
+            onPress={handleSave}
+            loading={updateProfile.isPending}
+          />
+        </Card>
 
-          {showAddOccasion && (
-            <View className="bg-surface-50 rounded-lg p-3 mb-3">
-              <View className="flex-row gap-2 mb-2">
-                {['BIRTHDAY', 'ANNIVERSARY', 'WEDDING', 'OTHER'].map((t) => (
-                  <Pressable
-                    key={t}
-                    onPress={() => setOccasionType(t)}
-                    className={`px-2 py-1 rounded-full ${
-                      occasionType === t ? 'bg-primary-400' : 'bg-surface-200'
-                    }`}
-                  >
-                    <Text
-                      className={`text-[10px] font-medium ${
-                        occasionType === t ? 'text-white' : 'text-surface-700'
-                      }`}
+        {/* Notification Preferences */}
+        <Card className="mb-4">
+          <Text className="text-sm font-semibold text-surface-700 mb-2">
+            Notification Preferences
+          </Text>
+          <Text className="text-xs text-surface-500 mb-3">
+            Choose how you want to hear from us for each category.
+          </Text>
+          {prefsQuery.isLoading ? (
+            <ActivityIndicator color="#d4af37" />
+          ) : (
+            NOTIF_CATEGORIES.map((cat) => (
+              <View
+                key={cat.key}
+                className="py-2 border-b border-surface-100"
+              >
+                <Text className="text-sm font-medium text-surface-800 mb-1.5">
+                  {cat.label}
+                </Text>
+                {(['email', 'sms', 'whatsapp', 'push'] as const).map(
+                  (ch) => (
+                    <View
+                      key={ch}
+                      className="flex-row items-center justify-between py-1"
                     >
-                      {t}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-              <Input
-                placeholder="Date (YYYY-MM-DD)"
-                value={occasionDate}
-                onChangeText={setOccasionDate}
-              />
-              <Input
-                placeholder="Description (optional)"
-                value={occasionDesc}
-                onChangeText={setOccasionDesc}
-              />
-              <Button
-                title="Save Occasion"
-                size="sm"
-                onPress={handleAddOccasion}
-                loading={addOccasionMutation.isPending}
-              />
-            </View>
-          )}
-
-          {(profile?.occasions ?? []).map((occ) => (
-            <View
-              key={occ.id}
-              className="flex-row items-center justify-between py-2 border-b border-surface-100"
-            >
-              <View>
-                <Badge label={occ.occasionType} variant="info" size="sm" />
-                {occ.description && (
-                  <Text className="text-xs text-surface-500 mt-0.5">
-                    {occ.description}
-                  </Text>
+                      <Text className="text-sm text-surface-600 capitalize">
+                        {ch}
+                      </Text>
+                      <Switch
+                        value={prefs[cat.key][ch]}
+                        onValueChange={() => toggleChannel(cat.key, ch)}
+                        trackColor={{ false: '#e9ecef', true: '#d4af37' }}
+                        thumbColor="#fff"
+                      />
+                    </View>
+                  ),
                 )}
               </View>
-              <Text className="text-xs text-surface-600">
-                {formatDate(occ.date)}
-              </Text>
-            </View>
-          ))}
-          {(profile?.occasions ?? []).length === 0 && !showAddOccasion && (
-            <Text className="text-sm text-surface-400 text-center py-2">
-              Add birthdays, anniversaries for reminders
-            </Text>
+            ))
           )}
         </Card>
 
-        {/* Contact Store */}
+        {/* Support */}
         <Card className="mb-4">
           <Text className="text-sm font-semibold text-surface-700 mb-2">
             Store Contact
           </Text>
           <Text className="text-sm text-surface-600">
-            Need help? Contact your nearest store or call our support line.
+            Need help? Call our support line or reach out to your nearest
+            store.
           </Text>
+          <Pressable
+            onPress={() =>
+              Linking.openURL(`tel:${SUPPORT_PHONE}`).catch(() => {})
+            }
+            className="mt-2"
+          >
+            <Text className="text-sm text-primary-500 font-medium">
+              {SUPPORT_PHONE}
+            </Text>
+          </Pressable>
           <Button
             title="Contact Support"
             variant="secondary"
             size="sm"
-            onPress={() =>
-              Alert.alert(
-                'Support',
-                'Call us at 1800-XXX-XXXX or visit your nearest store.',
-              )
-            }
+            onPress={handleContactSupport}
             style={{ marginTop: 12 }}
           />
         </Card>

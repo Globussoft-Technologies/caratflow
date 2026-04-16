@@ -1,65 +1,83 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, RefreshControl, Pressable } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  RefreshControl,
+  Pressable,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useApiQuery } from '@/hooks/useApi';
+import { trpc } from '@/lib/trpc';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { MoneyDisplay } from '@/components/MoneyDisplay';
 import { useAuthStore } from '@/store/auth-store';
 import { formatMoney } from '@/utils/money';
 
-interface CustomerHomeData {
-  loyaltyTier: string | null;
-  loyaltyPoints: number;
-  goldRatePer10g: number;
-  silverRatePer10g: number;
-  activeSchemes: number;
-  wishlistCount: number;
-  recommendations: Array<{
-    id: string;
-    name: string;
-    productType: string;
-    pricePaise: number;
-    imageUrl: string | null;
-  }>;
-}
-
+/**
+ * Customer Home
+ * ------------------------------------------------------------------
+ * Pulls real-time storefront homepage (featured products, new arrivals,
+ * live metal rates) plus the authenticated customer's loyalty + scheme
+ * summary from the customerPortal dashboard. No more dead REST.
+ */
 export default function CustomerHomeScreen() {
   const { user } = useAuthStore();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data, refetch } = useApiQuery<CustomerHomeData>(
-    ['customer', 'home', user?.id],
-    '/api/v1/crm/customer-home',
-    { customerId: user?.id },
-  );
+  const storefrontHome = trpc.storefront.home.useQuery();
+  const dashboard = trpc.customerPortal.dashboard.useQuery();
+
+  const isLoading = storefrontHome.isLoading || dashboard.isLoading;
+  const home = storefrontHome.data;
+  const dash = dashboard.data;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  }, [refetch]);
+    try {
+      await Promise.all([storefrontHome.refetch(), dashboard.refetch()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [storefrontHome, dashboard]);
 
-  const home = data ?? {
-    loyaltyTier: null,
-    loyaltyPoints: 0,
-    goldRatePer10g: 0,
-    silverRatePer10g: 0,
-    activeSchemes: 0,
-    wishlistCount: 0,
-    recommendations: [],
-  };
-
-  const tierVariant = (tier: string | null) => {
+  const tierVariant = (tier: string | null | undefined) => {
     switch (tier) {
-      case 'GOLD': return 'gold' as const;
-      case 'SILVER': return 'silver' as const;
+      case 'GOLD':
+        return 'gold' as const;
+      case 'SILVER':
+        return 'silver' as const;
       case 'PLATINUM':
-      case 'DIAMOND': return 'platinum' as const;
-      default: return 'default' as const;
+      case 'DIAMOND':
+        return 'platinum' as const;
+      default:
+        return 'default' as const;
     }
   };
+
+  const goldRate =
+    home?.liveRates?.find(
+      (r) => r.metalType === 'GOLD' && r.purity === 916,
+    ) ?? home?.liveRates?.find((r) => r.metalType === 'GOLD');
+  const silverRate = home?.liveRates?.find((r) => r.metalType === 'SILVER');
+
+  const recommendations = [
+    ...(home?.featuredProducts ?? []),
+    ...(home?.newArrivals ?? []),
+  ].slice(0, 5);
+
+  if (isLoading && !home && !dash) {
+    return (
+      <SafeAreaView className="flex-1 bg-surface-50">
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#d4af37" />
+          <Text className="mt-3 text-surface-500 text-sm">Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-surface-50">
@@ -78,21 +96,23 @@ export default function CustomerHomeScreen() {
       >
         {/* Welcome */}
         <View className="mb-5">
-          <Text className="text-sm text-surface-500">Welcome,</Text>
+          <Text className="text-sm text-surface-500">
+            {dash?.greeting ? dash.greeting.split(',')[0] : 'Welcome,'}
+          </Text>
           <View className="flex-row items-center gap-2">
             <Text className="text-2xl font-bold text-surface-900">
               {user?.firstName ?? 'Customer'}
             </Text>
-            {home.loyaltyTier && (
+            {dash?.loyalty?.tier && (
               <Badge
-                label={home.loyaltyTier}
-                variant={tierVariant(home.loyaltyTier)}
+                label={dash.loyalty.tier}
+                variant={tierVariant(dash.loyalty.tier)}
                 size="md"
               />
             )}
           </View>
           <Text className="text-xs text-surface-400 mt-1">
-            {home.loyaltyPoints} loyalty points
+            {dash?.loyalty?.currentPoints ?? 0} loyalty points
           </Text>
         </View>
 
@@ -103,19 +123,17 @@ export default function CustomerHomeScreen() {
           </Text>
           <View className="flex-row justify-between">
             <View>
-              <Text className="text-xs text-surface-500">Gold</Text>
+              <Text className="text-xs text-surface-500">
+                Gold{goldRate ? ` (${goldRate.purity})` : ''}
+              </Text>
               <Text className="text-lg font-bold text-primary-600">
-                {home.goldRatePer10g > 0
-                  ? formatMoney(home.goldRatePer10g)
-                  : '--'}
+                {goldRate ? formatMoney(goldRate.ratePaisePer10g) : '--'}
               </Text>
             </View>
             <View className="items-end">
               <Text className="text-xs text-surface-500">Silver</Text>
               <Text className="text-lg font-bold text-surface-700">
-                {home.silverRatePer10g > 0
-                  ? formatMoney(home.silverRatePer10g)
-                  : '--'}
+                {silverRate ? formatMoney(silverRate.ratePaisePer10g) : '--'}
               </Text>
             </View>
           </View>
@@ -128,11 +146,9 @@ export default function CustomerHomeScreen() {
             onPress={() => router.push('/(customer)/passbook')}
           >
             <Text className="text-2xl mb-1">{'📗'}</Text>
-            <Text className="text-xs font-medium text-surface-700">
-              Schemes
-            </Text>
+            <Text className="text-xs font-medium text-surface-700">Schemes</Text>
             <Text className="text-xs text-primary-500">
-              {home.activeSchemes} active
+              {dash?.activeSchemesCount ?? 0} active
             </Text>
           </Card>
           <Card
@@ -140,11 +156,9 @@ export default function CustomerHomeScreen() {
             onPress={() => router.push('/(customer)/passbook/loyalty' as never)}
           >
             <Text className="text-2xl mb-1">{'🏆'}</Text>
-            <Text className="text-xs font-medium text-surface-700">
-              Loyalty
-            </Text>
+            <Text className="text-xs font-medium text-surface-700">Loyalty</Text>
             <Text className="text-xs text-primary-500">
-              {home.loyaltyPoints} pts
+              {dash?.loyalty?.currentPoints ?? 0} pts
             </Text>
           </Card>
           <Card
@@ -152,9 +166,12 @@ export default function CustomerHomeScreen() {
             onPress={() => router.push('/(customer)/catalog')}
           >
             <Text className="text-2xl mb-1">{'💎'}</Text>
-            <Text className="text-xs font-medium text-surface-700">
-              Catalog
-            </Text>
+            <Text className="text-xs font-medium text-surface-700">Catalog</Text>
+            {dash?.wishlistCount ? (
+              <Text className="text-xs text-primary-500">
+                {dash.wishlistCount} wishlist
+              </Text>
+            ) : null}
           </Card>
         </View>
 
@@ -163,8 +180,8 @@ export default function CustomerHomeScreen() {
           <Text className="text-sm font-semibold text-surface-700 mb-3">
             Recommended for You
           </Text>
-          {home.recommendations.length > 0 ? (
-            home.recommendations.slice(0, 5).map((product) => (
+          {recommendations.length > 0 ? (
+            recommendations.map((product) => (
               <Pressable
                 key={product.id}
                 className="flex-row items-center justify-between py-2.5 border-b border-surface-100"
@@ -172,8 +189,11 @@ export default function CustomerHomeScreen() {
                   router.push(`/(customer)/catalog/${product.id}` as never)
                 }
               >
-                <View>
-                  <Text className="text-sm font-medium text-surface-800">
+                <View className="flex-1 mr-3">
+                  <Text
+                    className="text-sm font-medium text-surface-800"
+                    numberOfLines={1}
+                  >
                     {product.name}
                   </Text>
                   <Text className="text-xs text-surface-500">
@@ -181,7 +201,7 @@ export default function CustomerHomeScreen() {
                   </Text>
                 </View>
                 <MoneyDisplay
-                  amountPaise={product.pricePaise}
+                  amountPaise={Number(product.totalPricePaise)}
                   className="text-sm font-semibold text-primary-500"
                 />
               </Pressable>
