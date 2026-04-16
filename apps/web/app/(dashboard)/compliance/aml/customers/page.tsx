@@ -1,44 +1,28 @@
 'use client';
 
 import { PageHeader, StatusBadge } from '@caratflow/ui';
-import { Users, RefreshCw, Eye } from 'lucide-react';
+import { RefreshCw, Eye } from 'lucide-react';
 import { useState } from 'react';
+import { trpc } from '@/lib/trpc';
+import { PaginationControls } from '@/components/pagination-controls';
 
-// Placeholder data -- in production, use trpc.aml.highRiskCustomers hook
-const customersData = [
-  {
-    id: '1', customerName: 'Rajesh Enterprises', riskScore: 85, riskLevel: 'VERY_HIGH',
-    kycStatus: 'PARTIAL', transactionVolumePaise: 5000000000, transactionCount: 42, flagCount: 8,
-    lastAssessedAt: '2026-04-06', nextReviewDate: '2026-04-13',
-  },
-  {
-    id: '2', customerName: 'Gold Palace Ltd', riskScore: 72, riskLevel: 'HIGH',
-    kycStatus: 'VERIFIED', transactionVolumePaise: 3200000000, transactionCount: 28, flagCount: 5,
-    lastAssessedAt: '2026-04-05', nextReviewDate: '2026-05-05',
-  },
-  {
-    id: '3', customerName: 'Diamond World Inc', riskScore: 68, riskLevel: 'HIGH',
-    kycStatus: 'PENDING', transactionVolumePaise: 2800000000, transactionCount: 19, flagCount: 4,
-    lastAssessedAt: '2026-04-04', nextReviewDate: '2026-05-04',
-  },
-  {
-    id: '4', customerName: 'Mehta Jewels Corp', riskScore: 45, riskLevel: 'MEDIUM',
-    kycStatus: 'VERIFIED', transactionVolumePaise: 1500000000, transactionCount: 15, flagCount: 2,
-    lastAssessedAt: '2026-04-03', nextReviewDate: '2026-07-02',
-  },
-  {
-    id: '5', customerName: 'Silver Star Traders', riskScore: 38, riskLevel: 'MEDIUM',
-    kycStatus: 'PARTIAL', transactionVolumePaise: 800000000, transactionCount: 12, flagCount: 1,
-    lastAssessedAt: '2026-04-02', nextReviewDate: '2026-07-01',
-  },
-  {
-    id: '6', customerName: 'Priya Sharma', riskScore: 12, riskLevel: 'LOW',
-    kycStatus: 'VERIFIED', transactionVolumePaise: 250000000, transactionCount: 5, flagCount: 0,
-    lastAssessedAt: '2026-04-01', nextReviewDate: '2027-04-01',
-  },
-];
+type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'VERY_HIGH';
 
-const riskLevelConfig: Record<string, { variant: 'success' | 'warning' | 'danger' | 'info' | 'muted'; label: string }> = {
+interface CustomerRiskRow {
+  id: string;
+  customerId: string;
+  customerName: string;
+  riskScore: number;
+  riskLevel: RiskLevel;
+  kycStatus: string | null;
+  transactionVolumePaise: number | string | bigint;
+  transactionCount: number;
+  flagCount: number;
+  lastAssessedAt: string | null;
+  nextReviewDate: string | null;
+}
+
+const riskLevelConfig: Record<RiskLevel, { variant: 'success' | 'warning' | 'danger' | 'info' | 'muted'; label: string }> = {
   LOW: { variant: 'success', label: 'Low' },
   MEDIUM: { variant: 'warning', label: 'Medium' },
   HIGH: { variant: 'danger', label: 'High' },
@@ -65,19 +49,39 @@ function getRiskBarColor(score: number): string {
   return 'bg-green-500';
 }
 
+function toAmountNumber(v: number | string | bigint): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'bigint') return Number(v);
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export default function AmlCustomersPage() {
   const [filterLevel, setFilterLevel] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const filtered = customersData.filter((c) => {
-    if (filterLevel && c.riskLevel !== filterLevel) return false;
-    return true;
+  const listQuery = trpc.aml.highRiskCustomers.useQuery({ page, limit: 20 });
+
+  const recalculateMutation = trpc.aml.customerRiskRecalculate.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'Risk score recalculated.' });
+      void listQuery.refetch();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
   });
+
+  const allItems = (listQuery.data?.items ?? []) as unknown as CustomerRiskRow[];
+  // Client-side additional risk-level filter (backend returns HIGH + VERY_HIGH only)
+  const items = filterLevel
+    ? allItems.filter((c) => c.riskLevel === filterLevel)
+    : allItems;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Customer Risk Scores"
-        description="View and manage customer AML risk assessments."
+        description="View and manage high-risk customer AML assessments."
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Compliance', href: '/compliance' },
@@ -86,18 +90,29 @@ export default function AmlCustomersPage() {
         ]}
       />
 
+      {banner && (
+        <div
+          className={`rounded-md border p-3 text-sm ${
+            banner.type === 'success'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {banner.message}
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <select
           value={filterLevel}
-          onChange={(e) => setFilterLevel(e.target.value)}
+          onChange={(e) => { setFilterLevel(e.target.value); setPage(1); }}
           className="h-9 rounded-md border bg-background px-3 text-sm"
+          aria-label="Filter by risk level"
         >
-          <option value="">All Risk Levels</option>
-          <option value="LOW">Low</option>
-          <option value="MEDIUM">Medium</option>
-          <option value="HIGH">High</option>
-          <option value="VERY_HIGH">Very High</option>
+          <option value="">All High-Risk (HIGH + VERY HIGH)</option>
+          <option value="HIGH">High only</option>
+          <option value="VERY_HIGH">Very High only</option>
         </select>
       </div>
 
@@ -119,9 +134,32 @@ export default function AmlCustomersPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((customer) => {
-                const riskConfig = riskLevelConfig[customer.riskLevel];
-                const kycConfig = kycStatusConfig[customer.kycStatus];
+              {listQuery.isLoading && (
+                <tr>
+                  <td colSpan={9} className="p-8 text-center text-muted-foreground">
+                    Loading customer risk data...
+                  </td>
+                </tr>
+              )}
+              {listQuery.isError && (
+                <tr>
+                  <td colSpan={9} className="p-8 text-center text-red-600">
+                    Failed to load customer risks: {listQuery.error.message}
+                  </td>
+                </tr>
+              )}
+              {!listQuery.isLoading && !listQuery.isError && items.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="p-8 text-center text-muted-foreground">
+                    No customers match the selected filter.
+                  </td>
+                </tr>
+              )}
+              {!listQuery.isLoading && !listQuery.isError && items.map((customer) => {
+                const riskConfig = riskLevelConfig[customer.riskLevel] ?? riskLevelConfig.MEDIUM;
+                const kycConfig = customer.kycStatus
+                  ? (kycStatusConfig[customer.kycStatus] ?? { variant: 'muted' as const, label: customer.kycStatus })
+                  : { variant: 'muted' as const, label: 'Unknown' };
                 return (
                   <tr key={customer.id} className="border-b hover:bg-muted/50">
                     <td className="p-4 font-medium">{customer.customerName}</td>
@@ -133,7 +171,7 @@ export default function AmlCustomersPage() {
                         <div className="h-2 w-16 rounded-full bg-muted">
                           <div
                             className={`h-2 rounded-full ${getRiskBarColor(customer.riskScore)}`}
-                            style={{ width: `${customer.riskScore}%` }}
+                            style={{ width: `${Math.min(100, Math.max(0, customer.riskScore))}%` }}
                           />
                         </div>
                       </div>
@@ -145,7 +183,7 @@ export default function AmlCustomersPage() {
                       <StatusBadge label={kycConfig.label} variant={kycConfig.variant} />
                     </td>
                     <td className="p-4 text-right">
-                      Rs. {(customer.transactionVolumePaise / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                      Rs. {(toAmountNumber(customer.transactionVolumePaise) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                     </td>
                     <td className="p-4">{customer.transactionCount}</td>
                     <td className="p-4">
@@ -153,37 +191,48 @@ export default function AmlCustomersPage() {
                         {customer.flagCount}
                       </span>
                     </td>
-                    <td className="p-4 text-muted-foreground">{customer.nextReviewDate}</td>
+                    <td className="p-4 text-muted-foreground">
+                      {customer.nextReviewDate
+                        ? new Date(customer.nextReviewDate).toLocaleDateString('en-IN')
+                        : '--'}
+                    </td>
                     <td className="p-4">
                       <div className="flex items-center gap-1">
-                        <button
+                        <a
+                          href={`/retail/customers/${customer.customerId}`}
                           className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent"
-                          title="View Details"
+                          title="View Customer"
                         >
                           <Eye className="h-4 w-4" />
-                        </button>
+                        </a>
                         <button
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent"
+                          type="button"
+                          onClick={() => recalculateMutation.mutate({ customerId: customer.customerId })}
+                          disabled={recalculateMutation.isPending}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent disabled:opacity-50"
                           title="Recalculate Risk"
                         >
-                          <RefreshCw className="h-4 w-4" />
+                          <RefreshCw className={`h-4 w-4 ${recalculateMutation.isPending ? 'animate-spin' : ''}`} />
                         </button>
                       </div>
                     </td>
                   </tr>
                 );
               })}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="p-8 text-center text-muted-foreground">
-                    No customers match the selected filter.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {listQuery.data && (
+        <PaginationControls
+          page={listQuery.data.page}
+          totalPages={listQuery.data.totalPages}
+          hasPrevious={listQuery.data.hasPrevious}
+          hasNext={listQuery.data.hasNext}
+          onChange={setPage}
+        />
+      )}
     </div>
   );
 }

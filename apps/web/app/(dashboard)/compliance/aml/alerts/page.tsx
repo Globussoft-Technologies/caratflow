@@ -1,51 +1,35 @@
 'use client';
 
 import { PageHeader, StatusBadge } from '@caratflow/ui';
-import { AlertTriangle, Filter, Eye, ArrowUp, CheckCircle, XCircle } from 'lucide-react';
+import { Filter, Eye, ArrowUp, CheckCircle, Send } from 'lucide-react';
 import { useState } from 'react';
+import { trpc } from '@/lib/trpc';
+import { PaginationControls } from '@/components/pagination-controls';
 
-// Placeholder data -- in production, use trpc.aml.alertList hook
-const alertsData = [
-  {
-    id: '1', customerName: 'Rajesh Enterprises', alertType: 'HIGH_VALUE', severity: 'CRITICAL',
-    description: 'Transaction amount Rs. 15,00,000 exceeds limit of Rs. 10,00,000.',
-    amountPaise: 1500000000, status: 'NEW', ruleName: 'High-Value Transaction Limit',
-    createdAt: '2026-04-06T10:30:00',
-  },
-  {
-    id: '2', customerName: 'Gold Palace Ltd', alertType: 'STRUCTURING', severity: 'HIGH',
-    description: 'Possible structuring detected. Multiple near-threshold transactions in 24h window.',
-    amountPaise: 980000000, status: 'UNDER_REVIEW', ruleName: 'Structuring Detection',
-    createdAt: '2026-04-05T14:15:00',
-  },
-  {
-    id: '3', customerName: 'Mehta Jewels Corp', alertType: 'RAPID_TRANSACTIONS', severity: 'MEDIUM',
-    description: 'Customer has 8 transactions in the last 24h, exceeding limit of 5.',
-    amountPaise: 450000000, status: 'NEW', ruleName: 'Transaction Frequency Limit',
-    createdAt: '2026-04-04T09:00:00',
-  },
-  {
-    id: '4', customerName: 'Diamond World Inc', alertType: 'UNUSUAL_PATTERN', severity: 'HIGH',
-    description: 'Transaction amount significantly exceeds customer typical pattern.',
-    amountPaise: 750000000, status: 'ESCALATED', ruleName: 'Velocity Check',
-    createdAt: '2026-04-03T16:45:00',
-  },
-  {
-    id: '5', customerName: 'Priya Sharma', alertType: 'COUNTRY_RISK', severity: 'LOW',
-    description: 'Customer is from a restricted country. Enhanced due diligence required.',
-    amountPaise: 50000000, status: 'CLEARED', ruleName: 'Country Restriction',
-    createdAt: '2026-04-02T11:20:00',
-  },
-];
+type AlertStatus = 'NEW' | 'UNDER_REVIEW' | 'ESCALATED' | 'CLEARED' | 'REPORTED';
+type AlertSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
-const severityConfig: Record<string, { variant: 'success' | 'warning' | 'danger' | 'info' | 'muted'; label: string }> = {
+interface AlertRow {
+  id: string;
+  customerId: string;
+  customerName: string;
+  alertType: string;
+  severity: AlertSeverity;
+  status: AlertStatus;
+  description: string;
+  amountPaise: number | string | bigint;
+  createdAt: string;
+  rule?: { ruleName: string; ruleType: string } | null;
+}
+
+const severityConfig: Record<AlertSeverity, { variant: 'success' | 'warning' | 'danger' | 'info' | 'muted'; label: string }> = {
   LOW: { variant: 'info', label: 'Low' },
   MEDIUM: { variant: 'warning', label: 'Medium' },
   HIGH: { variant: 'danger', label: 'High' },
   CRITICAL: { variant: 'danger', label: 'Critical' },
 };
 
-const statusConfig: Record<string, { variant: 'success' | 'warning' | 'danger' | 'info' | 'muted'; label: string }> = {
+const statusConfig: Record<AlertStatus, { variant: 'success' | 'warning' | 'danger' | 'info' | 'muted'; label: string }> = {
   NEW: { variant: 'info', label: 'New' },
   UNDER_REVIEW: { variant: 'warning', label: 'Under Review' },
   ESCALATED: { variant: 'danger', label: 'Escalated' },
@@ -62,15 +46,114 @@ const alertTypeLabels: Record<string, string> = {
   COUNTRY_RISK: 'Country Risk',
 };
 
+function toAmountNumber(v: number | string | bigint): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'bigint') return Number(v);
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function matchesDateRange(createdAtIso: string, fromDate: string, toDate: string): boolean {
+  if (!fromDate && !toDate) return true;
+  const ts = new Date(createdAtIso).getTime();
+  if (fromDate) {
+    const fromTs = new Date(`${fromDate}T00:00:00`).getTime();
+    if (ts < fromTs) return false;
+  }
+  if (toDate) {
+    const toTs = new Date(`${toDate}T23:59:59.999`).getTime();
+    if (ts > toTs) return false;
+  }
+  return true;
+}
+
 export default function AmlAlertsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [severityFilter, setSeverityFilter] = useState<string>('');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [actionPrompt, setActionPrompt] = useState<{
+    alertId: string;
+    action: 'review' | 'escalate' | 'clear';
+  } | null>(null);
+  const [actionNotes, setActionNotes] = useState<string>('');
 
-  const filteredAlerts = alertsData.filter((alert) => {
-    if (statusFilter && alert.status !== statusFilter) return false;
-    if (severityFilter && alert.severity !== severityFilter) return false;
-    return true;
+  const listQuery = trpc.aml.alertList.useQuery({
+    page,
+    limit: 20,
+    status: statusFilter ? (statusFilter as AlertStatus) : undefined,
+    severity: severityFilter ? (severityFilter as AlertSeverity) : undefined,
   });
+
+  const refresh = () => {
+    void listQuery.refetch();
+  };
+
+  const reviewMutation = trpc.aml.alertReview.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'Alert marked as under review.' });
+      setActionPrompt(null);
+      setActionNotes('');
+      refresh();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const escalateMutation = trpc.aml.alertEscalate.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'Alert escalated.' });
+      setActionPrompt(null);
+      setActionNotes('');
+      refresh();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const clearMutation = trpc.aml.alertClear.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'Alert cleared (false positive).' });
+      setActionPrompt(null);
+      setActionNotes('');
+      refresh();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const reportMutation = trpc.aml.alertReportToFiu.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'Alert reported to FIU.' });
+      refresh();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const dataItems = (listQuery.data?.items ?? []) as unknown as AlertRow[];
+  // Client-side date-range filter (backend listAlerts has no date inputs yet)
+  const items = dataItems.filter((a) => matchesDateRange(a.createdAt, dateFrom, dateTo));
+
+  const handleSubmitAction = () => {
+    if (!actionPrompt) return;
+    const { alertId, action } = actionPrompt;
+    if (action === 'review') {
+      reviewMutation.mutate({ alertId, notes: actionNotes.trim() || undefined });
+    } else if (action === 'escalate') {
+      escalateMutation.mutate({ alertId, notes: actionNotes.trim() || undefined });
+    } else if (action === 'clear') {
+      if (!actionNotes.trim()) {
+        setBanner({ type: 'error', message: 'Notes are required when clearing an alert.' });
+        return;
+      }
+      clearMutation.mutate({ alertId, notes: actionNotes.trim() });
+    }
+  };
+
+  const anyActionPending =
+    reviewMutation.isPending ||
+    escalateMutation.isPending ||
+    clearMutation.isPending ||
+    reportMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -85,14 +168,27 @@ export default function AmlAlertsPage() {
         ]}
       />
 
+      {banner && (
+        <div
+          className={`rounded-md border p-3 text-sm ${
+            banner.type === 'success'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {banner.message}
+        </div>
+      )}
+
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-end gap-3">
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-muted-foreground" />
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
             className="h-9 rounded-md border bg-background px-3 text-sm"
+            aria-label="Filter by status"
           >
             <option value="">All Statuses</option>
             <option value="NEW">New</option>
@@ -104,8 +200,9 @@ export default function AmlAlertsPage() {
         </div>
         <select
           value={severityFilter}
-          onChange={(e) => setSeverityFilter(e.target.value)}
+          onChange={(e) => { setSeverityFilter(e.target.value); setPage(1); }}
           className="h-9 rounded-md border bg-background px-3 text-sm"
+          aria-label="Filter by severity"
         >
           <option value="">All Severities</option>
           <option value="LOW">Low</option>
@@ -113,7 +210,83 @@ export default function AmlAlertsPage() {
           <option value="HIGH">High</option>
           <option value="CRITICAL">Critical</option>
         </select>
+        <div className="flex flex-col">
+          <label htmlFor="alert-date-from" className="text-xs text-muted-foreground">From</label>
+          <input
+            id="alert-date-from"
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="h-9 rounded-md border bg-background px-3 text-sm"
+          />
+        </div>
+        <div className="flex flex-col">
+          <label htmlFor="alert-date-to" className="text-xs text-muted-foreground">To</label>
+          <input
+            id="alert-date-to"
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="h-9 rounded-md border bg-background px-3 text-sm"
+          />
+        </div>
+        {(statusFilter || severityFilter || dateFrom || dateTo) && (
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFilter('');
+              setSeverityFilter('');
+              setDateFrom('');
+              setDateTo('');
+              setPage(1);
+            }}
+            className="h-9 rounded-md border bg-background px-3 text-sm hover:bg-accent"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
+
+      {/* Action Notes Dialog */}
+      {actionPrompt && (
+        <div className="rounded-lg border bg-card p-4 shadow-sm">
+          <h4 className="text-sm font-semibold">
+            {actionPrompt.action === 'review' && 'Mark as Under Review'}
+            {actionPrompt.action === 'escalate' && 'Escalate Alert'}
+            {actionPrompt.action === 'clear' && 'Clear Alert (False Positive)'}
+          </h4>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {actionPrompt.action === 'clear'
+              ? 'Notes are required when clearing an alert.'
+              : 'Notes are optional.'}
+          </p>
+          <textarea
+            value={actionNotes}
+            onChange={(e) => setActionNotes(e.target.value)}
+            rows={3}
+            maxLength={2000}
+            placeholder="Add review notes..."
+            className="mt-2 w-full rounded-md border px-3 py-2 text-sm"
+          />
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => { setActionPrompt(null); setActionNotes(''); }}
+              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmitAction}
+              disabled={anyActionPending}
+              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {anyActionPending ? 'Saving...' : 'Confirm'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Alerts Table */}
       <div className="rounded-lg border bg-card">
@@ -132,9 +305,30 @@ export default function AmlAlertsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredAlerts.map((alert) => {
-                const sevConfig = severityConfig[alert.severity];
-                const statConfig = statusConfig[alert.status];
+              {listQuery.isLoading && (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                    Loading alerts...
+                  </td>
+                </tr>
+              )}
+              {listQuery.isError && (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-red-600">
+                    Failed to load alerts: {listQuery.error.message}
+                  </td>
+                </tr>
+              )}
+              {!listQuery.isLoading && !listQuery.isError && items.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                    No alerts match the selected filters.
+                  </td>
+                </tr>
+              )}
+              {!listQuery.isLoading && !listQuery.isError && items.map((alert) => {
+                const sevConfig = severityConfig[alert.severity] ?? severityConfig.MEDIUM;
+                const statConfig = statusConfig[alert.status] ?? statusConfig.NEW;
                 return (
                   <tr key={alert.id} className="border-b hover:bg-muted/50">
                     <td className="p-4 font-medium">{alert.customerName}</td>
@@ -147,9 +341,9 @@ export default function AmlAlertsPage() {
                       <StatusBadge label={sevConfig.label} variant={sevConfig.variant} />
                     </td>
                     <td className="p-4 text-right">
-                      Rs. {(alert.amountPaise / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                      Rs. {(toAmountNumber(alert.amountPaise) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                     </td>
-                    <td className="p-4 text-muted-foreground">{alert.ruleName}</td>
+                    <td className="p-4 text-muted-foreground">{alert.rule?.ruleName ?? '--'}</td>
                     <td className="p-4">
                       <StatusBadge label={statConfig.label} variant={statConfig.variant} />
                     </td>
@@ -159,67 +353,72 @@ export default function AmlAlertsPage() {
                     <td className="p-4">
                       <div className="flex items-center gap-1">
                         {alert.status === 'NEW' && (
+                          <button
+                            type="button"
+                            onClick={() => { setActionPrompt({ alertId: alert.id, action: 'review' }); setActionNotes(''); }}
+                            disabled={anyActionPending}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent disabled:opacity-50"
+                            title="Review"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                        )}
+                        {(alert.status === 'NEW' || alert.status === 'UNDER_REVIEW') && (
                           <>
                             <button
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent"
-                              title="Review"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </button>
-                            <button
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent"
+                              type="button"
+                              onClick={() => { setActionPrompt({ alertId: alert.id, action: 'escalate' }); setActionNotes(''); }}
+                              disabled={anyActionPending}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent disabled:opacity-50"
                               title="Escalate"
                             >
                               <ArrowUp className="h-4 w-4 text-orange-500" />
                             </button>
                             <button
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent"
-                              title="Clear"
+                              type="button"
+                              onClick={() => { setActionPrompt({ alertId: alert.id, action: 'clear' }); setActionNotes(''); }}
+                              disabled={anyActionPending}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent disabled:opacity-50"
+                              title="Clear (false positive)"
                             >
                               <CheckCircle className="h-4 w-4 text-green-500" />
                             </button>
                           </>
                         )}
-                        {alert.status === 'UNDER_REVIEW' && (
-                          <>
-                            <button
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent"
-                              title="Escalate"
-                            >
-                              <ArrowUp className="h-4 w-4 text-orange-500" />
-                            </button>
-                            <button
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent"
-                              title="Clear"
-                            >
-                              <CheckCircle className="h-4 w-4 text-green-500" />
-                            </button>
-                          </>
+                        {alert.status === 'ESCALATED' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm('Report this alert to FIU? This cannot be undone.')) {
+                                reportMutation.mutate({ alertId: alert.id });
+                              }
+                            }}
+                            disabled={anyActionPending}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent disabled:opacity-50"
+                            title="Report to FIU"
+                          >
+                            <Send className="h-4 w-4 text-primary" />
+                          </button>
                         )}
                       </div>
                     </td>
                   </tr>
                 );
               })}
-              {filteredAlerts.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
-                    No alerts match the selected filters.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Alert Description Tooltip Area */}
-      <div className="rounded-lg border bg-muted/30 p-4">
-        <h4 className="text-sm font-semibold text-muted-foreground">Alert Details</h4>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Click on an alert row to view full details, transaction history, and review workflow.
-        </p>
-      </div>
+      {listQuery.data && (
+        <PaginationControls
+          page={listQuery.data.page}
+          totalPages={listQuery.data.totalPages}
+          hasPrevious={listQuery.data.hasPrevious}
+          hasNext={listQuery.data.hasNext}
+          onChange={setPage}
+        />
+      )}
     </div>
   );
 }
