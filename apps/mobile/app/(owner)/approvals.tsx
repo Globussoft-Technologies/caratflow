@@ -1,82 +1,257 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, Alert, Pressable } from 'react-native';
+// ─── Owner Approvals ─────────────────────────────────────────
+// There is no `approvals` module on the backend. This screen is a
+// "Pending Actions" aggregator that pulls from three sources:
+//
+//   1. financial.journal.list({ status: 'DRAFT' })
+//      Unposted journal entries awaiting owner sign-off.
+//      Approve -> financial.journal.post
+//      Reject  -> financial.journal.void
+//
+//   2. wholesale.listPurchaseOrders({ filters: { status: 'DRAFT' } })
+//      Draft POs waiting to be sent. The Prisma schema defines
+//      WholesalePOStatus = DRAFT | SENT | PARTIALLY_RECEIVED | RECEIVED
+//      | CANCELLED -- there is no PENDING_APPROVAL state, so DRAFT is
+//      the closest analogue for "awaiting owner approval".
+//      Approve -> wholesale.sendPurchaseOrder
+//      Reject  -> wholesale.cancelPurchaseOrder
+//
+//   3. aml.alertList({ status: 'NEW' })
+//      Open AML alerts. AmlAlertStatusEnum = NEW | UNDER_REVIEW |
+//      ESCALATED | CLEARED | REPORTED -- there is no OPEN state, so
+//      NEW is the equivalent.
+//      Approve (mark reviewed) -> aml.alertReview
+//      Reject (dismiss / clear) -> aml.alertClear
+
+import React, { useState, useCallback, useMemo } from 'react';
+import { View, Text, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useApiQuery, useApiMutation } from '@/hooks/useApi';
 import { DataList } from '@/components/DataList';
 import { Card } from '@/components/Card';
 import { Badge, getStatusVariant } from '@/components/Badge';
 import { MoneyDisplay } from '@/components/MoneyDisplay';
 import { Button } from '@/components/Button';
 import { formatDateTime } from '@/utils/date';
+import { trpc } from '@/lib/trpc';
+
+type ApprovalSource = 'JOURNAL' | 'PO' | 'AML';
 
 interface ApprovalItem {
   id: string;
-  type: 'PO' | 'DISCOUNT' | 'RETURN' | 'CREDIT_LIMIT';
+  source: ApprovalSource;
   title: string;
   description: string;
   amountPaise: number;
   requestedBy: string;
   requestedAt: string;
   status: string;
-  metadata: Record<string, unknown>;
+}
+
+function asNumber(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') return Number(v);
+  return 0;
 }
 
 export default function ApprovalsScreen() {
   const [refreshing, setRefreshing] = useState(false);
+  const utils = trpc.useUtils();
 
-  const { data, isLoading, refetch } = useApiQuery<{ items: ApprovalItem[] }>(
-    ['owner', 'approvals'],
-    '/api/v1/approvals/pending',
-    undefined,
-    { offlineCacheMs: 2 * 60 * 1000 },
-  );
+  const journalQ = trpc.financial.journal.list.useQuery({
+    page: 1,
+    limit: 20,
+    status: 'DRAFT' as never,
+  });
 
-  const approveMutation = useApiMutation<{ id: string; action: 'approve' | 'reject' }>(
-    '/api/v1/approvals/action',
-    {
-      invalidateKeys: [['owner', 'approvals'], ['owner', 'dashboard']],
-    },
-  );
+  const poQ = trpc.wholesale.listPurchaseOrders.useQuery({
+    filters: { status: 'DRAFT' as never },
+    pagination: { page: 1, limit: 20 },
+  });
 
-  const handleAction = (item: ApprovalItem, action: 'approve' | 'reject') => {
+  const amlQ = trpc.aml.alertList.useQuery({
+    page: 1,
+    limit: 20,
+    status: 'NEW' as never,
+  });
+
+  // ─── Mutations ─────────────────────────────────────────────
+  const journalPost = trpc.financial.journal.post.useMutation();
+  const journalVoid = trpc.financial.journal.void.useMutation();
+  const poSend = trpc.wholesale.sendPurchaseOrder.useMutation();
+  const poCancel = trpc.wholesale.cancelPurchaseOrder.useMutation();
+  const amlReview = trpc.aml.alertReview.useMutation();
+  const amlClear = trpc.aml.alertClear.useMutation();
+
+  type JournalRow = {
+    id: string;
+    entryNumber: string;
+    description: string;
+    date: string | Date;
+    status: string;
+    lines?: Array<{ debitPaise: number | string }>;
+  };
+  type PoRow = {
+    id: string;
+    poNumber: string;
+    supplierName?: string;
+    totalPaise: number | string;
+    status: string;
+    createdAt: string | Date;
+  };
+  type AmlAlertRow = {
+    id: string;
+    alertType?: string;
+    severity: string;
+    status: string;
+    customerName?: string;
+    amountPaise: number | string;
+    createdAt: string | Date;
+    rule?: { ruleName: string } | null;
+  };
+
+  const items: ApprovalItem[] = useMemo(() => {
+    const out: ApprovalItem[] = [];
+
+    // Journal entries
+    const journalItems =
+      (journalQ.data as unknown as { items?: JournalRow[] } | undefined)
+        ?.items ?? [];
+    for (const je of journalItems) {
+      // Sum debits as the entry magnitude (debits == credits on a valid entry).
+      const total = (je.lines ?? []).reduce(
+        (s, l) => s + asNumber(l.debitPaise),
+        0,
+      );
+      out.push({
+        id: `journal:${je.id}`,
+        source: 'JOURNAL',
+        title: `Journal ${je.entryNumber}`,
+        description: je.description,
+        amountPaise: total,
+        requestedBy: 'Accounts',
+        requestedAt: new Date(je.date).toISOString(),
+        status: je.status,
+      });
+    }
+
+    // Purchase orders
+    const poItems =
+      (poQ.data as unknown as { items?: PoRow[] } | undefined)?.items ?? [];
+    for (const po of poItems) {
+      out.push({
+        id: `po:${po.id}`,
+        source: 'PO',
+        title: `PO ${po.poNumber}`,
+        description: po.supplierName
+          ? `Supplier: ${po.supplierName}`
+          : 'Draft purchase order',
+        amountPaise: asNumber(po.totalPaise),
+        requestedBy: po.supplierName ?? 'Purchasing',
+        requestedAt: new Date(po.createdAt).toISOString(),
+        status: po.status,
+      });
+    }
+
+    // AML alerts
+    const amlItems =
+      (amlQ.data as unknown as { items?: AmlAlertRow[] } | undefined)?.items ??
+      [];
+    for (const a of amlItems) {
+      out.push({
+        id: `aml:${a.id}`,
+        source: 'AML',
+        title: a.rule?.ruleName ?? a.alertType ?? 'AML Alert',
+        description: `${a.severity} severity | ${a.customerName ?? 'Unknown customer'}`,
+        amountPaise: asNumber(a.amountPaise),
+        requestedBy: a.customerName ?? 'System',
+        requestedAt: new Date(a.createdAt).toISOString(),
+        status: a.status,
+      });
+    }
+
+    return out;
+  }, [journalQ.data, poQ.data, amlQ.data]);
+
+  const sourceLabels: Record<ApprovalSource, string> = {
+    JOURNAL: 'Journal Entry',
+    PO: 'Purchase Order',
+    AML: 'AML Alert',
+  };
+
+  const refetchAll = useCallback(async () => {
+    await Promise.all([journalQ.refetch(), poQ.refetch(), amlQ.refetch()]);
+    // Also nudge dashboard counts.
+    await utils.reporting.getAnalyticsDashboard.invalidate().catch(() => {});
+  }, [journalQ, poQ, amlQ, utils]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refetchAll();
+    setRefreshing(false);
+  }, [refetchAll]);
+
+  const handleAction = (
+    item: ApprovalItem,
+    action: 'approve' | 'reject',
+  ) => {
+    const [prefix, rawId] = item.id.split(':');
+    if (!rawId) return;
     const actionLabel = action === 'approve' ? 'Approve' : 'Reject';
+
     Alert.alert(
-      `${actionLabel} ${item.type}`,
+      `${actionLabel} ${sourceLabels[item.source]}`,
       `Are you sure you want to ${action} "${item.title}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: actionLabel,
           style: action === 'reject' ? 'destructive' : 'default',
-          onPress: () => {
-            approveMutation.mutate(
-              { id: item.id, action },
-              {
-                onSuccess: () => refetch(),
-                onError: (err) =>
-                  Alert.alert('Error', err.message),
-              },
-            );
+          onPress: async () => {
+            try {
+              if (prefix === 'journal') {
+                if (action === 'approve') {
+                  await journalPost.mutateAsync({ id: rawId });
+                } else {
+                  await journalVoid.mutateAsync({
+                    id: rawId,
+                    reason: 'Rejected by owner',
+                  });
+                }
+              } else if (prefix === 'po') {
+                if (action === 'approve') {
+                  await poSend.mutateAsync({ poId: rawId });
+                } else {
+                  await poCancel.mutateAsync({
+                    poId: rawId,
+                    reason: 'Rejected by owner',
+                  });
+                }
+              } else if (prefix === 'aml') {
+                if (action === 'approve') {
+                  await amlReview.mutateAsync({
+                    alertId: rawId,
+                    notes: 'Reviewed by owner',
+                  });
+                } else {
+                  await amlClear.mutateAsync({
+                    alertId: rawId,
+                    notes: 'Dismissed by owner',
+                  });
+                }
+              }
+              await refetchAll();
+            } catch (err) {
+              Alert.alert(
+                'Error',
+                err instanceof Error ? err.message : 'Action failed',
+              );
+            }
           },
         },
       ],
     );
   };
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  }, [refetch]);
-
-  const items = data?.items ?? [];
-
-  const typeLabels: Record<string, string> = {
-    PO: 'Purchase Order',
-    DISCOUNT: 'Discount',
-    RETURN: 'Return',
-    CREDIT_LIMIT: 'Credit Limit',
-  };
+  const isLoading = journalQ.isLoading || poQ.isLoading || amlQ.isLoading;
 
   return (
     <SafeAreaView className="flex-1 bg-surface-50">
@@ -99,10 +274,7 @@ export default function ApprovalsScreen() {
         renderItem={({ item }) => (
           <Card className="mb-3">
             <View className="flex-row items-start justify-between mb-2">
-              <Badge
-                label={typeLabels[item.type] ?? item.type}
-                variant="info"
-              />
+              <Badge label={sourceLabels[item.source]} variant="info" />
               <Badge
                 label={item.status}
                 variant={getStatusVariant(item.status)}
@@ -131,7 +303,6 @@ export default function ApprovalsScreen() {
               </View>
             </View>
 
-            {/* Action Buttons */}
             <View className="flex-row gap-3">
               <View className="flex-1">
                 <Button

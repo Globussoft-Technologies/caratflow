@@ -1,5 +1,17 @@
+// ─── Owner Reports Hub ────────────────────────────────────────
+// Static nav list to the two existing sub-report screens. The
+// previous version had "Outstanding Payments" and "Karigar
+// Performance" cards pointing at /reports/sales and /reports/
+// inventory respectively -- both mislabeled. Only the two real
+// sub-reports are exposed here until dedicated payments / karigar
+// screens exist in the mobile app.
+//
+// TODO: add sub-report screens at /(owner)/reports/payments (using
+// trpc.financial.reports.aging) and /(owner)/reports/karigar (using
+// trpc.reporting.karigarPerformance) and restore their entries here.
+
 import React from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Card } from '@/components/Card';
@@ -26,20 +38,6 @@ const reportCards: ReportCard[] = [
     subtitle: 'Inventory value by category, low stock',
     route: '/(owner)/reports/inventory',
     icon: '\uD83D\uDCE6',
-  },
-  {
-    id: 'payments',
-    title: 'Outstanding Payments',
-    subtitle: 'AR/AP aging, collection status',
-    route: '/(owner)/reports/sales',
-    icon: '\uD83D\uDCCB',
-  },
-  {
-    id: 'karigar',
-    title: 'Karigar Performance',
-    subtitle: 'Job completion, wastage, utilization',
-    route: '/(owner)/reports/inventory',
-    icon: '\u2692\uFE0F',
   },
 ];
 

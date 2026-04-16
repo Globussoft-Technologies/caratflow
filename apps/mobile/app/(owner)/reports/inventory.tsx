@@ -1,62 +1,123 @@
+// ─── Inventory Report ─────────────────────────────────────────
+// Wired to tRPC. There is no single `reporting.inventoryReport`
+// procedure; this screen combines:
+//   - reporting.stockSummary     (category breakdown + total value)
+//   - reporting.metalStockSummary (gold/silver/platinum by purity)
+//   - reporting.lowStockAlert     (items below reorder level)
+
 import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
-import { useApiQuery } from '@/hooks/useApi';
 import { Card } from '@/components/Card';
 import { MoneyDisplay } from '@/components/MoneyDisplay';
 import { WeightDisplay } from '@/components/WeightDisplay';
 import { formatMoneyShort } from '@/utils/money';
 import { Badge } from '@/components/Badge';
+import { trpc } from '@/lib/trpc';
 
-interface InventoryReportData {
-  totalValuePaise: number;
-  totalSKUs: number;
-  categoryBreakdown: Array<{
-    categoryName: string;
-    itemCount: number;
-    valuePaise: number;
-  }>;
-  metalBreakdown: Array<{
-    metalType: string;
-    purityFineness: number;
-    totalWeightMg: number;
-    totalValuePaise: number;
-  }>;
-  lowStockItems: Array<{
-    productName: string;
-    sku: string;
-    locationName: string;
-    quantityOnHand: number;
-    reorderLevel: number;
-  }>;
+interface StockSummaryRow {
+  category: string;
+  totalItems: number;
+  totalQuantity: number;
+  totalValuePaise: number | string;
+}
+
+interface StockSummaryResp {
+  stockSummary: StockSummaryRow[];
+  totalValuePaise: number | string;
+  totalItems: number;
+  totalQuantity: number;
+}
+
+interface MetalStockRow {
+  metalType: string;
+  purityFineness: number;
+  locationName: string;
+  weightMg: number | string;
+  valuePaise: number | string;
+}
+
+interface LowStockItem {
+  productId: string;
+  productName: string;
+  sku: string;
+  locationName: string;
+  quantityOnHand: number;
+  reorderLevel: number;
+  deficit: number;
+}
+
+function asNumber(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') return Number(v);
+  return 0;
 }
 
 export default function InventoryReportScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data, refetch } = useApiQuery<InventoryReportData>(
-    ['owner', 'reports', 'inventory'],
-    '/api/v1/reporting/inventory-summary',
-  );
+  const stockQ = trpc.reporting.stockSummary.useQuery({});
+  const metalQ = trpc.reporting.metalStockSummary.useQuery();
+  const lowStockQ = trpc.reporting.lowStockAlert.useQuery();
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetch();
+    await Promise.all([
+      stockQ.refetch(),
+      metalQ.refetch(),
+      lowStockQ.refetch(),
+    ]);
     setRefreshing(false);
-  }, [refetch]);
+  }, [stockQ, metalQ, lowStockQ]);
 
-  const report = data ?? {
-    totalValuePaise: 0,
-    totalSKUs: 0,
-    categoryBreakdown: [],
-    metalBreakdown: [],
-    lowStockItems: [],
-  };
+  const stock = stockQ.data as unknown as StockSummaryResp | undefined;
+  const metal = (metalQ.data as unknown as MetalStockRow[] | undefined) ?? [];
+  const lowStock =
+    (lowStockQ.data as unknown as LowStockItem[] | undefined) ?? [];
+
+  const totalValuePaise = asNumber(stock?.totalValuePaise ?? 0);
+  const totalSKUs = stock?.totalItems ?? 0;
+  const categoryBreakdown =
+    stock?.stockSummary.map((s) => ({
+      categoryName: s.category,
+      itemCount: s.totalItems,
+      valuePaise: asNumber(s.totalValuePaise),
+    })) ?? [];
+
+  // Aggregate metal stock across locations for display (metalType +
+  // purity as the key).
+  const metalAgg = new Map<
+    string,
+    {
+      metalType: string;
+      purityFineness: number;
+      totalWeightMg: number;
+      totalValuePaise: number;
+    }
+  >();
+  for (const m of metal) {
+    const key = `${m.metalType}-${m.purityFineness}`;
+    const existing = metalAgg.get(key);
+    if (existing) {
+      existing.totalWeightMg += asNumber(m.weightMg);
+      existing.totalValuePaise += asNumber(m.valuePaise);
+    } else {
+      metalAgg.set(key, {
+        metalType: m.metalType,
+        purityFineness: m.purityFineness,
+        totalWeightMg: asNumber(m.weightMg),
+        totalValuePaise: asNumber(m.valuePaise),
+      });
+    }
+  }
+  const metalBreakdown = Array.from(metalAgg.values());
 
   return (
     <SafeAreaView className="flex-1 bg-surface-50">
-      <Stack.Screen options={{ headerShown: true, title: 'Inventory Report' }} />
+      <Stack.Screen
+        options={{ headerShown: true, title: 'Inventory Report' }}
+      />
 
       <ScrollView
         className="flex-1"
@@ -75,13 +136,13 @@ export default function InventoryReportScreen() {
           <Card className="flex-1">
             <Text className="text-xs text-surface-500 mb-1">Total Value</Text>
             <Text className="text-lg font-bold text-surface-900">
-              {formatMoneyShort(report.totalValuePaise)}
+              {formatMoneyShort(totalValuePaise)}
             </Text>
           </Card>
           <Card className="flex-1">
             <Text className="text-xs text-surface-500 mb-1">Total SKUs</Text>
             <Text className="text-lg font-bold text-surface-900">
-              {report.totalSKUs}
+              {totalSKUs}
             </Text>
           </Card>
         </View>
@@ -91,7 +152,7 @@ export default function InventoryReportScreen() {
           <Text className="text-sm font-semibold text-surface-700 mb-3">
             By Category
           </Text>
-          {report.categoryBreakdown.map((cat, idx) => (
+          {categoryBreakdown.map((cat, idx) => (
             <View
               key={idx}
               className="flex-row items-center justify-between py-2.5 border-b border-surface-100"
@@ -111,7 +172,7 @@ export default function InventoryReportScreen() {
               />
             </View>
           ))}
-          {report.categoryBreakdown.length === 0 && (
+          {categoryBreakdown.length === 0 && (
             <Text className="text-surface-400 text-sm text-center py-4">
               No category data
             </Text>
@@ -123,28 +184,28 @@ export default function InventoryReportScreen() {
           <Text className="text-sm font-semibold text-surface-700 mb-3">
             Metal Stock
           </Text>
-          {report.metalBreakdown.map((metal, idx) => (
+          {metalBreakdown.map((metalRow, idx) => (
             <View
               key={idx}
               className="flex-row items-center justify-between py-2.5 border-b border-surface-100"
             >
               <View>
                 <Text className="text-sm font-medium text-surface-800">
-                  {metal.metalType} ({metal.purityFineness})
+                  {metalRow.metalType} ({metalRow.purityFineness})
                 </Text>
                 <WeightDisplay
-                  milligrams={metal.totalWeightMg}
+                  milligrams={metalRow.totalWeightMg}
                   className="text-xs text-surface-500"
                 />
               </View>
               <MoneyDisplay
-                amountPaise={metal.totalValuePaise}
+                amountPaise={metalRow.totalValuePaise}
                 short
                 className="text-sm font-semibold text-surface-900"
               />
             </View>
           ))}
-          {report.metalBreakdown.length === 0 && (
+          {metalBreakdown.length === 0 && (
             <Text className="text-surface-400 text-sm text-center py-4">
               No metal data
             </Text>
@@ -157,13 +218,10 @@ export default function InventoryReportScreen() {
             <Text className="text-sm font-semibold text-surface-700">
               Low Stock Alerts
             </Text>
-            <Badge label={`${report.lowStockItems.length}`} variant="danger" />
+            <Badge label={`${lowStock.length}`} variant="danger" />
           </View>
-          {report.lowStockItems.map((item, idx) => (
-            <View
-              key={idx}
-              className="py-2.5 border-b border-surface-100"
-            >
+          {lowStock.map((item, idx) => (
+            <View key={idx} className="py-2.5 border-b border-surface-100">
               <Text className="text-sm font-medium text-surface-800">
                 {item.productName}
               </Text>
@@ -177,7 +235,7 @@ export default function InventoryReportScreen() {
               </Text>
             </View>
           ))}
-          {report.lowStockItems.length === 0 && (
+          {lowStock.length === 0 && (
             <Text className="text-green-600 text-sm text-center py-4">
               All stock levels are healthy
             </Text>

@@ -1,5 +1,19 @@
+// ─── Owner Settings ───────────────────────────────────────────
+// Rate-update uses the real tRPC procedure india.rates.record.
+// The task spec referenced `india.rates.setRate({ metalType, purity,
+// pricePerGramPaise })` but the backend procedure is `record` and
+// takes the full MetalRateInputSchema (rates per gram / 10g / tola /
+// troy-oz + source + recordedAt). We compute the derived rates here
+// using the standard conversions (1 tola = 11.664g, 1 troy oz =
+// 31.1035g) and stamp source=MANUAL with the current timestamp.
+//
+// TODO: if a lean `india.rates.setRate` procedure is added server-side
+// later, swap this mutation for it -- a single (metalType, purity,
+// ratePerGramPaise) call would be cleaner than computing derived units
+// on the client.
+
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Alert, Switch, Pressable } from 'react-native';
+import { View, Text, ScrollView, Alert, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Input } from '@/components/Input';
@@ -7,45 +21,81 @@ import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { useAuthStore } from '@/store/auth-store';
 import { useAppStore } from '@/store/app-store';
-import { useApiMutation } from '@/hooks/useApi';
+import { trpc } from '@/lib/trpc';
+
+/** Derive per-unit rates from a per-gram paise rate. */
+function deriveRates(ratePerGramPaise: number) {
+  return {
+    ratePerGramPaise: Math.round(ratePerGramPaise),
+    ratePer10gPaise: Math.round(ratePerGramPaise * 10),
+    ratePerTolaPaise: Math.round(ratePerGramPaise * 11.664),
+    ratePerTroyOzPaise: Math.round(ratePerGramPaise * 31.1035),
+  };
+}
 
 export default function SettingsScreen() {
-  const { user, logout, activeLocationName, setActiveLocation } = useAuthStore();
-  const { theme, setTheme, weightUnit, setWeightUnit } = useAppStore();
+  const { user, logout, activeLocationName } = useAuthStore();
+  const { weightUnit, setWeightUnit } = useAppStore();
 
   const [goldRate, setGoldRate] = useState('');
   const [silverRate, setSilverRate] = useState('');
 
-  const rateMutation = useApiMutation<{
-    goldRatePer10g: number;
-    silverRatePer10g: number;
-  }>('/api/v1/platform/rates/update', {
-    invalidateKeys: [['rates']],
+  const utils = trpc.useUtils();
+  const recordRate = trpc.india.rates.record.useMutation({
+    onSuccess: async () => {
+      // Invalidate any cached rate queries so other screens see the
+      // new values immediately.
+      await utils.india.rates.getAll.invalidate().catch(() => {});
+      await utils.india.rates.getCurrent.invalidate().catch(() => {});
+    },
   });
 
-  const handleUpdateRates = () => {
-    const goldPaise = Math.round(parseFloat(goldRate) * 100);
-    const silverPaise = Math.round(parseFloat(silverRate) * 100);
+  const submitting = recordRate.isPending;
 
-    if (isNaN(goldPaise) && isNaN(silverPaise)) {
+  const handleUpdateRates = async () => {
+    const goldRupees = parseFloat(goldRate);
+    const silverRupees = parseFloat(silverRate);
+    const hasGold = !Number.isNaN(goldRupees) && goldRupees > 0;
+    const hasSilver = !Number.isNaN(silverRupees) && silverRupees > 0;
+
+    if (!hasGold && !hasSilver) {
       Alert.alert('Validation', 'Please enter at least one rate.');
       return;
     }
 
-    rateMutation.mutate(
-      {
-        goldRatePer10g: goldPaise || 0,
-        silverRatePer10g: silverPaise || 0,
-      },
-      {
-        onSuccess: () => {
-          Alert.alert('Success', 'Rates updated successfully.');
-          setGoldRate('');
-          setSilverRate('');
-        },
-        onError: (err) => Alert.alert('Error', err.message),
-      },
-    );
+    // Input is rupees per 10 grams. Convert to paise per gram.
+    const nowIso = new Date().toISOString();
+
+    try {
+      if (hasGold) {
+        const goldPerGramPaise = Math.round((goldRupees * 100) / 10);
+        await recordRate.mutateAsync({
+          metalType: 'GOLD',
+          purity: 999,
+          ...deriveRates(goldPerGramPaise),
+          source: 'MANUAL' as never,
+          recordedAt: nowIso as unknown as Date,
+        });
+      }
+      if (hasSilver) {
+        const silverPerGramPaise = Math.round((silverRupees * 100) / 10);
+        await recordRate.mutateAsync({
+          metalType: 'SILVER',
+          purity: 999,
+          ...deriveRates(silverPerGramPaise),
+          source: 'MANUAL' as never,
+          recordedAt: nowIso as unknown as Date,
+        });
+      }
+      Alert.alert('Success', 'Rates updated successfully.');
+      setGoldRate('');
+      setSilverRate('');
+    } catch (err) {
+      Alert.alert(
+        'Error',
+        err instanceof Error ? err.message : 'Failed to update rates',
+      );
+    }
   };
 
   const handleLogout = () => {
@@ -93,14 +143,14 @@ export default function SettingsScreen() {
             Update Today's Rates
           </Text>
           <Input
-            label="Gold Rate (per 10g)"
+            label="Gold Rate (per 10g, 999)"
             placeholder="e.g., 62500.00"
             value={goldRate}
             onChangeText={setGoldRate}
             keyboardType="decimal-pad"
           />
           <Input
-            label="Silver Rate (per 10g)"
+            label="Silver Rate (per 10g, 999)"
             placeholder="e.g., 750.00"
             value={silverRate}
             onChangeText={setSilverRate}
@@ -109,7 +159,7 @@ export default function SettingsScreen() {
           <Button
             title="Update Rates"
             onPress={handleUpdateRates}
-            loading={rateMutation.isPending}
+            loading={submitting}
             size="md"
           />
         </Card>
