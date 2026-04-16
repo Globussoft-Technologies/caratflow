@@ -1,42 +1,106 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PageHeader } from '@caratflow/ui';
 import { Save } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+
+type LocationType = 'SHOWROOM' | 'WAREHOUSE' | 'WORKSHOP' | 'OFFICE';
+
+interface BranchSettings {
+  taxConfig: { gstNumber: string; stateCode: string; defaultGstRate: number };
+  workingHours: { start: string; end: string; daysOff: number[] };
+  defaultRates: { makingChargesPercent: number; wastagePercent: number };
+}
+
+interface BranchDetail {
+  id: string;
+  name: string;
+  locationType: LocationType | string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  postalCode: string | null;
+  phone: string | null;
+  email: string | null;
+  isActive: boolean;
+  settings: unknown;
+}
+
+const defaultSettings: BranchSettings = {
+  taxConfig: { gstNumber: '', stateCode: '', defaultGstRate: 3 },
+  workingHours: { start: '10:00', end: '20:00', daysOff: [0] },
+  defaultRates: { makingChargesPercent: 10, wastagePercent: 3 },
+};
 
 export default function BranchDetailPage() {
   const params = useParams<{ id: string }>();
   const branchId = params.id;
 
-  // TODO: Fetch branch from API
+  const branchQuery = trpc.platform.branches.getById.useQuery({ branchId }, { enabled: !!branchId });
+
   const [branch, setBranch] = useState({
     name: '',
-    locationType: 'SHOWROOM',
+    locationType: 'SHOWROOM' as LocationType,
     address: '',
     city: '',
     state: '',
     phone: '',
     email: '',
   });
+  const [branchSettings, setBranchSettings] = useState<BranchSettings>(defaultSettings);
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const [branchSettings, setBranchSettings] = useState({
-    taxConfig: { gstNumber: '', stateCode: '', defaultGstRate: 3 },
-    workingHours: { start: '10:00', end: '20:00', daysOff: [0] },
-    defaultRates: { makingChargesPercent: 10, wastagePercent: 3 },
-  });
+  useEffect(() => {
+    const b = branchQuery.data as BranchDetail | undefined;
+    if (!b) return;
+    setBranch({
+      name: b.name ?? '',
+      locationType: (b.locationType as LocationType) ?? 'SHOWROOM',
+      address: b.address ?? '',
+      city: b.city ?? '',
+      state: b.state ?? '',
+      phone: b.phone ?? '',
+      email: b.email ?? '',
+    });
+    const s = (b.settings as Partial<BranchSettings> | null | undefined) ?? {};
+    setBranchSettings({
+      taxConfig: { ...defaultSettings.taxConfig, ...(s.taxConfig ?? {}) },
+      workingHours: { ...defaultSettings.workingHours, ...(s.workingHours ?? {}) },
+      defaultRates: { ...defaultSettings.defaultRates, ...(s.defaultRates ?? {}) },
+    });
+  }, [branchQuery.data]);
 
-  const [isSaving, setIsSaving] = useState(false);
+  const updateBranchMutation = trpc.platform.branches.update.useMutation();
+  const updateSettingsMutation = trpc.platform.branches.updateSettings.useMutation();
 
   const handleSave = async () => {
-    setIsSaving(true);
     try {
-      // TODO: Call trpc.platform.branches.update.mutate and trpc.platform.branches.updateSettings.mutate
-      console.log('Saving branch:', branchId, branch, branchSettings);
-    } finally {
-      setIsSaving(false);
+      await updateBranchMutation.mutateAsync({
+        branchId,
+        name: branch.name,
+        locationType: branch.locationType,
+        address: branch.address || undefined,
+        city: branch.city || undefined,
+        state: branch.state || undefined,
+        phone: branch.phone || undefined,
+        email: branch.email || undefined,
+      });
+      await updateSettingsMutation.mutateAsync({
+        branchId,
+        settings: branchSettings as unknown as Record<string, unknown>,
+      });
+      setBanner({ type: 'success', message: 'Branch updated successfully.' });
+      void branchQuery.refetch();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save branch.';
+      setBanner({ type: 'error', message: msg });
     }
   };
+
+  const isSaving = updateBranchMutation.isPending || updateSettingsMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -51,6 +115,22 @@ export default function BranchDetailPage() {
         ]}
       />
 
+      {banner && (
+        <div
+          className={`rounded-md border p-3 text-sm ${
+            banner.type === 'success'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {banner.message}
+        </div>
+      )}
+
+      {branchQuery.isLoading && (
+        <div className="rounded-lg border bg-card py-8 text-center text-sm text-muted-foreground">Loading branch...</div>
+      )}
+
       {/* General Info */}
       <div className="rounded-lg border bg-card shadow-sm">
         <div className="border-b p-6">
@@ -63,7 +143,7 @@ export default function BranchDetailPage() {
           </div>
           <div>
             <label className="block text-sm font-medium" htmlFor="type">Type</label>
-            <select id="type" value={branch.locationType} onChange={(e) => setBranch({ ...branch, locationType: e.target.value })} className="mt-1 w-full rounded-md border px-3 py-2 text-sm">
+            <select id="type" value={branch.locationType} onChange={(e) => setBranch({ ...branch, locationType: e.target.value as LocationType })} className="mt-1 w-full rounded-md border px-3 py-2 text-sm">
               <option value="SHOWROOM">Showroom</option>
               <option value="WAREHOUSE">Warehouse</option>
               <option value="WORKSHOP">Workshop</option>
@@ -152,7 +232,7 @@ export default function BranchDetailPage() {
       <div className="flex justify-end">
         <button
           onClick={handleSave}
-          disabled={isSaving}
+          disabled={isSaving || branchQuery.isLoading}
           className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           <Save className="h-4 w-4" />

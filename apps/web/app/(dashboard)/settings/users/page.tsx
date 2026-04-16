@@ -4,8 +4,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@caratflow/ui';
 import { Users, UserPlus, Search, MoreVertical, Check, X } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
 
-interface User {
+interface UserRow {
   id: string;
   email: string;
   firstName: string;
@@ -25,21 +26,64 @@ export default function UsersPage() {
     lastName: '',
     roleId: '',
   });
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // TODO: Fetch from API
-  const users: User[] = [];
-  const roles: { id: string; name: string }[] = [];
+  const usersQuery = trpc.platform.users.list.useQuery({
+    page: 1,
+    limit: 100,
+    sortOrder: 'desc',
+    search: searchQuery || undefined,
+  });
+  const rolesQuery = trpc.platform.roles.list.useQuery();
 
-  const handleInvite = async () => {
-    // TODO: Call trpc.platform.users.invite.mutate(inviteData)
-    console.log('Inviting user:', inviteData);
-    setShowInviteForm(false);
-    setInviteData({ email: '', firstName: '', lastName: '', roleId: '' });
+  const inviteMutation = trpc.platform.users.invite.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'Invite sent successfully.' });
+      setShowInviteForm(false);
+      setInviteData({ email: '', firstName: '', lastName: '', roleId: '' });
+      void usersQuery.refetch();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const activateMutation = trpc.platform.users.activate.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'User activated.' });
+      void usersQuery.refetch();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const deactivateMutation = trpc.platform.users.deactivate.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'User deactivated.' });
+      void usersQuery.refetch();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const users = ((usersQuery.data as { items?: UserRow[] } | undefined)?.items ?? []) as UserRow[];
+  const roles = (rolesQuery.data as Array<{ id: string; name: string }> | undefined) ?? [];
+
+  const handleInvite = () => {
+    if (!inviteData.email || !inviteData.firstName || !inviteData.lastName) {
+      setBanner({ type: 'error', message: 'First name, last name, and email are required.' });
+      return;
+    }
+    inviteMutation.mutate({
+      email: inviteData.email,
+      firstName: inviteData.firstName,
+      lastName: inviteData.lastName,
+      roleId: inviteData.roleId || undefined,
+    });
   };
 
-  const handleToggleActive = async (userId: string, isActive: boolean) => {
-    // TODO: Call trpc.platform.users.activate or deactivate
-    console.log(isActive ? 'Deactivating' : 'Activating', userId);
+  const handleToggleActive = (userId: string, isActive: boolean) => {
+    if (isActive) {
+      deactivateMutation.mutate({ userId });
+    } else {
+      activateMutation.mutate({ userId });
+    }
   };
 
   return (
@@ -53,6 +97,18 @@ export default function UsersPage() {
           { label: 'Users' },
         ]}
       />
+
+      {banner && (
+        <div
+          className={`rounded-md border p-3 text-sm ${
+            banner.type === 'success'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {banner.message}
+        </div>
+      )}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative">
@@ -103,13 +159,21 @@ export default function UsersPage() {
           </div>
           <div className="mt-4 flex justify-end gap-2">
             <button onClick={() => setShowInviteForm(false)} className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted">Cancel</button>
-            <button onClick={handleInvite} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">Send Invite</button>
+            <button
+              onClick={handleInvite}
+              disabled={inviteMutation.isPending}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {inviteMutation.isPending ? 'Sending...' : 'Send Invite'}
+            </button>
           </div>
         </div>
       )}
 
       {/* User Table */}
-      {users.length === 0 ? (
+      {usersQuery.isLoading ? (
+        <div className="rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">Loading users...</div>
+      ) : users.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border bg-card py-16 text-center">
           <Users className="mb-4 h-12 w-12 text-muted-foreground" />
           <h3 className="text-lg font-semibold">No users yet</h3>
@@ -154,7 +218,9 @@ export default function UsersPage() {
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => handleToggleActive(user.id, user.isActive)}
-                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      disabled={activateMutation.isPending || deactivateMutation.isPending}
+                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                      title={user.isActive ? 'Deactivate user' : 'Activate user'}
                     >
                       <MoreVertical className="h-4 w-4" />
                     </button>

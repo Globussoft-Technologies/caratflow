@@ -1,34 +1,87 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PageHeader } from '@caratflow/ui';
 import { Save } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+
+type PosConfig = {
+  'billing.invoicePrefix': string;
+  'billing.invoiceNumberStart': number;
+  'billing.creditNotePrefix': string;
+  'billing.estimatePrefix': string;
+  'pos.roundingMethod': string;
+  'pos.roundingPrecision': number;
+  'pos.receiptFormat': string;
+  'pos.defaultPaymentMethod': string;
+  'pos.printOnSale': boolean;
+  'pos.showBarcode': boolean;
+  'billing.termsAndConditions': string;
+};
+
+const defaults: PosConfig = {
+  'billing.invoicePrefix': 'INV',
+  'billing.invoiceNumberStart': 1,
+  'billing.creditNotePrefix': 'CN',
+  'billing.estimatePrefix': 'EST',
+  'pos.roundingMethod': 'nearest',
+  'pos.roundingPrecision': 100,
+  'pos.receiptFormat': 'standard',
+  'pos.defaultPaymentMethod': 'CASH',
+  'pos.printOnSale': true,
+  'pos.showBarcode': true,
+  'billing.termsAndConditions': '',
+};
+
+const billingKeys = new Set<keyof PosConfig>([
+  'billing.invoicePrefix',
+  'billing.invoiceNumberStart',
+  'billing.creditNotePrefix',
+  'billing.estimatePrefix',
+  'billing.termsAndConditions',
+]);
+
+function categoryFor(key: keyof PosConfig): 'billing' | 'pos' {
+  return billingKeys.has(key) ? 'billing' : 'pos';
+}
 
 export default function PosSettingsPage() {
-  const [config, setConfig] = useState({
-    'billing.invoicePrefix': 'INV',
-    'billing.invoiceNumberStart': 1,
-    'billing.creditNotePrefix': 'CN',
-    'billing.estimatePrefix': 'EST',
-    'pos.roundingMethod': 'nearest',
-    'pos.roundingPrecision': 100,
-    'pos.receiptFormat': 'standard',
-    'pos.defaultPaymentMethod': 'CASH',
-    'pos.printOnSale': true,
-    'pos.showBarcode': true,
-    'billing.termsAndConditions': '',
+  const [config, setConfig] = useState<PosConfig>(defaults);
+
+  const { data: loaded, isLoading, refetch } = trpc.platform.settings.getAll.useQuery();
+  const setSettingsMutation = trpc.platform.settings.set.useMutation({
+    onSuccess: () => {
+      void refetch();
+    },
   });
 
-  const [isSaving, setIsSaving] = useState(false);
+  useEffect(() => {
+    if (!loaded) return;
+    const grouped = (loaded as { grouped?: Record<string, Record<string, unknown>> } | Record<string, Record<string, unknown>> | undefined);
+    const source = (grouped && typeof grouped === 'object' && 'grouped' in grouped
+      ? (grouped as { grouped?: Record<string, Record<string, unknown>> }).grouped
+      : (grouped as Record<string, Record<string, unknown>> | undefined)) ?? {};
+    const billing = source.billing ?? {};
+    const pos = source.pos ?? {};
+    setConfig((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(defaults) as Array<keyof PosConfig>) {
+        const bucket = categoryFor(key) === 'billing' ? billing : pos;
+        if (bucket[key] !== undefined) {
+          (next as Record<string, unknown>)[key] = bucket[key];
+        }
+      }
+      return next;
+    });
+  }, [loaded]);
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      // TODO: Call trpc.platform.settings.set.mutate
-      console.log('Saving POS config:', config);
-    } finally {
-      setIsSaving(false);
-    }
+  const handleSave = () => {
+    const payload = (Object.keys(config) as Array<keyof PosConfig>).map((key) => ({
+      key,
+      value: config[key],
+      category: categoryFor(key),
+    }));
+    setSettingsMutation.mutate({ settings: payload });
   };
 
   return (
@@ -42,6 +95,17 @@ export default function PosSettingsPage() {
           { label: 'POS Settings' },
         ]}
       />
+
+      {setSettingsMutation.isSuccess && (
+        <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+          POS settings saved successfully.
+        </div>
+      )}
+      {setSettingsMutation.isError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          Failed to save: {setSettingsMutation.error.message}
+        </div>
+      )}
 
       {/* Invoice Numbering */}
       <div className="rounded-lg border bg-card shadow-sm">
@@ -135,9 +199,9 @@ export default function PosSettingsPage() {
       </div>
 
       <div className="flex justify-end">
-        <button onClick={handleSave} disabled={isSaving} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+        <button onClick={handleSave} disabled={setSettingsMutation.isPending || isLoading} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
           <Save className="h-4 w-4" />
-          {isSaving ? 'Saving...' : 'Save POS Settings'}
+          {setSettingsMutation.isPending ? 'Saving...' : 'Save POS Settings'}
         </button>
       </div>
     </div>

@@ -1,32 +1,66 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PageHeader } from '@caratflow/ui';
 import { Save, MessageCircle, Mail, Smartphone } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+
+type NotificationConfig = {
+  'notifications.whatsappApiKey': string;
+  'notifications.whatsappPhoneId': string;
+  'notifications.smsProvider': string;
+  'notifications.smsApiKey': string;
+  'notifications.smtpHost': string;
+  'notifications.smtpPort': number;
+  'notifications.smtpUser': string;
+  'notifications.smtpPassword': string;
+  'notifications.fromEmail': string;
+};
+
+const defaults: NotificationConfig = {
+  'notifications.whatsappApiKey': '',
+  'notifications.whatsappPhoneId': '',
+  'notifications.smsProvider': '',
+  'notifications.smsApiKey': '',
+  'notifications.smtpHost': '',
+  'notifications.smtpPort': 587,
+  'notifications.smtpUser': '',
+  'notifications.smtpPassword': '',
+  'notifications.fromEmail': '',
+};
 
 export default function NotificationSettingsPage() {
-  const [config, setConfig] = useState({
-    'notifications.whatsappApiKey': '',
-    'notifications.whatsappPhoneId': '',
-    'notifications.smsProvider': '',
-    'notifications.smsApiKey': '',
-    'notifications.smtpHost': '',
-    'notifications.smtpPort': 587,
-    'notifications.smtpUser': '',
-    'notifications.smtpPassword': '',
-    'notifications.fromEmail': '',
+  const [config, setConfig] = useState<NotificationConfig>(defaults);
+
+  const { data: loaded, isLoading, refetch } = trpc.platform.settings.getAll.useQuery({ category: 'notifications' });
+  const setSettingsMutation = trpc.platform.settings.set.useMutation({
+    onSuccess: () => {
+      void refetch();
+    },
   });
 
-  const [isSaving, setIsSaving] = useState(false);
+  useEffect(() => {
+    if (!loaded) return;
+    const payload = loaded as { grouped?: Record<string, Record<string, unknown>> } | undefined;
+    const notif = payload?.grouped?.notifications ?? {};
+    setConfig((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(defaults) as Array<keyof NotificationConfig>) {
+        if (notif[key] !== undefined) {
+          (next as Record<string, unknown>)[key] = notif[key];
+        }
+      }
+      return next;
+    });
+  }, [loaded]);
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      // TODO: Call trpc.platform.settings.set.mutate
-      console.log('Saving notification config:', config);
-    } finally {
-      setIsSaving(false);
-    }
+  const handleSave = () => {
+    const payload = (Object.keys(config) as Array<keyof NotificationConfig>).map((key) => ({
+      key,
+      value: config[key],
+      category: 'notifications' as const,
+    }));
+    setSettingsMutation.mutate({ settings: payload });
   };
 
   return (
@@ -40,6 +74,17 @@ export default function NotificationSettingsPage() {
           { label: 'Notifications' },
         ]}
       />
+
+      {setSettingsMutation.isSuccess && (
+        <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+          Notification settings saved successfully.
+        </div>
+      )}
+      {setSettingsMutation.isError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          Failed to save: {setSettingsMutation.error.message}
+        </div>
+      )}
 
       {/* WhatsApp */}
       <div className="rounded-lg border bg-card shadow-sm">
@@ -123,9 +168,9 @@ export default function NotificationSettingsPage() {
       </div>
 
       <div className="flex justify-end">
-        <button onClick={handleSave} disabled={isSaving} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+        <button onClick={handleSave} disabled={setSettingsMutation.isPending || isLoading} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
           <Save className="h-4 w-4" />
-          {isSaving ? 'Saving...' : 'Save Notification Settings'}
+          {setSettingsMutation.isPending ? 'Saving...' : 'Save Notification Settings'}
         </button>
       </div>
     </div>

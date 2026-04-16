@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import { PageHeader } from '@caratflow/ui';
 import { Languages, Plus, Save, Search } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
 
 interface TranslationKey {
   id: string;
   namespace: string;
   key: string;
   defaultValue: string;
-  translations: Record<string, string>;
+  translations: Record<string, string> | unknown;
 }
 
 const LOCALES = [
@@ -29,6 +30,7 @@ export default function I18nPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const [createData, setCreateData] = useState({
     namespace: '',
@@ -36,21 +38,66 @@ export default function I18nPage() {
     defaultValue: '',
   });
 
-  // TODO: Fetch from API
-  const translationKeys: TranslationKey[] = [];
-  const namespaces: string[] = [];
+  const keysQuery = trpc.platform.i18n.list.useQuery({
+    page: 1,
+    limit: 100,
+    namespace: selectedNamespace || undefined,
+    search: searchQuery || undefined,
+  });
+  const namespacesQuery = trpc.platform.i18n.namespaces.useQuery();
 
-  const handleCreate = async () => {
-    // TODO: Call trpc.platform.i18n.create.mutate
-    console.log('Creating translation:', createData);
-    setShowCreateForm(false);
-    setCreateData({ namespace: '', key: '', defaultValue: '' });
+  const translationKeys = ((keysQuery.data as { items?: TranslationKey[] } | undefined)?.items ?? []) as TranslationKey[];
+  const namespaces = (namespacesQuery.data as string[] | undefined) ?? [];
+
+  const createMutation = trpc.platform.i18n.create.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'Translation key created.' });
+      setShowCreateForm(false);
+      setCreateData({ namespace: '', key: '', defaultValue: '' });
+      void keysQuery.refetch();
+      void namespacesQuery.refetch();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const updateMutation = trpc.platform.i18n.update.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'Translation updated.' });
+      setEditingKey(null);
+      void keysQuery.refetch();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const deleteMutation = trpc.platform.i18n.delete.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'Translation deleted.' });
+      void keysQuery.refetch();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const handleCreate = () => {
+    if (!createData.namespace.trim() || !createData.key.trim() || !createData.defaultValue.trim()) {
+      setBanner({ type: 'error', message: 'Namespace, key, and default value are required.' });
+      return;
+    }
+    createMutation.mutate({
+      namespace: createData.namespace.trim(),
+      key: createData.key.trim(),
+      defaultValue: createData.defaultValue,
+    });
   };
 
-  const handleUpdateTranslation = async (keyId: string, value: string) => {
-    // TODO: Call trpc.platform.i18n.update.mutate
-    console.log('Updating translation:', keyId, selectedLocale, value);
-    setEditingKey(null);
+  const handleUpdateTranslation = (tk: TranslationKey, value: string) => {
+    const existing = (tk.translations ?? {}) as Record<string, string>;
+    const merged: Record<string, string> = { ...existing, [selectedLocale]: value };
+    updateMutation.mutate({ id: tk.id, translations: merged });
+  };
+
+  const handleDelete = (id: string) => {
+    if (!confirm('Delete this translation key?')) return;
+    deleteMutation.mutate({ id });
   };
 
   return (
@@ -64,6 +111,18 @@ export default function I18nPage() {
           { label: 'Translations' },
         ]}
       />
+
+      {banner && (
+        <div
+          className={`rounded-md border p-3 text-sm ${
+            banner.type === 'success'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {banner.message}
+        </div>
+      )}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-2">
@@ -128,13 +187,21 @@ export default function I18nPage() {
           </div>
           <div className="mt-4 flex justify-end gap-2">
             <button onClick={() => setShowCreateForm(false)} className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted">Cancel</button>
-            <button onClick={handleCreate} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">Create</button>
+            <button
+              onClick={handleCreate}
+              disabled={createMutation.isPending}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {createMutation.isPending ? 'Creating...' : 'Create'}
+            </button>
           </div>
         </div>
       )}
 
       {/* Translation Table */}
-      {translationKeys.length === 0 ? (
+      {keysQuery.isLoading ? (
+        <div className="rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">Loading translations...</div>
+      ) : translationKeys.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border bg-card py-16 text-center">
           <Languages className="mb-4 h-12 w-12 text-muted-foreground" />
           <h3 className="text-lg font-semibold">No translation keys</h3>
@@ -155,47 +222,57 @@ export default function I18nPage() {
               </tr>
             </thead>
             <tbody>
-              {translationKeys.map((tk) => (
-                <tr key={tk.id} className="border-b last:border-0">
-                  <td className="px-4 py-3 text-sm">
-                    <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">{tk.namespace}</span>
-                  </td>
-                  <td className="px-4 py-3 text-sm font-mono text-muted-foreground">{tk.key}</td>
-                  <td className="px-4 py-3 text-sm">{tk.defaultValue}</td>
-                  <td className="px-4 py-3">
-                    {editingKey === tk.id ? (
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          className="w-full rounded border px-2 py-1 text-sm"
-                          autoFocus
-                        />
-                        <button
-                          onClick={() => handleUpdateTranslation(tk.id, editValue)}
-                          className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground"
+              {translationKeys.map((tk) => {
+                const translations = (tk.translations ?? {}) as Record<string, string>;
+                return (
+                  <tr key={tk.id} className="border-b last:border-0">
+                    <td className="px-4 py-3 text-sm">
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">{tk.namespace}</span>
+                    </td>
+                    <td className="px-4 py-3 text-sm font-mono text-muted-foreground">{tk.key}</td>
+                    <td className="px-4 py-3 text-sm">{tk.defaultValue}</td>
+                    <td className="px-4 py-3">
+                      {editingKey === tk.id ? (
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            className="w-full rounded border px-2 py-1 text-sm"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleUpdateTranslation(tk, editValue)}
+                            disabled={updateMutation.isPending}
+                            className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-50"
+                          >
+                            <Save className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span
+                          className="cursor-pointer text-sm hover:text-primary"
+                          onClick={() => {
+                            setEditingKey(tk.id);
+                            setEditValue(translations[selectedLocale] ?? '');
+                          }}
                         >
-                          <Save className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <span
-                        className="cursor-pointer text-sm hover:text-primary"
-                        onClick={() => {
-                          setEditingKey(tk.id);
-                          setEditValue(tk.translations[selectedLocale] ?? '');
-                        }}
+                          {translations[selectedLocale] || <span className="italic text-muted-foreground">Click to translate</span>}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => handleDelete(tk.id)}
+                        disabled={deleteMutation.isPending}
+                        className="text-xs text-red-600 hover:underline disabled:opacity-50"
                       >
-                        {tk.translations[selectedLocale] || <span className="italic text-muted-foreground">Click to translate</span>}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button className="text-xs text-red-600 hover:underline">Delete</button>
-                  </td>
-                </tr>
-              ))}
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

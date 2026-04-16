@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { PageHeader } from '@caratflow/ui';
 import { Building2, Plus, MapPin, Phone, Mail } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
 
 interface Branch {
   id: string;
@@ -31,11 +33,14 @@ const locationTypeColors: Record<string, string> = {
   OFFICE: 'bg-green-100 text-green-800',
 };
 
+type LocationType = 'SHOWROOM' | 'WAREHOUSE' | 'WORKSHOP' | 'OFFICE';
+
 export default function BranchesPage() {
+  const router = useRouter();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
-    locationType: 'SHOWROOM',
+    locationType: 'SHOWROOM' as LocationType,
     address: '',
     city: '',
     state: '',
@@ -44,14 +49,51 @@ export default function BranchesPage() {
     phone: '',
     email: '',
   });
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // TODO: Fetch from API
-  const branches: Branch[] = [];
+  const branchesQuery = trpc.platform.branches.list.useQuery({ includeInactive: true });
+  const branches = (branchesQuery.data as Branch[] | undefined) ?? [];
 
-  const handleCreate = async () => {
-    // TODO: Call trpc.platform.branches.create.mutate(formData)
-    console.log('Creating branch:', formData);
-    setShowCreateForm(false);
+  const createMutation = trpc.platform.branches.create.useMutation({
+    onSuccess: (created) => {
+      setBanner({ type: 'success', message: 'Branch created successfully.' });
+      setShowCreateForm(false);
+      setFormData({
+        name: '',
+        locationType: 'SHOWROOM',
+        address: '',
+        city: '',
+        state: '',
+        country: 'IN',
+        postalCode: '',
+        phone: '',
+        email: '',
+      });
+      void branchesQuery.refetch();
+      const id = (created as { id?: string } | undefined)?.id;
+      if (id) {
+        router.push(`/settings/branches/${id}`);
+      }
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const handleCreate = () => {
+    if (!formData.name.trim()) {
+      setBanner({ type: 'error', message: 'Branch name is required.' });
+      return;
+    }
+    createMutation.mutate({
+      name: formData.name.trim(),
+      locationType: formData.locationType,
+      address: formData.address || undefined,
+      city: formData.city || undefined,
+      state: formData.state || undefined,
+      country: formData.country || undefined,
+      postalCode: formData.postalCode || undefined,
+      phone: formData.phone || undefined,
+      email: formData.email || undefined,
+    });
   };
 
   return (
@@ -65,6 +107,18 @@ export default function BranchesPage() {
           { label: 'Branches' },
         ]}
       />
+
+      {banner && (
+        <div
+          className={`rounded-md border p-3 text-sm ${
+            banner.type === 'success'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {banner.message}
+        </div>
+      )}
 
       <div className="flex justify-end">
         <button
@@ -97,7 +151,7 @@ export default function BranchesPage() {
               <select
                 id="branch-type"
                 value={formData.locationType}
-                onChange={(e) => setFormData({ ...formData, locationType: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, locationType: e.target.value as LocationType })}
                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
               >
                 <option value="SHOWROOM">Showroom</option>
@@ -169,16 +223,19 @@ export default function BranchesPage() {
             </button>
             <button
               onClick={handleCreate}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              disabled={createMutation.isPending}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              Create Branch
+              {createMutation.isPending ? 'Creating...' : 'Create Branch'}
             </button>
           </div>
         </div>
       )}
 
       {/* Branch List */}
-      {branches.length === 0 ? (
+      {branchesQuery.isLoading ? (
+        <div className="rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">Loading branches...</div>
+      ) : branches.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border bg-card py-16 text-center">
           <Building2 className="mb-4 h-12 w-12 text-muted-foreground" />
           <h3 className="text-lg font-semibold">No branches yet</h3>

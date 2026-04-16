@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { PageHeader } from '@caratflow/ui';
 import { Download, FileSpreadsheet, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
 
 interface ExportJob {
   id: string;
@@ -14,25 +15,33 @@ interface ExportJob {
   createdAt: string;
 }
 
+type EntityType = 'customer' | 'product' | 'supplier' | 'invoice' | 'stock';
+
 export default function ExportPage() {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{ entityType: EntityType; format: 'CSV' | 'XLSX' | 'PDF'; search: string }>({
     entityType: 'customer',
-    format: 'CSV' as 'CSV' | 'XLSX' | 'PDF',
+    format: 'CSV',
     search: '',
   });
-  const [isExporting, setIsExporting] = useState(false);
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // TODO: Fetch from API
-  const exportJobs: ExportJob[] = [];
+  const jobsQuery = trpc.platform.export.listJobs.useQuery({ page: 1, limit: 20 });
+  const exportJobs = ((jobsQuery.data as { items?: ExportJob[] } | undefined)?.items ?? []) as ExportJob[];
 
-  const handleExport = async () => {
-    setIsExporting(true);
-    try {
-      // TODO: Call trpc.platform.export.create.mutate
-      console.log('Starting export:', formData);
-    } finally {
-      setIsExporting(false);
-    }
+  const createMutation = trpc.platform.export.create.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'Export started. Check history below for status.' });
+      void jobsQuery.refetch();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const handleExport = () => {
+    createMutation.mutate({
+      entityType: formData.entityType,
+      format: formData.format,
+      filters: formData.search ? { search: formData.search } : undefined,
+    });
   };
 
   return (
@@ -47,6 +56,18 @@ export default function ExportPage() {
         ]}
       />
 
+      {banner && (
+        <div
+          className={`rounded-md border p-3 text-sm ${
+            banner.type === 'success'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {banner.message}
+        </div>
+      )}
+
       {/* Export Form */}
       <div className="rounded-lg border bg-card shadow-sm">
         <div className="border-b p-6">
@@ -56,10 +77,12 @@ export default function ExportPage() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div>
               <label className="block text-sm font-medium" htmlFor="entity-type">Data Type</label>
-              <select id="entity-type" value={formData.entityType} onChange={(e) => setFormData({ ...formData, entityType: e.target.value })} className="mt-1 w-full rounded-md border px-3 py-2 text-sm">
+              <select id="entity-type" value={formData.entityType} onChange={(e) => setFormData({ ...formData, entityType: e.target.value as EntityType })} className="mt-1 w-full rounded-md border px-3 py-2 text-sm">
                 <option value="customer">Customers</option>
                 <option value="product">Products</option>
                 <option value="supplier">Suppliers</option>
+                <option value="invoice">Invoices</option>
+                <option value="stock">Stock</option>
               </select>
             </div>
             <div>
@@ -76,9 +99,13 @@ export default function ExportPage() {
             </div>
           </div>
           <div className="flex justify-end">
-            <button onClick={handleExport} disabled={isExporting} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            <button
+              onClick={handleExport}
+              disabled={createMutation.isPending}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
               <Download className="h-4 w-4" />
-              {isExporting ? 'Exporting...' : 'Start Export'}
+              {createMutation.isPending ? 'Exporting...' : 'Start Export'}
             </button>
           </div>
         </div>
@@ -89,7 +116,9 @@ export default function ExportPage() {
         <div className="border-b p-6">
           <h2 className="text-lg font-semibold">Export History</h2>
         </div>
-        {exportJobs.length === 0 ? (
+        {jobsQuery.isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading export history...</div>
+        ) : exportJobs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <FileSpreadsheet className="mb-3 h-10 w-10 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">No exports yet.</p>

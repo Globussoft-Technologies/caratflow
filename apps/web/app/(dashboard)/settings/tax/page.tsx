@@ -1,32 +1,66 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PageHeader } from '@caratflow/ui';
 import { Save } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+
+type TaxConfig = {
+  'tax.gstin': string;
+  'tax.pan': string;
+  'tax.stateCode': string;
+  'tax.defaultGstRate': number;
+  'tax.makingChargesGstRate': number;
+  'tax.tdsEnabled': boolean;
+  'tax.tcsEnabled': boolean;
+  'tax.tdsThresholdPaise': number;
+  'tax.tcsThresholdPaise': number;
+};
+
+const defaults: TaxConfig = {
+  'tax.gstin': '',
+  'tax.pan': '',
+  'tax.stateCode': '',
+  'tax.defaultGstRate': 3,
+  'tax.makingChargesGstRate': 5,
+  'tax.tdsEnabled': false,
+  'tax.tcsEnabled': false,
+  'tax.tdsThresholdPaise': 5000000,
+  'tax.tcsThresholdPaise': 5000000,
+};
 
 export default function TaxConfigPage() {
-  const [config, setConfig] = useState({
-    'tax.gstin': '',
-    'tax.pan': '',
-    'tax.stateCode': '',
-    'tax.defaultGstRate': 3,
-    'tax.makingChargesGstRate': 5,
-    'tax.tdsEnabled': false,
-    'tax.tcsEnabled': false,
-    'tax.tdsThresholdPaise': 5000000,
-    'tax.tcsThresholdPaise': 5000000,
+  const [config, setConfig] = useState<TaxConfig>(defaults);
+
+  const { data: loaded, isLoading, refetch } = trpc.platform.settings.getAll.useQuery({ category: 'tax' });
+  const setSettingsMutation = trpc.platform.settings.set.useMutation({
+    onSuccess: () => {
+      void refetch();
+    },
   });
 
-  const [isSaving, setIsSaving] = useState(false);
+  useEffect(() => {
+    if (!loaded) return;
+    const payload = loaded as { grouped?: Record<string, Record<string, unknown>> } | undefined;
+    const tax = payload?.grouped?.tax ?? {};
+    setConfig((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(defaults) as Array<keyof TaxConfig>) {
+        if (tax[key] !== undefined) {
+          (next as Record<string, unknown>)[key] = tax[key];
+        }
+      }
+      return next;
+    });
+  }, [loaded]);
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      // TODO: Call trpc.platform.settings.set.mutate
-      console.log('Saving tax config:', config);
-    } finally {
-      setIsSaving(false);
-    }
+  const handleSave = () => {
+    const payload = (Object.keys(config) as Array<keyof TaxConfig>).map((key) => ({
+      key,
+      value: config[key],
+      category: 'tax' as const,
+    }));
+    setSettingsMutation.mutate({ settings: payload });
   };
 
   return (
@@ -40,6 +74,17 @@ export default function TaxConfigPage() {
           { label: 'Tax Configuration' },
         ]}
       />
+
+      {setSettingsMutation.isSuccess && (
+        <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+          Tax settings saved successfully.
+        </div>
+      )}
+      {setSettingsMutation.isError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          Failed to save: {setSettingsMutation.error.message}
+        </div>
+      )}
 
       {/* GST Settings */}
       <div className="rounded-lg border bg-card shadow-sm">
@@ -131,9 +176,9 @@ export default function TaxConfigPage() {
       </div>
 
       <div className="flex justify-end">
-        <button onClick={handleSave} disabled={isSaving} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+        <button onClick={handleSave} disabled={setSettingsMutation.isPending || isLoading} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
           <Save className="h-4 w-4" />
-          {isSaving ? 'Saving...' : 'Save Tax Settings'}
+          {setSettingsMutation.isPending ? 'Saving...' : 'Save Tax Settings'}
         </button>
       </div>
     </div>

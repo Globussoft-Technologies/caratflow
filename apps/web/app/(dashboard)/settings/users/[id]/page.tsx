@@ -1,15 +1,28 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PageHeader } from '@caratflow/ui';
 import { Save, ShieldCheck, Key } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
+
+interface UserDetail {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  roleId: string | null;
+  isActive: boolean;
+  role: { id: string; name: string } | null;
+}
 
 export default function UserDetailPage() {
   const params = useParams<{ id: string }>();
   const userId = params.id;
 
-  // TODO: Fetch from API
+  const userQuery = trpc.platform.users.getById.useQuery({ userId }, { enabled: !!userId });
+  const rolesQuery = trpc.platform.roles.list.useQuery();
+
   const [profile, setProfile] = useState({
     firstName: '',
     lastName: '',
@@ -17,6 +30,7 @@ export default function UserDetailPage() {
     roleId: '',
     isActive: true,
   });
+  const [initialProfile, setInitialProfile] = useState(profile);
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -24,35 +38,117 @@ export default function UserDetailPage() {
     confirmPassword: '',
   });
   const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const roles: { id: string; name: string }[] = [];
+  useEffect(() => {
+    const u = userQuery.data as UserDetail | undefined;
+    if (!u) return;
+    const next = {
+      firstName: u.firstName ?? '',
+      lastName: u.lastName ?? '',
+      email: u.email ?? '',
+      roleId: u.roleId ?? '',
+      isActive: u.isActive,
+    };
+    setProfile(next);
+    setInitialProfile(next);
+  }, [userQuery.data]);
 
-  const handleSaveProfile = async () => {
-    setIsSaving(true);
-    try {
-      // TODO: Call trpc.platform.users.updateProfile.mutate
-      console.log('Saving profile:', userId, profile);
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  const roles = (rolesQuery.data as Array<{ id: string; name: string }> | undefined) ?? [];
 
-  const handleAssignRole = async (roleId: string) => {
-    // TODO: Call trpc.platform.roles.assignToUser.mutate
-    console.log('Assigning role:', roleId, 'to user:', userId);
-    setProfile({ ...profile, roleId });
-  };
+  const updateProfileMutation = trpc.platform.users.updateProfile.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'Profile updated.' });
+      setInitialProfile(profile);
+      void userQuery.refetch();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
 
-  const handleChangePassword = async () => {
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      alert('Passwords do not match');
+  const assignRoleMutation = trpc.platform.roles.assignToUser.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'Role updated.' });
+      void userQuery.refetch();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const changePasswordMutation = trpc.platform.users.changePassword.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'Password changed.' });
+      setShowPasswordForm(false);
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const activateMutation = trpc.platform.users.activate.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'User activated.' });
+      void userQuery.refetch();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const deactivateMutation = trpc.platform.users.deactivate.useMutation({
+    onSuccess: () => {
+      setBanner({ type: 'success', message: 'User deactivated.' });
+      void userQuery.refetch();
+    },
+    onError: (err) => setBanner({ type: 'error', message: err.message }),
+  });
+
+  const isDirty =
+    profile.firstName !== initialProfile.firstName ||
+    profile.lastName !== initialProfile.lastName;
+
+  const handleSaveProfile = () => {
+    if (!isDirty) return;
+    if (!profile.firstName.trim() || !profile.lastName.trim()) {
+      setBanner({ type: 'error', message: 'First and last name are required.' });
       return;
     }
-    // TODO: Call trpc.platform.users.changePassword.mutate
-    console.log('Changing password for:', userId);
-    setShowPasswordForm(false);
-    setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    updateProfileMutation.mutate({
+      userId,
+      firstName: profile.firstName.trim(),
+      lastName: profile.lastName.trim(),
+    });
+  };
+
+  const handleAssignRole = (roleId: string) => {
+    setProfile({ ...profile, roleId });
+    if (!roleId) {
+      setBanner({ type: 'error', message: 'Select a role to assign.' });
+      return;
+    }
+    assignRoleMutation.mutate({ userId, roleId });
+  };
+
+  const handleChangePassword = () => {
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setBanner({ type: 'error', message: 'Passwords do not match.' });
+      return;
+    }
+    if (passwordForm.newPassword.length < 8) {
+      setBanner({ type: 'error', message: 'Password must be at least 8 characters.' });
+      return;
+    }
+    // NOTE: platform.users.changePassword operates on the current authed user (ctx.userId),
+    // not an arbitrary user ID. The backend does not expose an admin reset-password
+    // procedure today, so this only works if the admin is editing their own profile.
+    // TODO: needs platform.users.adminResetPassword mutation for admins to reset another user's password.
+    changePasswordMutation.mutate({
+      currentPassword: passwordForm.currentPassword,
+      newPassword: passwordForm.newPassword,
+    });
+  };
+
+  const handleToggleActive = () => {
+    if (profile.isActive) {
+      deactivateMutation.mutate({ userId });
+    } else {
+      activateMutation.mutate({ userId });
+    }
   };
 
   return (
@@ -67,6 +163,22 @@ export default function UserDetailPage() {
           { label: `${profile.firstName || 'User'} ${profile.lastName || ''}`.trim() },
         ]}
       />
+
+      {banner && (
+        <div
+          className={`rounded-md border p-3 text-sm ${
+            banner.type === 'success'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {banner.message}
+        </div>
+      )}
+
+      {userQuery.isLoading && (
+        <div className="rounded-lg border bg-card py-8 text-center text-sm text-muted-foreground">Loading user...</div>
+      )}
 
       {/* Profile Section */}
       <div className="rounded-lg border bg-card shadow-sm">
@@ -89,9 +201,13 @@ export default function UserDetailPage() {
           </div>
         </div>
         <div className="flex justify-end border-t p-4">
-          <button onClick={handleSaveProfile} disabled={isSaving} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+          <button
+            onClick={handleSaveProfile}
+            disabled={updateProfileMutation.isPending || !isDirty}
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
             <Save className="h-4 w-4" />
-            {isSaving ? 'Saving...' : 'Save Profile'}
+            {updateProfileMutation.isPending ? 'Saving...' : 'Save Profile'}
           </button>
         </div>
       </div>
@@ -111,7 +227,8 @@ export default function UserDetailPage() {
           <select
             value={profile.roleId}
             onChange={(e) => handleAssignRole(e.target.value)}
-            className="w-full rounded-md border px-3 py-2 text-sm md:w-1/2"
+            disabled={assignRoleMutation.isPending}
+            className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50 md:w-1/2"
           >
             <option value="">No role assigned</option>
             {roles.map((role) => (
@@ -151,7 +268,13 @@ export default function UserDetailPage() {
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setShowPasswordForm(false)} className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted">Cancel</button>
-                <button onClick={handleChangePassword} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">Update Password</button>
+                <button
+                  onClick={handleChangePassword}
+                  disabled={changePasswordMutation.isPending}
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {changePasswordMutation.isPending ? 'Updating...' : 'Update Password'}
+                </button>
               </div>
             </div>
           )}
@@ -173,11 +296,9 @@ export default function UserDetailPage() {
             </p>
           </div>
           <button
-            onClick={() => {
-              // TODO: Call activate/deactivate
-              setProfile({ ...profile, isActive: !profile.isActive });
-            }}
-            className={`rounded-md px-4 py-2 text-sm font-medium ${profile.isActive ? 'border border-red-300 text-red-700 hover:bg-red-50' : 'bg-green-600 text-white hover:bg-green-700'}`}
+            onClick={handleToggleActive}
+            disabled={activateMutation.isPending || deactivateMutation.isPending}
+            className={`rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50 ${profile.isActive ? 'border border-red-300 text-red-700 hover:bg-red-50' : 'bg-green-600 text-white hover:bg-green-700'}`}
           >
             {profile.isActive ? 'Deactivate' : 'Activate'}
           </button>
