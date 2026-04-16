@@ -41,6 +41,8 @@ describe('PayrollTrpcRouter', () => {
     getById: vi.fn(),
     generatePayslip: vi.fn(),
     emailPayslip: vi.fn(),
+    downloadPdf: vi.fn(),
+    emailPayslipToEmployee: vi.fn(),
   };
   const bankFileService = {
     generate: vi.fn(),

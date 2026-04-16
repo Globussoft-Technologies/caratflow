@@ -8,7 +8,25 @@ function extend(base: ReturnType<typeof createMockPrismaService>) {
     payslip: {
       findFirst: vi.fn(),
       findMany: vi.fn(),
+      update: vi.fn(),
     },
+  };
+}
+
+function makePdfServiceStub() {
+  return {
+    renderTemplate: vi.fn().mockResolvedValue(Buffer.from('%PDF-1.4 fake pdf body')),
+    renderHtmlToPdf: vi.fn(),
+    loadAndFillTemplate: vi.fn(),
+    fillTemplate: vi.fn(),
+  };
+}
+
+function makeEmailServiceStub() {
+  return {
+    sendEmail: vi
+      .fn()
+      .mockResolvedValue({ success: true, externalId: 'sg-123', statusCode: 202 }),
   };
 }
 
@@ -80,5 +98,99 @@ describe('PayrollPayslipService', () => {
     const res = await svc.emailPayslip(TEST_TENANT_ID, 'ps1');
     expect(res.sent).toBe(true);
     expect(res.to).toContain('E001');
+  });
+});
+
+describe('PayrollPayslipService (PDF + Email wired)', () => {
+  let svc: PayrollPayslipService;
+  let prisma: ReturnType<typeof extend>;
+  let pdf: ReturnType<typeof makePdfServiceStub>;
+  let email: ReturnType<typeof makeEmailServiceStub>;
+
+  beforeEach(() => {
+    prisma = extend(createMockPrismaService());
+    pdf = makePdfServiceStub();
+    email = makeEmailServiceStub();
+    svc = new PayrollPayslipService(prisma as any, pdf as any, email as any);
+  });
+
+  it('generatePdf: calls pdfService.renderTemplate("payslip", data) and returns Buffer', async () => {
+    prisma.payslip.findFirst.mockResolvedValue(samplePayslip);
+    const buf = await svc.generatePdf(TEST_TENANT_ID, 'ps1');
+    expect(Buffer.isBuffer(buf)).toBe(true);
+    expect(pdf.renderTemplate).toHaveBeenCalledTimes(1);
+    const [templateName, data] = pdf.renderTemplate.mock.calls[0]!;
+    expect(templateName).toBe('payslip');
+    expect(data).toMatchObject({
+      employeeCode: 'E001',
+      employeeName: 'Ravi Kumar',
+      periodLabel: '2026-04',
+      currency: 'INR',
+      netSalary: '17850.00',
+      grossSalary: '20000.00',
+      pfDeduction: '1800.00',
+    });
+    expect(data.netSalaryInWords).toMatch(/Rupees/);
+  });
+
+  it('downloadPdf: returns { filename, mimeType, base64 }', async () => {
+    prisma.payslip.findFirst.mockResolvedValue(samplePayslip);
+    const res = await svc.downloadPdf(TEST_TENANT_ID, 'ps1');
+    expect(res.mimeType).toBe('application/pdf');
+    expect(res.filename).toBe('payslip-E001-2026-04.pdf');
+    expect(typeof res.base64).toBe('string');
+    expect(res.base64.length).toBeGreaterThan(0);
+    // base64 of "%PDF-1.4 fake pdf body" starts with "JVBER"
+    expect(res.base64.startsWith('JVBER')).toBe(true);
+  });
+
+  it('emailPayslipToEmployee: attaches PDF as base64 and calls EmailService', async () => {
+    prisma.payslip.findFirst.mockResolvedValue({
+      ...samplePayslip,
+      employee: { ...samplePayslip.employee, email: 'ravi@example.com' },
+    });
+    prisma.payslip.update.mockResolvedValue({});
+
+    const res = await svc.emailPayslipToEmployee(TEST_TENANT_ID, 'ps1');
+    expect(res.sent).toBe(true);
+    expect(res.to).toBe('ravi@example.com');
+    expect(res.externalId).toBe('sg-123');
+
+    expect(email.sendEmail).toHaveBeenCalledTimes(1);
+    const [tenantArg, payload] = email.sendEmail.mock.calls[0]!;
+    expect(tenantArg).toBe(TEST_TENANT_ID);
+    expect(payload.to).toBe('ravi@example.com');
+    expect(payload.subject).toContain('2026-04');
+    expect(payload.html).toContain('Ravi');
+    expect(payload.attachments).toHaveLength(1);
+    const att = payload.attachments[0];
+    expect(att.filename).toBe('payslip-E001-2026-04.pdf');
+    expect(att.type).toBe('application/pdf');
+    expect(typeof att.content).toBe('string');
+    // base64 — never the raw buffer
+    expect(att.content).not.toContain('%PDF');
+    expect(att.content.startsWith('JVBER')).toBe(true);
+
+    // emailedAt stamped
+    expect(prisma.payslip.update).toHaveBeenCalled();
+    const updateArgs = prisma.payslip.update.mock.calls[0]![0];
+    expect(updateArgs.data.allowances).toHaveProperty('_emailedAt');
+  });
+
+  it('emailPayslipToEmployee: uses override email when provided', async () => {
+    prisma.payslip.findFirst.mockResolvedValue(samplePayslip);
+    prisma.payslip.update.mockResolvedValue({});
+    const res = await svc.emailPayslipToEmployee(TEST_TENANT_ID, 'ps1', 'hr@example.com');
+    expect(res.to).toBe('hr@example.com');
+    expect(email.sendEmail.mock.calls[0]![1].to).toBe('hr@example.com');
+  });
+
+  it('emailPayslipToEmployee: throws when no email on file and no override', async () => {
+    // samplePayslip.employee has no `email` field -> derivation returns undefined
+    prisma.payslip.findFirst.mockResolvedValue(samplePayslip);
+    await expect(svc.emailPayslipToEmployee(TEST_TENANT_ID, 'ps1')).rejects.toThrow(
+      /no email on file/i,
+    );
+    expect(email.sendEmail).not.toHaveBeenCalled();
   });
 });

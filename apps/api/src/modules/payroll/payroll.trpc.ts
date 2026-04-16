@@ -191,14 +191,42 @@ export class PayrollTrpcRouter {
           .input(z.object({ id: UuidSchema }))
           .query(({ ctx, input }) => this.payslipService.getById(ctx.tenantId, input.id)),
 
+        // Legacy HTML-rendered "downloadPdf" endpoint preserved for
+        // backwards compatibility with older clients. Prefer
+        // `downloadPdfBinary` (below) or the REST endpoint
+        // `GET /api/v1/payroll/payslips/:id/pdf` for real PDFs.
         downloadPdf: t.authedProcedure
           .input(z.object({ id: UuidSchema }))
           .query(({ ctx, input }) => this.payslipService.generatePayslip(ctx.tenantId, input.id)),
+
+        // Real PDF — returns `{ filename, mimeType, base64 }` so the
+        // client can build a Blob and trigger a download in the browser.
+        downloadPdfBinary: t.authedProcedure
+          .input(z.object({ payslipId: UuidSchema }))
+          .query(({ ctx, input }) =>
+            this.payslipService.downloadPdf(ctx.tenantId, input.payslipId),
+          ),
 
         emailToEmployee: t.authedProcedure
           .input(z.object({ id: UuidSchema, toEmail: z.string().email().optional() }))
           .mutation(({ ctx, input }) =>
             this.payslipService.emailPayslip(ctx.tenantId, input.id, input.toEmail),
+          ),
+
+        // Real email delivery with PDF attachment via SendGrid.
+        email: t.authedProcedure
+          .input(
+            z.object({
+              payslipId: UuidSchema,
+              toEmail: z.string().email().optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) =>
+            this.payslipService.emailPayslipToEmployee(
+              ctx.tenantId,
+              input.payslipId,
+              input.toEmail,
+            ),
           ),
       }),
 
