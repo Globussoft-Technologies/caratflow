@@ -3,13 +3,17 @@ import {
   ConflictException,
   NotFoundException,
   BadRequestException,
+  Logger,
+  Optional,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 import { v4 as uuid } from 'uuid';
 import { TenantAwareService } from '../../common/base.service';
 import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../../common/prisma.service';
 import { EventBusService } from '../../event-bus/event-bus.service';
+import { EmailService } from '../crm/email.service';
 import type { PaginatedResult, AuditMeta } from '@caratflow/shared-types';
 
 interface InviteUserInput {
@@ -50,14 +54,22 @@ const PASSWORD_POLICY = {
 
 @Injectable()
 export class PlatformUserService extends TenantAwareService {
+  private readonly logger = new Logger(PlatformUserService.name);
+
   constructor(
     prisma: PrismaService,
     private readonly eventBus: EventBusService,
+    @Optional() private readonly emailService?: EmailService,
   ) {
     super(prisma);
   }
 
-  /** Invite a new user to the tenant. Generates a temporary password. */
+  /**
+   * Invite a new user to the tenant. Generates a cryptographically
+   * strong 12-char temp password, stores it bcrypt-hashed, flags the
+   * user for forced password change on first login (via User.preferences),
+   * and emails the temp credentials together with a login link.
+   */
   async inviteUser(tenantId: string, input: InviteUserInput, audit: AuditMeta) {
     const existing = await this.prisma.user.findUnique({
       where: { tenantId_email: { tenantId, email: input.email } },
@@ -66,7 +78,6 @@ export class PlatformUserService extends TenantAwareService {
       throw new ConflictException('A user with this email already exists in this tenant');
     }
 
-    // Generate a temporary password -- in production, send invite link via email
     const tempPassword = this.generateTempPassword();
     const passwordHash = await bcrypt.hash(tempPassword, 12);
 
@@ -81,6 +92,10 @@ export class PlatformUserService extends TenantAwareService {
         roleId: input.roleId ?? null,
         isActive: true,
         createdBy: audit.userId,
+        // Flag the account so the web app can force a password change
+        // on first login. No schema change required — stored in the
+        // existing preferences JSON bag.
+        preferences: { requirePasswordChange: true } as Prisma.InputJsonValue,
       },
       select: {
         id: true,
@@ -102,10 +117,67 @@ export class PlatformUserService extends TenantAwareService {
       payload: { userId: user.id, email: user.email, roleId: user.roleId ?? '' },
     });
 
-    // Placeholder: In production, send invite email with tempPassword or a magic link
-    console.warn(`[Platform] Invite sent to ${input.email} with temp password: ${tempPassword}`);
+    // Fire-and-forget email dispatch. Failures are logged but do not
+    // undo the user creation — the admin can always re-trigger via
+    // a password-reset flow. The temp password is still returned in
+    // the response so automation/E2E tests can consume it.
+    this.sendInviteEmail(tenantId, user.email, input.firstName, tempPassword).catch((err) => {
+      this.logger.error(
+        `Failed to dispatch invite email to ${input.email}: ${(err as Error).message}`,
+      );
+    });
 
     return { ...user, tempPassword };
+  }
+
+  /**
+   * Send the invite email with the temp password and a login link.
+   * Silent no-op if EmailService is not wired (e.g. unit tests).
+   */
+  private async sendInviteEmail(
+    tenantId: string,
+    email: string,
+    firstName: string,
+    tempPassword: string,
+  ): Promise<void> {
+    if (!this.emailService) {
+      this.logger.warn(
+        `[Platform] EmailService not wired — invite for ${email} (temp password ${tempPassword}) logged only`,
+      );
+      return;
+    }
+
+    const webUrl = (
+      process.env.WEB_URL ??
+      process.env.NEXT_PUBLIC_WEB_URL ??
+      'http://localhost:3000'
+    ).replace(/\/$/, '');
+    const loginUrl = `${webUrl}/auth/login`;
+
+    const subject = 'You have been invited to CaratFlow';
+    const text =
+      `Hi ${firstName},\n\n` +
+      `You have been invited to CaratFlow. Use the temporary password below to sign in — you will be asked to set a new one on first login.\n\n` +
+      `Login URL: ${loginUrl}\n` +
+      `Email: ${email}\n` +
+      `Temporary password: ${tempPassword}\n\n` +
+      `If you did not expect this invitation, please ignore this email.\n`;
+    const html =
+      `<p>Hi ${firstName},</p>` +
+      `<p>You have been invited to <strong>CaratFlow</strong>. Use the temporary password below to sign in — you will be asked to set a new one on first login.</p>` +
+      `<ul>` +
+      `<li>Login URL: <a href="${loginUrl}">${loginUrl}</a></li>` +
+      `<li>Email: <code>${email}</code></li>` +
+      `<li>Temporary password: <code>${tempPassword}</code></li>` +
+      `</ul>` +
+      `<p>If you did not expect this invitation, please ignore this email.</p>`;
+
+    await this.emailService.sendEmail(tenantId, {
+      to: email,
+      subject,
+      text,
+      html,
+    });
   }
 
   /** List users for a tenant with pagination and search. */
@@ -293,10 +365,13 @@ export class PlatformUserService extends TenantAwareService {
   }
 
   private generateTempPassword(): string {
+    // Cryptographically strong 12-character temp password drawn from a
+    // set that avoids visually-ambiguous glyphs (0/O, 1/l/I).
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+    const bytes = crypto.randomBytes(12);
     let password = '';
     for (let i = 0; i < 12; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
+      password += chars.charAt(bytes[i]! % chars.length);
     }
     return password;
   }

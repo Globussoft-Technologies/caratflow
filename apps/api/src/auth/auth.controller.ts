@@ -77,6 +77,11 @@ class ResetPasswordDto {
   @IsNotEmpty()
   token!: string;
 
+  @ApiProperty({ required: false, description: 'User ID from the reset link' })
+  @IsString()
+  @IsOptional()
+  uid?: string;
+
   @ApiProperty()
   @IsString()
   @MinLength(6)
@@ -131,7 +136,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset password with token' })
   async resetPassword(@Body() dto: ResetPasswordDto) {
-    await this.authService.resetPassword(dto.token, dto.newPassword);
+    await this.authService.resetPassword(dto.token, dto.newPassword, dto.uid);
     return { success: true };
   }
 }

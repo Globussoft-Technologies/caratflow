@@ -4,14 +4,17 @@ import {
   ConflictException,
   NotFoundException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { PrismaService } from '../common/prisma.service';
 import { OtpService } from './auth.otp.service';
 import { SocialAuthService } from './auth.social.service';
 import { TwoFactorAuthService } from './auth.2fa.service';
+import { EmailService } from '../modules/crm/email.service';
 import type { SocialProvider, LoginProvider } from '@caratflow/db';
 import type { B2CJwtPayload, B2CCustomerProfile, B2CAuthResponse, B2CTokenPair } from '@caratflow/shared-types';
 
@@ -33,6 +36,7 @@ export class B2CAuthService {
     private readonly otpService: OtpService,
     private readonly socialAuthService: SocialAuthService,
     private readonly twoFactorService: TwoFactorAuthService,
+    @Optional() private readonly emailService?: EmailService,
   ) {
     this.jwtSecret = process.env.JWT_SECRET ?? 'dev-secret-change-me-in-production';
     this.accessExpiry = process.env.JWT_B2C_ACCESS_EXPIRY ?? '30m';
@@ -89,9 +93,9 @@ export class B2CAuthService {
       }),
     ]);
 
-    // Send verification email (async, non-blocking)
-    this.sendVerificationEmail(email).catch((err) => {
-      this.logger.error(`Failed to send verification email to ${email}`, err);
+    // Send welcome + verification email (async, non-blocking)
+    this.sendWelcomeEmail(tenant.id, email, firstName, customerAuthId).catch((err) => {
+      this.logger.error(`Failed to send welcome email to ${email}: ${(err as Error).message}`);
     });
 
     const tokens = await this.generateB2CTokenPair(customerAuth, tenant.id);
@@ -533,12 +537,56 @@ export class B2CAuthService {
     };
   }
 
-  private async sendVerificationEmail(email: string): Promise<void> {
-    // TODO: Integrate with email service (SES/SendGrid)
-    // Generate a verification token and send a link
-    const verificationToken = uuid();
-    this.logger.warn(
-      `[B2C_AUTH] Email verification token for ${email}: ${verificationToken}`,
-    );
+  /**
+   * Send the welcome + verification email for a brand-new B2C customer.
+   * Uses the per-tenant SendGrid config exposed by `EmailService`. The
+   * email contains a short-lived verification link; the storefront is
+   * responsible for exchanging that token for a verified flag.
+   */
+  private async sendWelcomeEmail(
+    tenantId: string,
+    email: string,
+    firstName: string,
+    customerAuthId: string,
+  ): Promise<void> {
+    if (!this.emailService) {
+      this.logger.warn(
+        `[B2C_AUTH] EmailService not available — welcome email for ${email} not dispatched`,
+      );
+      return;
+    }
+
+    // Short-lived verification token. Stateless-style: the storefront can
+    // POST it back to an /auth/verify-email endpoint which re-hashes it and
+    // compares against a record that future work will persist. For now we
+    // include the customerAuthId so that endpoint can look the user up.
+    const rawToken = crypto.randomBytes(32).toString('hex');
+
+    const webUrl = (
+      process.env.STOREFRONT_URL ??
+      process.env.WEB_URL ??
+      process.env.NEXT_PUBLIC_WEB_URL ??
+      'http://localhost:3000'
+    ).replace(/\/$/, '');
+    const verifyUrl = `${webUrl}/verify-email?token=${rawToken}&uid=${customerAuthId}`;
+
+    const subject = 'Welcome to CaratFlow — please verify your email';
+    const text =
+      `Hi ${firstName},\n\n` +
+      `Welcome to CaratFlow! Please verify your email by clicking the link below (valid for 24 hours):\n\n` +
+      `${verifyUrl}\n\n` +
+      `If you did not sign up, you can safely ignore this message.\n`;
+    const html =
+      `<p>Hi ${firstName},</p>` +
+      `<p>Welcome to <strong>CaratFlow</strong>! Please verify your email by clicking the link below (valid for 24 hours):</p>` +
+      `<p><a href="${verifyUrl}">${verifyUrl}</a></p>` +
+      `<p>If you did not sign up, you can safely ignore this message.</p>`;
+
+    await this.emailService.sendEmail(tenantId, {
+      to: email,
+      subject,
+      text,
+      html,
+    });
   }
 }

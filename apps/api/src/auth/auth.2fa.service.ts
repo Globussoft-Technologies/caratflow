@@ -1,17 +1,29 @@
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
+import { authenticator } from 'otplib';
+import { HashAlgorithms } from 'otplib/core';
+import * as QRCode from 'qrcode';
 import { PrismaService } from '../common/prisma.service';
 
-// TOTP constants
+// TOTP constants (RFC 6238 defaults)
 const TOTP_PERIOD = 30;
 const TOTP_DIGITS = 6;
-const TOTP_ALGORITHM = 'SHA1';
+// Allow +/- 1 period drift
+const TOTP_WINDOW = 1;
 
 @Injectable()
 export class TwoFactorAuthService {
   private readonly logger = new Logger(TwoFactorAuthService.name);
   private readonly issuer = 'CaratFlow';
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {
+    // Configure otplib authenticator defaults once
+    authenticator.options = {
+      step: TOTP_PERIOD,
+      digits: TOTP_DIGITS,
+      algorithm: HashAlgorithms.SHA1,
+      window: TOTP_WINDOW,
+    };
+  }
 
   /**
    * Enable 2FA for a customer. Generates a TOTP secret and returns setup info.
@@ -35,8 +47,8 @@ export class TwoFactorAuthService {
       throw new BadRequestException('Two-factor authentication is already enabled');
     }
 
-    // Generate a random base32 secret
-    const secret = this.generateBase32Secret(20);
+    // Generate a random base32 secret via otplib (RFC 4648)
+    const secret = authenticator.generateSecret(20);
 
     // Store the secret (not yet enabled until verification)
     await this.prisma.customerAuth.update({
@@ -45,13 +57,24 @@ export class TwoFactorAuthService {
     });
 
     const accountName = customerAuth.email ?? customerAuth.phone ?? customerAuth.customer.firstName;
-    const otpAuthUrl = this.buildOtpAuthUrl(secret, accountName);
+    const otpAuthUrl = authenticator.keyuri(accountName, this.issuer, secret);
 
-    // In production, generate actual QR code using qrcode library
-    // const qrCodeDataUrl = await QRCode.toDataURL(otpAuthUrl);
-    const qrCodeDataUrl = `data:image/svg+xml;base64,${Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg"><text y="20">QR: ${otpAuthUrl}</text></svg>`,
-    ).toString('base64')}`;
+    // Render a real QR code (PNG data URL) for clients that display the image directly.
+    // On failure (e.g. a malformed secret), fall back to a lightweight SVG
+    // representation so the public contract remains intact.
+    let qrCodeDataUrl: string;
+    try {
+      qrCodeDataUrl = await QRCode.toDataURL(otpAuthUrl, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 256,
+      });
+    } catch (err) {
+      this.logger.warn(`QR code generation failed, falling back to SVG: ${(err as Error).message}`);
+      qrCodeDataUrl = `data:image/svg+xml;base64,${Buffer.from(
+        `<svg xmlns="http://www.w3.org/2000/svg"><text y="20">QR: ${otpAuthUrl}</text></svg>`,
+      ).toString('base64')}`;
+    }
 
     this.logger.log(`2FA setup initiated for customer auth ${customerAuthId}`);
 
@@ -154,74 +177,31 @@ export class TwoFactorAuthService {
     return true;
   }
 
+  /**
+   * Generate a fresh TOTP code for a given secret.
+   * Primarily useful for debugging / test harnesses — not exposed publicly.
+   */
+  generateTotpFor(secret: string): string {
+    return authenticator.generate(secret);
+  }
+
   // ─── Private Helpers ─────────────────────────────────────────
 
   /**
-   * Generate a random Base32 secret for TOTP.
-   */
-  private generateBase32Secret(length: number): string {
-    const base32Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-    const bytes = new Uint8Array(length);
-    crypto.getRandomValues(bytes);
-    let secret = '';
-    for (let i = 0; i < length; i++) {
-      secret += base32Chars[bytes[i]! % 32];
-    }
-    return secret;
-  }
-
-  /**
-   * Build an otpauth:// URL for TOTP QR codes.
-   */
-  private buildOtpAuthUrl(secret: string, accountName: string): string {
-    const encodedIssuer = encodeURIComponent(this.issuer);
-    const encodedAccount = encodeURIComponent(accountName);
-    return `otpauth://totp/${encodedIssuer}:${encodedAccount}?secret=${secret}&issuer=${encodedIssuer}&algorithm=${TOTP_ALGORITHM}&digits=${TOTP_DIGITS}&period=${TOTP_PERIOD}`;
-  }
-
-  /**
-   * Verify a TOTP code against a secret.
-   * Allows a window of +/- 1 period to account for clock drift.
-   *
-   * Uses the HMAC-based OTP algorithm (RFC 6238).
-   * In production, consider using a library like otpauth or speakeasy.
+   * Verify a TOTP code against a secret using otplib's HMAC-SHA1 based
+   * RFC 6238 implementation. Allows a +/- 1 period drift window.
    */
   private verifyTotpCode(secret: string, code: string): boolean {
-    const now = Math.floor(Date.now() / 1000);
-    // Check current period and +/- 1 for clock drift tolerance
-    for (let offset = -1; offset <= 1; offset++) {
-      const counter = Math.floor((now + offset * TOTP_PERIOD) / TOTP_PERIOD);
-      const expectedCode = this.generateTotpCode(secret, counter);
-      if (expectedCode === code) {
-        return true;
-      }
+    if (!code || typeof code !== 'string') return false;
+    // otplib expects the code as a string of digits; empty/whitespace fails.
+    const normalized = code.trim();
+    if (!/^\d{6}$/.test(normalized)) return false;
+    try {
+      return authenticator.check(normalized, secret);
+    } catch (err) {
+      // Malformed secret or other issue — treat as invalid without leaking details.
+      this.logger.warn(`TOTP verification threw: ${(err as Error).message}`);
+      return false;
     }
-    return false;
-  }
-
-  /**
-   * Generate a TOTP code for a given counter value.
-   * Implements HOTP (RFC 4226) with time-based counter.
-   *
-   * NOTE: This is a simplified implementation. In production,
-   * use the 'otpauth' or 'speakeasy' npm package for full
-   * RFC 6238 compliance including proper HMAC-SHA1 computation.
-   */
-  private generateTotpCode(secret: string, counter: number): string {
-    // In production, this should use proper HMAC-SHA1:
-    // 1. Decode base32 secret to bytes
-    // 2. Convert counter to 8-byte big-endian buffer
-    // 3. HMAC-SHA1(secret, counter)
-    // 4. Dynamic truncation to get 6-digit code
-
-    // Placeholder: For a real implementation, install 'otpauth' package:
-    // import { TOTP } from 'otpauth';
-    // const totp = new TOTP({ secret, algorithm: 'SHA1', digits: 6, period: 30 });
-    // return totp.generate();
-
-    // This method will always return a non-matching code since it is a placeholder.
-    // The actual TOTP logic MUST be replaced before going to production.
-    this.logger.warn('[2FA] Using placeholder TOTP generation. Install otpauth package for production use.');
-    return '000000';
   }
 }

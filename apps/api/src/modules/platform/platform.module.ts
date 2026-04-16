@@ -3,6 +3,7 @@
 // audit logging, notifications, file management, i18n, import/export.
 
 import { Module } from '@nestjs/common';
+import { CrmModule } from '../crm/crm.module';
 import { PlatformUserService } from './platform.user.service';
 import { PlatformRoleService } from './platform.role.service';
 import { PlatformBranchService } from './platform.branch.service';
@@ -18,6 +19,9 @@ import { PlatformEventHandler } from './platform.event-handler';
 import { RealtimeGateway } from './realtime.gateway';
 
 @Module({
+  // CrmModule re-exports EmailService so PlatformUserService can dispatch
+  // real invite / welcome emails at runtime.
+  imports: [CrmModule],
   providers: [
     PlatformUserService,
     PlatformRoleService,
