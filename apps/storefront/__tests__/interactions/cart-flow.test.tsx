@@ -43,6 +43,7 @@ function renderCartWithItems(items: StoreState["cartItems"], overrides?: Partial
     couponCode: "",
     setCouponCode: vi.fn(),
     couponDiscount: 0,
+    setCouponDiscount: vi.fn(),
     wishlistIds: new Set(),
     wishlistCount: 0,
     toggleWishlist: vi.fn(),

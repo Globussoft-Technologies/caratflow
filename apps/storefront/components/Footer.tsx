@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { CRM_API, TENANT_ID } from "@/lib/constants";
 
 const footerLinks = {
   "Shop Jewelry": [
@@ -14,23 +16,57 @@ const footerLinks = {
   ],
   "Customer Service": [
     { label: "Track Order", href: "/account/orders" },
-    { label: "Shipping Policy", href: "#" },
-    { label: "Return & Exchange", href: "#" },
-    { label: "FAQ", href: "#" },
-    { label: "Size Guide", href: "#" },
-    { label: "Jewelry Care", href: "#" },
+    { label: "Shipping Policy", href: "/shipping" },
+    { label: "Return & Exchange", href: "/returns" },
+    { label: "FAQ", href: "/faq" },
+    { label: "Size Guide", href: "/size-guide" },
+    { label: "Jewelry Care", href: "/jewelry-care" },
   ],
   Company: [
-    { label: "About CaratFlow", href: "#" },
-    { label: "Store Locator", href: "#" },
-    { label: "BIS Hallmark", href: "#" },
+    { label: "About CaratFlow", href: "/about" },
+    { label: "Store Locator", href: "/store-locator" },
+    { label: "BIS Hallmark", href: "/bis-hallmark" },
     { label: "Gold Savings Scheme", href: "/account/schemes" },
-    { label: "Careers", href: "#" },
-    { label: "Contact Us", href: "#" },
+    { label: "Careers", href: "/careers" },
+    { label: "Contact Us", href: "/contact" },
   ],
 };
 
 export default function Footer() {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubscribe(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus(null);
+    if (!email.includes("@")) {
+      setStatus({ type: "err", text: "Enter a valid email." });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${CRM_API}/newsletter/subscribe`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-tenant-id": TENANT_ID,
+        },
+        body: JSON.stringify({ email, source: "footer" }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || (data && data.success === false)) {
+        throw new Error(data?.error?.message || "Could not subscribe");
+      }
+      setStatus({ type: "ok", text: "Subscribed! Check your inbox." });
+      setEmail("");
+    } catch (err) {
+      setStatus({ type: "err", text: err instanceof Error ? err.message : "Could not subscribe" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <footer className="bg-navy text-white">
       {/* Newsletter */}
@@ -41,18 +77,29 @@ export default function Footer() {
               <h3 className="text-lg font-bold mb-1">Stay Updated</h3>
               <p className="text-gray-400 text-sm">Get exclusive offers, new arrivals & gold rate alerts</p>
             </div>
-            <form className="flex gap-2 w-full md:w-auto" onSubmit={(e) => e.preventDefault()}>
-              <input
-                type="email"
-                placeholder="Enter your email"
-                className="flex-1 md:w-72 bg-white/10 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold/30"
-              />
-              <button
-                type="submit"
-                className="px-6 py-2.5 bg-gold text-white text-sm font-semibold rounded-lg hover:bg-gold-dark transition-colors flex-shrink-0"
-              >
-                Subscribe
-              </button>
+            <form className="flex flex-col gap-2 w-full md:w-auto" onSubmit={handleSubscribe}>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  className="flex-1 md:w-72 bg-white/10 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold/30"
+                />
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-6 py-2.5 bg-gold text-white text-sm font-semibold rounded-lg hover:bg-gold-dark transition-colors flex-shrink-0 disabled:opacity-60"
+                >
+                  {submitting ? "..." : "Subscribe"}
+                </button>
+              </div>
+              {status && (
+                <p className={`text-xs ${status.type === "ok" ? "text-emerald-300" : "text-rose-300"}`}>
+                  {status.text}
+                </p>
+              )}
             </form>
           </div>
         </div>
@@ -86,7 +133,7 @@ export default function Footer() {
               ))}
             </div>
 
-            {/* Social */}
+            {/* Social - placeholders until brand accounts exist */}
             <div className="flex gap-3">
               {[
                 { label: "Fb", href: "#" },
@@ -98,6 +145,7 @@ export default function Footer() {
                 <a
                   key={s.label}
                   href={s.href}
+                  aria-label={`${s.label} (coming soon)`}
                   className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center text-xs font-bold text-gray-400 hover:bg-gold hover:text-white transition-colors"
                 >
                   {s.label}
@@ -142,9 +190,13 @@ export default function Footer() {
                 ))}
               </div>
             </div>
-            <p className="text-gray-500 text-xs text-center md:text-right">
-              &copy; {new Date().getFullYear()} CaratFlow by Globussoft Technologies. All rights reserved.
-            </p>
+            <div className="text-gray-500 text-xs flex flex-wrap items-center gap-x-3 justify-center md:justify-end">
+              <Link href="/privacy" className="hover:text-gold transition-colors">Privacy</Link>
+              <span>&middot;</span>
+              <Link href="/terms" className="hover:text-gold transition-colors">Terms</Link>
+              <span className="hidden sm:inline">&middot;</span>
+              <span>&copy; {new Date().getFullYear()} CaratFlow by Globussoft Technologies</span>
+            </div>
           </div>
         </div>
       </div>

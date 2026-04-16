@@ -49,6 +49,7 @@ function renderCheckout(cartItems = [makeCartItem(0, 1, "7")], overrides?: Parti
     couponCode: "",
     setCouponCode: vi.fn(),
     couponDiscount: 0,
+    setCouponDiscount: vi.fn(),
     wishlistIds: new Set(),
     wishlistCount: 0,
     toggleWishlist: vi.fn(),

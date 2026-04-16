@@ -12,7 +12,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
   const [isCartDrawerOpen, setCartDrawerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [couponCode, setCouponCode] = useState("");
-  const [couponDiscount] = useState(0);
+  const [couponDiscount, setCouponDiscount] = useState(0);
 
   const addToCart = useCallback((product: Product, quantity = 1, size?: string) => {
     setCartItems((prev) => {
@@ -101,6 +101,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
       couponCode,
       setCouponCode,
       couponDiscount,
+      setCouponDiscount,
       wishlistIds,
       wishlistCount: wishlistIds.size,
       toggleWishlist,

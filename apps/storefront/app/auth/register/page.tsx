@@ -1,18 +1,70 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { AUTH_API, TENANT_SLUG } from "@/lib/constants";
+import { setTokens } from "@/lib/api";
+
+type AuthTokens = { accessToken: string; refreshToken?: string };
 
 export default function RegisterPage() {
+  const router = useRouter();
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirmPassword: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError("");
     if (form.password !== form.confirmPassword) {
-      alert("Passwords do not match");
+      setError("Passwords do not match");
       return;
     }
-    alert("Registration integration pending. This is a UI placeholder.");
+    const parts = form.name.trim().split(/\s+/);
+    const firstName = parts[0] || form.name.trim();
+    const lastName = parts.slice(1).join(" ") || firstName;
+    setLoading(true);
+    try {
+      const res = await fetch(`${AUTH_API}/register/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: form.email,
+          password: form.password,
+          firstName,
+          lastName,
+          tenantSlug: TENANT_SLUG,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data?.error?.message || data?.message || "Registration failed");
+      }
+      const tokens = data.data as AuthTokens | undefined;
+      if (tokens?.accessToken) {
+        setTokens(tokens.accessToken, tokens.refreshToken);
+      }
+      // Send OTP for phone verification (non-blocking)
+      if (form.phone) {
+        try {
+          await fetch(`${AUTH_API}/otp/send`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ identifier: form.phone, purpose: "PHONE_VERIFICATION" }),
+          });
+          router.push(`/auth/verify-otp?phone=${encodeURIComponent(form.phone)}&purpose=PHONE_VERIFICATION`);
+          return;
+        } catch {
+          // non-fatal
+        }
+      }
+      router.push("/account");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -29,6 +81,7 @@ export default function RegisterPage() {
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-navy/60 mb-1">Full Name *</label>
@@ -95,13 +148,13 @@ export default function RegisterPage() {
               <input type="checkbox" required className="w-4 h-4 rounded border-gray-300 text-gold accent-gold mt-0.5" />
               <span className="text-xs text-navy/60">
                 I agree to the{" "}
-                <a href="#" className="text-gold hover:text-gold-dark">Terms of Service</a> and{" "}
-                <a href="#" className="text-gold hover:text-gold-dark">Privacy Policy</a>
+                <Link href="/terms" className="text-gold hover:text-gold-dark">Terms of Service</Link> and{" "}
+                <Link href="/privacy" className="text-gold hover:text-gold-dark">Privacy Policy</Link>
               </span>
             </label>
 
-            <button type="submit" className="w-full bg-gold text-white font-semibold py-3 rounded-lg hover:bg-gold-dark transition-colors">
-              Create Account
+            <button type="submit" disabled={loading} className="w-full bg-gold text-white font-semibold py-3 rounded-lg hover:bg-gold-dark transition-colors disabled:opacity-60">
+              {loading ? "Creating account..." : "Create Account"}
             </button>
           </form>
         </div>

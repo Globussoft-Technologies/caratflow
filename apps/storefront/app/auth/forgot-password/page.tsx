@@ -2,14 +2,34 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { API_BASE_URL, TENANT_SLUG } from "@/lib/constants";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSent(true);
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, tenantSlug: TENANT_SLUG }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || (data && data.success === false)) {
+        throw new Error(data?.error?.message || data?.message || "Could not send reset link");
+      }
+      setSent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -30,7 +50,7 @@ export default function ForgotPasswordPage() {
               </div>
               <h3 className="font-semibold text-navy mb-1">Check Your Email</h3>
               <p className="text-sm text-navy/50 mb-4">
-                We've sent a password reset link to <strong>{email}</strong>
+                If <strong>{email}</strong> matches an account, we've sent a password reset link.
               </p>
               <Link href="/auth/login" className="text-gold font-medium text-sm hover:text-gold-dark transition-colors">
                 Back to Sign In
@@ -38,6 +58,9 @@ export default function ForgotPasswordPage() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">{error}</div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-navy/60 mb-1">Email</label>
                 <input
@@ -49,8 +72,12 @@ export default function ForgotPasswordPage() {
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold/20"
                 />
               </div>
-              <button type="submit" className="w-full bg-gold text-white font-semibold py-3 rounded-lg hover:bg-gold-dark transition-colors">
-                Send Reset Link
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gold text-white font-semibold py-3 rounded-lg hover:bg-gold-dark transition-colors disabled:opacity-60"
+              >
+                {loading ? "Sending..." : "Send Reset Link"}
               </button>
             </form>
           )}

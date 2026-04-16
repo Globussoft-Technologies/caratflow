@@ -1,22 +1,89 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
 import { mockAddresses } from "@/lib/mock-data";
 import { calculateProductPrice, formatRupees, cn } from "@/lib/utils";
 import AddressForm from "@/components/AddressForm";
+import { apiFetch, ApiError } from "@/lib/api";
 import type { Address } from "@/lib/types";
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
+  }
+}
+
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") return resolve(false);
+    if (window.Razorpay) return resolve(true);
+    const existing = document.getElementById("razorpay-checkout-js") as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener("load", () => resolve(true));
+      existing.addEventListener("error", () => resolve(false));
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = "razorpay-checkout-js";
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 type CheckoutStep = 1 | 2 | 3;
 
+interface InitiateCheckoutResponse {
+  id: string;
+  orderNumber?: string;
+  totalPaise?: number;
+  payment?: {
+    razorpayOrderId?: string;
+    keyId?: string;
+    amountPaise?: number;
+    currency?: string;
+  };
+  razorpayOrderId?: string;
+  keyId?: string;
+}
+
 export default function CheckoutPage() {
-  const { cartItems, couponCode, couponDiscount } = useStore();
+  const router = useRouter();
+  const { cartItems, couponCode, couponDiscount, clearCart } = useStore();
   const [step, setStep] = useState<CheckoutStep>(1);
   const [addresses, setAddresses] = useState<Address[]>(mockAddresses);
   const [selectedAddressId, setSelectedAddressId] = useState<string>(addresses.find((a) => a.isDefault)?.id ?? "");
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<string>("razorpay");
+  const [paymentError, setPaymentError] = useState("");
+
+  // Load saved addresses from backend on mount; fall back to mockAddresses if signed out.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch<Address[] | { items?: Address[] }>("/api/v1/store/addresses", {
+          tenantHeaders: true,
+        });
+        if (cancelled) return;
+        const items = Array.isArray(data) ? data : data.items ?? [];
+        if (items.length > 0) {
+          setAddresses(items);
+          const def = items.find((a) => a.isDefault) ?? items[0];
+          if (def?.id) setSelectedAddressId(def.id);
+        }
+      } catch {
+        // Stay on mock addresses for guest checkout demo
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const subtotal = cartItems.reduce((sum, item) => {
     const price = calculateProductPrice(item.product);
@@ -28,13 +95,103 @@ export default function CheckoutPage() {
 
   const selectedAddress = addresses.find((a) => a.id === selectedAddressId);
 
-  function handlePayment() {
+  async function completeOrder(orderId: string, externalPaymentId: string, gatewayResponse: Record<string, unknown>) {
+    await apiFetch(`/api/v1/store/checkout/${orderId}/complete`, {
+      method: "POST",
+      tenantHeaders: true,
+      body: { externalPaymentId, gatewayResponse },
+    });
+    clearCart();
+    router.push(`/account/orders/${orderId}`);
+  }
+
+  async function handlePayment() {
+    setPaymentError("");
     setPaymentProcessing(true);
-    // Simulated payment
-    setTimeout(() => {
+    try {
+      // 1. Fetch current cart from backend to get real cartId
+      const cart = await apiFetch<{ id: string }>("/api/v1/store/cart", { tenantHeaders: true });
+
+      // 2. Initiate checkout (creates an order in PENDING payment state)
+      const order = await apiFetch<InitiateCheckoutResponse>(
+        "/api/v1/store/checkout",
+        {
+          method: "POST",
+          tenantHeaders: true,
+          body: {
+            cartId: cart.id,
+            addressId: selectedAddressId,
+            paymentMethod,
+            couponCode: couponCode || undefined,
+          },
+        },
+      );
+
+      // 3. Cash on delivery -> mark complete server-side without a gateway round-trip.
+      if (paymentMethod === "cod") {
+        await completeOrder(order.id, `cod_${Date.now()}`, { mode: "cod" });
+        return;
+      }
+
+      // 4. Razorpay / UPI / card flow.
+      const razorpayOrderId = order.payment?.razorpayOrderId ?? order.razorpayOrderId;
+      const keyId = order.payment?.keyId ?? order.keyId;
+      const amountPaise = order.payment?.amountPaise ?? order.totalPaise ?? total;
+
+      if (!razorpayOrderId || !keyId) {
+        // Backend hasn't returned Razorpay credentials -- fall back to demo completion
+        // so the flow still works in dev environments without payment keys configured.
+        await completeOrder(order.id, `demo_${Date.now()}`, { mode: "demo", method: paymentMethod });
+        return;
+      }
+
+      const sdkLoaded = await loadRazorpayScript();
+      if (!sdkLoaded || typeof window === "undefined" || !window.Razorpay) {
+        throw new Error("Could not load Razorpay. Check your network and try again.");
+      }
+
+      const rzp = new window.Razorpay({
+        key: keyId,
+        amount: amountPaise,
+        currency: order.payment?.currency ?? "INR",
+        order_id: razorpayOrderId,
+        name: "CaratFlow",
+        description: order.orderNumber ? `Order ${order.orderNumber}` : "Order",
+        prefill: {
+          name: selectedAddress?.fullName,
+          contact: selectedAddress?.phone,
+        },
+        theme: { color: "#D4A853" },
+        handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
+          try {
+            await completeOrder(order.id, response.razorpay_payment_id, {
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpayOrderId: response.razorpay_order_id,
+              razorpaySignature: response.razorpay_signature,
+              method: paymentMethod,
+            });
+          } catch (err) {
+            setPaymentError(err instanceof Error ? err.message : "Payment captured but order completion failed. Contact support.");
+            setPaymentProcessing(false);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setPaymentProcessing(false);
+            setPaymentError("Payment cancelled. Your cart is intact -- try again when ready.");
+          },
+        },
+      } as Record<string, unknown>);
+      rzp.open();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setPaymentError("Please sign in to place an order.");
+        setTimeout(() => router.push("/auth/login"), 1500);
+      } else {
+        setPaymentError(err instanceof Error ? err.message : "Payment failed. Please try again.");
+      }
       setPaymentProcessing(false);
-      alert("Payment gateway integration (Razorpay/Stripe) will be connected here. This is a placeholder.");
-    }, 1500);
+    }
   }
 
   if (cartItems.length === 0) {
@@ -237,9 +394,18 @@ export default function CheckoutPage() {
                 ].map((method) => (
                   <label
                     key={method.id}
-                    className="flex items-start gap-3 p-4 rounded-xl border border-gray-200 hover:border-gold/30 cursor-pointer transition-all"
+                    className={cn(
+                      "flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all",
+                      paymentMethod === method.id ? "border-gold bg-gold/5" : "border-gray-200 hover:border-gold/30",
+                    )}
                   >
-                    <input type="radio" name="payment" defaultChecked={method.id === "razorpay"} className="mt-1 accent-gold" />
+                    <input
+                      type="radio"
+                      name="payment"
+                      checked={paymentMethod === method.id}
+                      onChange={() => setPaymentMethod(method.id)}
+                      className="mt-1 accent-gold"
+                    />
                     <div>
                       <p className="text-sm font-semibold text-navy">{method.label}</p>
                       <p className="text-xs text-navy/50">{method.desc}</p>
@@ -247,6 +413,12 @@ export default function CheckoutPage() {
                   </label>
                 ))}
               </div>
+
+              {paymentError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 mb-4">
+                  {paymentError}
+                </div>
+              )}
 
               <button
                 type="button"

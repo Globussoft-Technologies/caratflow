@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
+import { apiFetch, ApiError } from "@/lib/api";
 
 type Consultation = {
   id: string;
@@ -29,28 +30,27 @@ export default function ConsultationsPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    async function load() {
+    let cancelled = false;
+    (async () => {
       setLoading(true);
       setError("");
       try {
-        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-        const res = await fetch("/api/v1/crm/video-consultation/list?page=1&limit=50", {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        });
-        if (!res.ok) {
-          setItems([]);
+        const data = await apiFetch<{ items?: Consultation[] }>("/api/v1/crm/video-consultation/list?page=1&limit=50");
+        if (cancelled) return;
+        setItems(data.items ?? []);
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 401) {
+          if (typeof window !== "undefined") window.location.href = "/auth/login";
           return;
         }
-        const data = await res.json();
-        const rows: Consultation[] = (data?.data?.items ?? data?.items ?? []) as Consultation[];
-        setItems(rows);
-      } catch {
-        setError("Could not load consultations.");
+        setError(err instanceof Error ? err.message : "Could not load consultations.");
+        setItems([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    }
-    load();
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   return (

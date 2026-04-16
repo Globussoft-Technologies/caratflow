@@ -15,9 +15,10 @@ import { EmailService } from './email.service';
 import { SmsService } from './sms.service';
 import { WhatsAppService } from './whatsapp.service';
 import { WhatsAppWebhookController } from './whatsapp.webhook.controller';
+import { CrmController } from './crm.controller';
 
 @Module({
-  controllers: [WhatsAppWebhookController],
+  controllers: [WhatsAppWebhookController, CrmController],
   providers: [
     CrmService,
     CrmLoyaltyService,

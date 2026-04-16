@@ -18,6 +18,7 @@ export interface StoreState {
   couponCode: string;
   setCouponCode: (code: string) => void;
   couponDiscount: number;
+  setCouponDiscount: (paise: number) => void;
 
   // Wishlist
   wishlistIds: Set<string>;

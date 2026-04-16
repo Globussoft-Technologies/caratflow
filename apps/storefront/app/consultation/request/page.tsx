@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { mockProducts } from "@/lib/mock-data";
+import { API_BASE_URL } from "@/lib/constants";
 
 const LANGS = [
   { code: "en", label: "English" },
@@ -50,18 +51,23 @@ function RequestConsultationForm() {
           notes || null,
         ].filter(Boolean).join("\n") || undefined,
       };
-      const res = await fetch("/api/v1/crm/video-consultation/request", {
+      const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const res = await fetch(`${API_BASE_URL}/api/v1/crm/video-consultation/request`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("accessToken") ?? "" : ""}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(payload),
       });
-      if (!res.ok && res.status !== 404) {
-        throw new Error(`Request failed: ${res.status}`);
+      if (res.status === 401) {
+        if (typeof window !== "undefined") window.location.href = "/auth/login";
+        return;
       }
-      // Accept success both from real API and mock 404 (for storefront demo UX)
+      const data = await res.json().catch(() => null);
+      if (!res.ok || (data && data.success === false)) {
+        throw new Error(data?.error?.message || data?.message || `Request failed: ${res.status}`);
+      }
       setSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit. Please try again.");

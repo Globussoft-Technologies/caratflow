@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { apiFetch, ApiError, clearTokens } from "@/lib/api";
 
 const navItems = [
   { href: "/account", label: "Dashboard", icon: "M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" },
@@ -15,8 +17,58 @@ const navItems = [
   { href: "/account/consultations", label: "Consultations", icon: "M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" },
 ];
 
+interface ProfileSummary {
+  firstName?: string;
+  lastName?: string;
+  email?: string | null;
+  phone?: string | null;
+}
+
 export default function AccountLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [profile, setProfile] = useState<ProfileSummary | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch<ProfileSummary>("/api/v1/b2c/auth/me");
+        if (cancelled) return;
+        setProfile(data);
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 401) {
+          if (typeof window !== "undefined") window.location.href = "/auth/login";
+          return;
+        }
+        // Fall back to profile endpoint
+        try {
+          const fallback = await apiFetch<ProfileSummary>("/api/v1/store/account/profile");
+          if (!cancelled) setProfile(fallback);
+        } catch {
+          if (!cancelled) setProfile({});
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  function handleSignOut() {
+    clearTokens();
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("sessionId");
+    }
+    router.push("/");
+  }
+
+  const fullName = profile
+    ? `${profile.firstName ?? ""} ${profile.lastName ?? ""}`.trim() || "Account"
+    : "Loading...";
+  const email = profile?.email ?? profile?.phone ?? "";
+  const initials = profile
+    ? `${profile.firstName?.[0] ?? ""}${profile.lastName?.[0] ?? ""}`.toUpperCase() || (email[0] ?? "?").toUpperCase()
+    : "?";
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
@@ -26,10 +78,10 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden sticky top-20">
             <div className="p-4 bg-gradient-to-br from-navy to-navy-light">
               <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white font-bold mb-2">
-                PS
+                {initials}
               </div>
-              <p className="text-white font-semibold text-sm">Priya Sharma</p>
-              <p className="text-white/60 text-xs">priya@example.com</p>
+              <p className="text-white font-semibold text-sm">{fullName}</p>
+              {email && <p className="text-white/60 text-xs truncate">{email}</p>}
             </div>
             <nav className="p-2">
               {navItems.map((item) => {
@@ -52,6 +104,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
               })}
               <button
                 type="button"
+                onClick={handleSignOut}
                 className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-rose-500/70 hover:bg-rose-50 hover:text-rose-500 transition-colors w-full mt-1"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">

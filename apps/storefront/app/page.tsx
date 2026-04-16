@@ -67,6 +67,7 @@ const Mail = (p: IconProps) => (
 );
 import { calculateProductPrice, formatRupees, cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
+import { CRM_API, TENANT_ID } from "@/lib/constants";
 
 // ─── Jewelry Photography Library ─────────────────────────────
 // Real jewelry photos sourced from Loremflickr (free Flickr proxy,
@@ -228,11 +229,29 @@ export default function HomePage() {
   );
   const silverRate = mockGoldRates.find((r) => r.metalType === "SILVER");
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const [subscribeError, setSubscribeError] = useState("");
+
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email.includes("@")) {
+    setSubscribeError("");
+    if (!email.includes("@")) {
+      setSubscribeError("Enter a valid email.");
+      return;
+    }
+    try {
+      const res = await fetch(`${CRM_API}/newsletter/subscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-tenant-id": TENANT_ID },
+        body: JSON.stringify({ email, source: "home" }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || (data && data.success === false)) {
+        throw new Error(data?.error?.message || "Could not subscribe");
+      }
       setSubscribed(true);
       setEmail("");
+    } catch (err) {
+      setSubscribeError(err instanceof Error ? err.message : "Could not subscribe");
     }
   };
 
@@ -585,22 +604,27 @@ export default function HomePage() {
           ) : (
             <form
               onSubmit={handleSubscribe}
-              className="mx-auto flex max-w-md flex-col gap-3 sm:flex-row"
+              className="mx-auto flex max-w-md flex-col gap-3"
             >
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                className="flex-1 rounded-lg border border-white/20 bg-white/10 px-5 py-3.5 text-sm text-white placeholder-white/40 backdrop-blur-sm focus:border-gold focus:outline-none"
-              />
-              <button
-                type="submit"
-                className="rounded-lg bg-gold px-8 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-gold-dark"
-              >
-                Subscribe
-              </button>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setSubscribeError(""); }}
+                  placeholder="your@email.com"
+                  className="flex-1 rounded-lg border border-white/20 bg-white/10 px-5 py-3.5 text-sm text-white placeholder-white/40 backdrop-blur-sm focus:border-gold focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="rounded-lg bg-gold px-8 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-gold-dark"
+                >
+                  Subscribe
+                </button>
+              </div>
+              {subscribeError && (
+                <p className="text-xs text-rose-300">{subscribeError}</p>
+              )}
             </form>
           )}
         </div>

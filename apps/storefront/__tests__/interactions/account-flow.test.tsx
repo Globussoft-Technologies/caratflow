@@ -49,6 +49,7 @@ function mockStore(overrides?: Partial<StoreState>): StoreState {
     couponCode: "",
     setCouponCode: vi.fn(),
     couponDiscount: 0,
+    setCouponDiscount: vi.fn(),
     wishlistIds: new Set(),
     wishlistCount: 0,
     toggleWishlist: vi.fn(),

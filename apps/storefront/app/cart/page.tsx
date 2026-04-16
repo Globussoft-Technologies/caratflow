@@ -1,9 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
 import { calculateProductPrice, formatRupees, cn } from "@/lib/utils";
-import { GST_RATE_JEWELRY } from "@/lib/constants";
+import { apiFetch, ApiError } from "@/lib/api";
+
+interface CouponValidationResult {
+  isValid: boolean;
+  reason?: string;
+  discountAmountPaise?: number;
+  discountType?: string;
+  message?: string;
+}
 
 export default function CartPage() {
   const {
@@ -14,7 +23,10 @@ export default function CartPage() {
     couponCode,
     setCouponCode,
     couponDiscount,
+    setCouponDiscount,
   } = useStore();
+  const [couponMsg, setCouponMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [applying, setApplying] = useState(false);
 
   const subtotal = cartItems.reduce((sum, item) => {
     const price = calculateProductPrice(item.product);
@@ -25,6 +37,38 @@ export default function CartPage() {
   const afterDiscount = subtotal - discount;
   const shipping = subtotal >= 200000 ? 0 : 49900; // Free shipping over Rs 2000
   const total = afterDiscount + shipping;
+
+  async function handleApplyCoupon() {
+    setCouponMsg(null);
+    if (!couponCode.trim()) {
+      setCouponMsg({ type: "err", text: "Enter a coupon code." });
+      return;
+    }
+    setApplying(true);
+    try {
+      const result = await apiFetch<CouponValidationResult>("/api/v1/store/coupons/validate", {
+        method: "POST",
+        tenantHeaders: true,
+        body: { code: couponCode.trim().toUpperCase(), cartTotalPaise: subtotal },
+      });
+      if (result.isValid) {
+        setCouponDiscount(result.discountAmountPaise ?? 0);
+        setCouponMsg({ type: "ok", text: `Coupon applied: -${formatRupees((result.discountAmountPaise ?? 0) / 100)}` });
+      } else {
+        setCouponDiscount(0);
+        setCouponMsg({ type: "err", text: result.reason || result.message || "Invalid coupon" });
+      }
+    } catch (err) {
+      setCouponDiscount(0);
+      if (err instanceof ApiError && err.status === 401) {
+        setCouponMsg({ type: "err", text: "Please sign in to apply a coupon." });
+      } else {
+        setCouponMsg({ type: "err", text: err instanceof Error ? err.message : "Could not apply coupon" });
+      }
+    } finally {
+      setApplying(false);
+    }
+  }
 
   if (cartItems.length === 0) {
     return (
@@ -145,17 +189,27 @@ export default function CartPage() {
                 <input
                   type="text"
                   value={couponCode}
-                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponMsg(null); }}
                   placeholder="Enter code"
                   className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold/20 uppercase"
                 />
                 <button
                   type="button"
-                  className="px-4 py-2 border border-gold text-gold text-sm font-medium rounded-lg hover:bg-gold hover:text-white transition-colors"
+                  onClick={handleApplyCoupon}
+                  disabled={applying}
+                  className="px-4 py-2 border border-gold text-gold text-sm font-medium rounded-lg hover:bg-gold hover:text-white transition-colors disabled:opacity-60"
                 >
-                  Apply
+                  {applying ? "..." : "Apply"}
                 </button>
               </div>
+              {couponMsg && (
+                <p className={cn(
+                  "text-xs mt-1.5",
+                  couponMsg.type === "ok" ? "text-emerald-600" : "text-rose-500"
+                )}>
+                  {couponMsg.text}
+                </p>
+              )}
             </div>
 
             <div className="space-y-3 text-sm">
