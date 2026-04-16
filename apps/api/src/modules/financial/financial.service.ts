@@ -546,7 +546,33 @@ export class FinancialService extends TenantAwareService {
     });
 
     if (!cashAccount || !counterAccount) {
-      // Create minimal journal entry with placeholder logic
+      // No chart-of-accounts configured yet: auto-provision the
+      // minimum pair (Cash/Bank + AR or AP) so the journal entry still
+      // balances (sum of debits === sum of credits) per double-entry
+      // bookkeeping. Admins can rename these later via settings UI.
+      const ensuredCash = cashAccount ?? (await this.prisma.account.create({
+        data: {
+          tenantId,
+          accountCode: '1000',
+          name: 'Cash / Bank',
+          accountType: 'ASSET',
+          isActive: true,
+          createdBy: userId,
+          updatedBy: userId,
+        },
+      }));
+      const ensuredCounter = counterAccount ?? (await this.prisma.account.create({
+        data: {
+          tenantId,
+          accountCode: isReceived ? '1200' : '2000',
+          name: isReceived ? 'Accounts Receivable' : 'Accounts Payable',
+          accountType: isReceived ? 'ASSET' : 'LIABILITY',
+          isActive: true,
+          createdBy: userId,
+          updatedBy: userId,
+        },
+      }));
+
       return this.prisma.journalEntry.create({
         data: {
           tenantId,
@@ -558,6 +584,28 @@ export class FinancialService extends TenantAwareService {
           postedAt: new Date(),
           createdBy: userId,
           updatedBy: userId,
+          lines: {
+            create: [
+              {
+                tenantId,
+                accountId: ensuredCash.id,
+                debitPaise: isReceived ? BigInt(input.amountPaise) : BigInt(0),
+                creditPaise: isReceived ? BigInt(0) : BigInt(input.amountPaise),
+                description,
+                currencyCode: input.currencyCode ?? 'INR',
+                exchangeRate: 10000,
+              },
+              {
+                tenantId,
+                accountId: ensuredCounter.id,
+                debitPaise: isReceived ? BigInt(0) : BigInt(input.amountPaise),
+                creditPaise: isReceived ? BigInt(input.amountPaise) : BigInt(0),
+                description,
+                currencyCode: input.currencyCode ?? 'INR',
+                exchangeRate: 10000,
+              },
+            ],
+          },
         },
       });
     }
@@ -638,6 +686,158 @@ export class FinancialService extends TenantAwareService {
     ]);
 
     return buildPaginatedResult(items, total, page, limit);
+  }
+
+  // ─── Collections (Agent Mobile) ───────────────────────────────
+
+  /**
+   * Record a collection made by a field agent. Creates a RECEIVED Payment
+   * and applies it FIFO against the customer's outstanding balances. The
+   * agent's userId is stamped in createdBy so the agent dashboard can
+   * aggregate collections per agent.
+   */
+  async recordCollection(
+    tenantId: string,
+    userId: string,
+    input: {
+      customerId: string;
+      amountPaise: number;
+      method: 'CASH' | 'CARD' | 'UPI' | 'BANK_TRANSFER' | 'CHEQUE' | 'ONLINE';
+      agentId: string;
+      notes?: string;
+      invoiceId?: string;
+    },
+  ) {
+    if (input.amountPaise <= 0) {
+      throw new BadRequestException('Amount must be positive');
+    }
+
+    const customer = await this.prisma.customer.findFirst({
+      where: { tenantId, id: input.customerId },
+      select: { id: true },
+    });
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    // Reuse recordPayment for journal entry + payment row creation.
+    // Use agentId as the createdBy so the dashboard aggregates by agent.
+    const payment = await this.recordPayment(tenantId, input.agentId, {
+      paymentType: 'RECEIVED',
+      method: input.method,
+      amountPaise: input.amountPaise,
+      currencyCode: 'INR',
+      customerId: input.customerId,
+      invoiceId: input.invoiceId,
+      reference: input.notes,
+    } as PaymentInput);
+
+    // Apply to outstanding balances FIFO (oldest dueDate first).
+    let remaining = BigInt(input.amountPaise);
+    if (remaining > 0n) {
+      const outstandings = await this.prisma.outstandingBalance.findMany({
+        where: {
+          tenantId,
+          entityType: 'CUSTOMER',
+          entityId: input.customerId,
+          status: { in: ['CURRENT', 'OVERDUE'] },
+          ...(input.invoiceId ? { invoiceId: input.invoiceId } : {}),
+        },
+        orderBy: { dueDate: 'asc' },
+      });
+
+      for (const ob of outstandings) {
+        if (remaining <= 0n) break;
+        const applied = remaining >= ob.balancePaise ? ob.balancePaise : remaining;
+        const newPaid = ob.paidPaise + applied;
+        const newBalance = ob.balancePaise - applied;
+        const newStatus = newBalance <= 0n ? 'PAID' : ob.status;
+        await this.prisma.outstandingBalance.update({
+          where: { id: ob.id },
+          data: {
+            paidPaise: newPaid,
+            balancePaise: newBalance,
+            status: newStatus,
+            updatedBy: userId,
+          },
+        });
+        remaining -= applied;
+      }
+    }
+
+    return payment;
+  }
+
+  /**
+   * List outstanding balances for customers assigned to an agent.
+   * "Assigned" = customers this agent has recorded interactions with.
+   */
+  async listOutstandingForAgent(
+    tenantId: string,
+    agentId: string,
+    pagination: { page: number; limit: number },
+  ) {
+    const interactions = await this.prisma.customerInteraction.findMany({
+      where: { tenantId, userId: agentId },
+      select: { customerId: true },
+      distinct: ['customerId'],
+    });
+    const customerIds = interactions.map((i) => i.customerId);
+
+    if (customerIds.length === 0) {
+      return {
+        items: [],
+        total: 0,
+        page: pagination.page,
+        limit: pagination.limit,
+      };
+    }
+
+    const where: Prisma.OutstandingBalanceWhereInput = {
+      tenantId,
+      entityType: 'CUSTOMER',
+      entityId: { in: customerIds },
+      status: { in: ['CURRENT', 'OVERDUE'] },
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.outstandingBalance.findMany({
+        where,
+        orderBy: { dueDate: 'asc' },
+        skip: (pagination.page - 1) * pagination.limit,
+        take: pagination.limit,
+      }),
+      this.prisma.outstandingBalance.count({ where }),
+    ]);
+
+    const customers = await this.prisma.customer.findMany({
+      where: { tenantId, id: { in: items.map((i) => i.entityId) } },
+      select: { id: true, firstName: true, lastName: true, phone: true },
+    });
+    const customerMap = new Map(customers.map((c) => [c.id, c]));
+
+    const enriched = items.map((ob) => {
+      const c = customerMap.get(ob.entityId);
+      return {
+        id: ob.id,
+        invoiceId: ob.invoiceId,
+        invoiceNumber: ob.invoiceNumber,
+        customerId: ob.entityId,
+        customerName: c ? `${c.firstName} ${c.lastName}` : 'Unknown',
+        customerPhone: c?.phone ?? null,
+        outstandingPaise: ob.balancePaise.toString(),
+        originalPaise: ob.originalPaise.toString(),
+        paidPaise: ob.paidPaise.toString(),
+        dueDate: ob.dueDate.toISOString(),
+        daysOverdue: ob.daysOverdue,
+        status: ob.status,
+      };
+    });
+
+    return {
+      items: enriched,
+      total,
+      page: pagination.page,
+      limit: pagination.limit,
+    };
   }
 
   // ─── Account Balance & Ledger ─────────────────────────────────

@@ -256,6 +256,161 @@ export class WholesaleAgentService extends TenantAwareService {
     };
   }
 
+  // ─── Agent Dashboard (mobile) ──────────────────────────────────
+
+  /**
+   * Aggregate dashboard metrics for the Agent mobile app.
+   * Returns collections for this month, outstanding balance across
+   * assigned customers (customers this agent has interacted with),
+   * visits this week, and purchase orders booked this month.
+   */
+  async getAgentDashboard(tenantId: string, agentId: string): Promise<{
+    agentId: string;
+    collectionsThisMonthPaise: string;
+    outstandingForAssignedCustomersPaise: string;
+    visitsThisWeek: number;
+    ordersBookedThisMonth: number;
+  }> {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const day = now.getDay();
+    const daysFromMon = (day + 6) % 7;
+    const weekStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - daysFromMon,
+    );
+
+    // 1) Collections this month — payments recorded by this agent.
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        tenantId,
+        createdBy: agentId,
+        paymentType: 'RECEIVED',
+        createdAt: { gte: monthStart },
+      },
+      select: { amountPaise: true },
+    });
+    const collectionsThisMonthPaise = payments.reduce(
+      (sum, p) => sum + p.amountPaise,
+      0n,
+    );
+
+    // 2) Assigned customers = customers this agent has recorded interactions with.
+    const interactions = await this.prisma.customerInteraction.findMany({
+      where: { tenantId, userId: agentId },
+      select: { customerId: true },
+      distinct: ['customerId'],
+    });
+    const assignedCustomerIds = interactions.map((i) => i.customerId);
+
+    let outstandingForAssignedCustomersPaise = 0n;
+    if (assignedCustomerIds.length > 0) {
+      const obs = await this.prisma.outstandingBalance.findMany({
+        where: {
+          tenantId,
+          entityType: 'CUSTOMER',
+          entityId: { in: assignedCustomerIds },
+          status: { in: ['CURRENT', 'OVERDUE'] },
+        },
+        select: { balancePaise: true },
+      });
+      outstandingForAssignedCustomersPaise = obs.reduce(
+        (sum, o) => sum + o.balancePaise,
+        0n,
+      );
+    }
+
+    // 3) Visits this week — CustomerInteraction rows with interactionType=VISIT
+    //    by this agent.
+    const visitsThisWeek = await this.prisma.customerInteraction.count({
+      where: {
+        tenantId,
+        userId: agentId,
+        interactionType: 'VISIT',
+        createdAt: { gte: weekStart },
+      },
+    });
+
+    // 4) Orders booked this month — PurchaseOrders created by this agent.
+    const ordersBookedThisMonth = await this.prisma.purchaseOrder.count({
+      where: {
+        tenantId,
+        createdBy: agentId,
+        createdAt: { gte: monthStart },
+      },
+    });
+
+    return {
+      agentId,
+      collectionsThisMonthPaise: collectionsThisMonthPaise.toString(),
+      outstandingForAssignedCustomersPaise:
+        outstandingForAssignedCustomersPaise.toString(),
+      visitsThisWeek,
+      ordersBookedThisMonth,
+    };
+  }
+
+  /**
+   * Record an agent visit. Writes a CustomerInteraction row with
+   * interactionType=VISIT and stores agent-specific metadata
+   * (agentId, outcome, visitDate) in the attachments JSON column.
+   */
+  async recordAgentVisit(
+    tenantId: string,
+    userId: string,
+    input: {
+      agentId: string;
+      customerId: string;
+      visitDate: Date;
+      notes?: string;
+      outcome?: string;
+    },
+  ): Promise<{
+    id: string;
+    customerId: string;
+    agentId: string;
+    visitDate: string;
+    outcome: string | null;
+    notes: string | null;
+  }> {
+    const customer = await this.prisma.customer.findFirst({
+      where: { tenantId, id: input.customerId },
+      select: { id: true },
+    });
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    const interaction = await this.prisma.customerInteraction.create({
+      data: {
+        id: uuidv4(),
+        tenantId,
+        customerId: input.customerId,
+        interactionType: 'VISIT',
+        direction: 'OUTBOUND',
+        subject: input.outcome ? `Agent visit: ${input.outcome}` : 'Agent visit',
+        content: input.notes ?? null,
+        userId: input.agentId,
+        attachments: {
+          agentVisit: true,
+          agentId: input.agentId,
+          outcome: input.outcome ?? null,
+          visitDate: input.visitDate.toISOString(),
+        },
+        createdBy: userId,
+        updatedBy: userId,
+      },
+    });
+
+    return {
+      id: interaction.id,
+      customerId: interaction.customerId,
+      agentId: input.agentId,
+      visitDate: input.visitDate.toISOString(),
+      outcome: input.outcome ?? null,
+      notes: interaction.content ?? null,
+    };
+  }
+
   // ─── Mappers ───────────────────────────────────────────────────
 
   private mapAgentToResponse(agent: Record<string, unknown>): AgentBrokerResponse {

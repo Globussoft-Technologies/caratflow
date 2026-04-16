@@ -6,8 +6,8 @@ import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { SearchBar } from '@/components/SearchBar';
-import { useApiQuery, useApiMutation } from '@/hooks/useApi';
 import { useAuthStore } from '@/store/auth-store';
+import { trpc } from '@/lib/trpc';
 
 interface CustomerOption {
   id: string;
@@ -16,37 +16,44 @@ interface CustomerOption {
   phone: string | null;
 }
 
-const PURPOSES = [
-  'Collection',
-  'Sales Visit',
-  'Order Follow-up',
-  'Relationship',
-  'Complaint Resolution',
+const OUTCOMES = [
+  'Order Placed',
+  'Follow-up Needed',
+  'Not Interested',
+  'Collection Done',
+  'Complaint Resolved',
   'Other',
 ];
 
 export default function NewVisitScreen() {
   const { user } = useAuthStore();
+  const agentId = user?.id;
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
-  const [purpose, setPurpose] = useState('Sales Visit');
+  const [outcome, setOutcome] = useState('Order Placed');
   const [notes, setNotes] = useState('');
 
-  const { data: customerResults } = useApiQuery<{ items: CustomerOption[] }>(
-    ['agent', 'customer-search', customerSearch],
-    '/api/v1/crm/customers',
+  const utils = trpc.useUtils();
+
+  const { data: customerResults } = trpc.crm.customerList.useQuery(
     { search: customerSearch, limit: 10 },
     { enabled: customerSearch.length >= 2 },
   );
 
-  const createVisitMutation = useApiMutation<{
-    customerId: string;
-    purpose: string;
-    notes?: string;
-    agentId: string;
-  }>('/api/v1/crm/agent-visits', {
-    invalidateKeys: [['agent', 'visits']],
+  const customers = ((customerResults as { items?: CustomerOption[] } | undefined)?.items ?? []) as CustomerOption[];
+
+  const createVisitMutation = trpc.wholesale.recordAgentVisit.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.crm.interactions.list.invalidate(),
+        utils.wholesale.agentDashboard.invalidate(),
+      ]);
+      Alert.alert('Success', 'Visit logged.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    },
+    onError: (err) => Alert.alert('Error', err.message),
   });
 
   const handleCreate = () => {
@@ -54,23 +61,18 @@ export default function NewVisitScreen() {
       Alert.alert('Validation', 'Please select a customer.');
       return;
     }
+    if (!agentId) {
+      Alert.alert('Error', 'Missing agent session.');
+      return;
+    }
 
-    createVisitMutation.mutate(
-      {
-        customerId,
-        purpose,
-        notes: notes || undefined,
-        agentId: user?.id ?? '',
-      },
-      {
-        onSuccess: () => {
-          Alert.alert('Success', 'Visit logged.', [
-            { text: 'OK', onPress: () => router.back() },
-          ]);
-        },
-        onError: (err) => Alert.alert('Error', err.message),
-      },
-    );
+    createVisitMutation.mutate({
+      agentId,
+      customerId,
+      visitDate: new Date(),
+      notes: notes || undefined,
+      outcome,
+    });
   };
 
   return (
@@ -78,7 +80,6 @@ export default function NewVisitScreen() {
       <Stack.Screen options={{ headerShown: true, title: 'New Visit' }} />
 
       <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
-        {/* Customer Selection */}
         <Text className="text-sm font-medium text-surface-700 mb-1.5">
           Customer
         </Text>
@@ -104,14 +105,12 @@ export default function NewVisitScreen() {
               placeholder="Search customer by name or phone..."
               onSearch={setCustomerSearch}
             />
-            {(customerResults?.items ?? []).map((cust) => (
+            {customers.map((cust) => (
               <Pressable
                 key={cust.id}
                 onPress={() => {
                   setCustomerId(cust.id);
-                  setCustomerName(
-                    `${cust.firstName} ${cust.lastName}`,
-                  );
+                  setCustomerName(`${cust.firstName} ${cust.lastName}`);
                   setCustomerSearch('');
                 }}
                 className="py-3 border-b border-surface-100"
@@ -127,22 +126,21 @@ export default function NewVisitScreen() {
           </>
         )}
 
-        {/* Purpose */}
         <Text className="text-sm font-medium text-surface-700 mb-1.5 mt-2">
-          Purpose
+          Outcome
         </Text>
         <View className="flex-row flex-wrap gap-2 mb-4">
-          {PURPOSES.map((p) => (
+          {OUTCOMES.map((p) => (
             <Pressable
               key={p}
-              onPress={() => setPurpose(p)}
+              onPress={() => setOutcome(p)}
               className={`px-3 py-2 rounded-lg ${
-                purpose === p ? 'bg-primary-400' : 'bg-surface-200'
+                outcome === p ? 'bg-primary-400' : 'bg-surface-200'
               }`}
             >
               <Text
                 className={`text-xs font-medium ${
-                  purpose === p ? 'text-white' : 'text-surface-700'
+                  outcome === p ? 'text-white' : 'text-surface-700'
                 }`}
               >
                 {p}
@@ -151,7 +149,6 @@ export default function NewVisitScreen() {
           ))}
         </View>
 
-        {/* Notes */}
         <Input
           label="Notes"
           placeholder="Visit notes..."

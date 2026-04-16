@@ -161,7 +161,7 @@ export class WholesaleService extends TenantAwareService {
 
   async listPurchaseOrders(
     tenantId: string,
-    filters: PurchaseOrderListFilter,
+    filters: PurchaseOrderListFilter & { createdBy?: string },
     pagination: Pagination,
   ): Promise<PaginatedResult<PurchaseOrderResponse>> {
     const where: Record<string, unknown> = { tenantId };
@@ -169,6 +169,7 @@ export class WholesaleService extends TenantAwareService {
     if (filters.status) where.status = filters.status;
     if (filters.supplierId) where.supplierId = filters.supplierId;
     if (filters.locationId) where.locationId = filters.locationId;
+    if (filters.createdBy) where.createdBy = filters.createdBy;
     if (filters.dateFrom || filters.dateTo) {
       where.createdAt = {};
       if (filters.dateFrom) (where.createdAt as Record<string, unknown>).gte = filters.dateFrom;

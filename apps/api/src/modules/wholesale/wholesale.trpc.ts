@@ -517,6 +517,50 @@ export class WholesaleTrpcRouter {
             input.pagination ?? { page: 1, limit: 20, sortOrder: 'asc' },
           ),
         ),
+
+      // ─── Agent Mobile App Aggregates ──────────────────────────
+      // Consumed by apps/mobile/app/(agent)/* screens.
+
+      agentDashboard: this.trpc.authedProcedure
+        .input(z.object({ agentId: z.string().uuid() }))
+        .query(({ ctx, input }) =>
+          this.agentService.getAgentDashboard(ctx.tenantId, input.agentId),
+        ),
+
+      recordAgentVisit: this.trpc.authedProcedure
+        .input(z.object({
+          agentId: z.string().uuid(),
+          customerId: z.string().uuid(),
+          visitDate: z.coerce.date(),
+          notes: z.string().max(2000).optional(),
+          outcome: z.string().max(255).optional(),
+        }))
+        .mutation(({ ctx, input }) =>
+          this.agentService.recordAgentVisit(ctx.tenantId, ctx.userId, input),
+        ),
+
+      // Nested purchaseOrders router so mobile can call
+      // trpc.wholesale.purchaseOrders.list.useQuery({ createdByAgentId }).
+      purchaseOrders: this.trpc.router({
+        list: this.trpc.authedProcedure
+          .input(z.object({
+            createdByAgentId: z.string().uuid().optional(),
+            filters: PurchaseOrderListFilterSchema.optional(),
+            pagination: PaginationSchema.optional(),
+          }))
+          .query(({ ctx, input }) =>
+            this.wholesaleService.listPurchaseOrders(
+              ctx.tenantId,
+              {
+                ...(input.filters ?? {}),
+                ...(input.createdByAgentId
+                  ? { createdBy: input.createdByAgentId }
+                  : {}),
+              },
+              input.pagination ?? { page: 1, limit: 20, sortOrder: 'desc' },
+            ),
+          ),
+      }),
     });
   }
 }

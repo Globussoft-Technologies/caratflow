@@ -132,6 +132,21 @@ export class FinancialTrpcRouter {
             return this.financialService.recordPayment(ctx.tenantId, ctx.userId, input);
           }),
 
+        // Agent mobile app — records a RECEIVED payment from a customer
+        // and applies it FIFO to the customer's outstanding balances.
+        recordCollection: this.trpc.authedProcedure
+          .input(z.object({
+            customerId: UuidSchema,
+            amountPaise: z.number().int().positive(),
+            method: z.enum(['CASH', 'CARD', 'UPI', 'BANK_TRANSFER', 'CHEQUE', 'ONLINE']),
+            agentId: UuidSchema,
+            notes: z.string().max(2000).optional(),
+            invoiceId: UuidSchema.optional(),
+          }))
+          .mutation(async ({ ctx, input }) => {
+            return this.financialService.recordCollection(ctx.tenantId, ctx.userId, input);
+          }),
+
         getById: this.trpc.authedProcedure
           .input(z.object({ id: UuidSchema }))
           .query(async ({ ctx, input }) => {
@@ -142,6 +157,23 @@ export class FinancialTrpcRouter {
           .input(PaymentListInputSchema)
           .query(async ({ ctx, input }) => {
             return this.financialService.listPayments(ctx.tenantId, input);
+          }),
+      }),
+
+      // ─── Outstanding Balances (for Agent mobile) ────────────
+      outstandingBalances: this.trpc.router({
+        list: this.trpc.authedProcedure
+          .input(z.object({
+            agentId: UuidSchema,
+            page: z.number().int().min(1).default(1),
+            limit: z.number().int().min(1).max(100).default(50),
+          }))
+          .query(async ({ ctx, input }) => {
+            return this.financialService.listOutstandingForAgent(
+              ctx.tenantId,
+              input.agentId,
+              { page: input.page, limit: input.limit },
+            );
           }),
       }),
 

@@ -1,60 +1,61 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, Alert, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useApiQuery, useApiMutation } from '@/hooks/useApi';
 import { DataList } from '@/components/DataList';
 import { Card } from '@/components/Card';
-import { Badge, getStatusVariant } from '@/components/Badge';
+import { Badge } from '@/components/Badge';
 import { MoneyDisplay } from '@/components/MoneyDisplay';
 import { Button } from '@/components/Button';
 import { BottomSheet } from '@/components/BottomSheet';
 import { Input } from '@/components/Input';
-import { StatCard } from '@/components/StatCard';
-import { formatMoneyShort, formatMoney } from '@/utils/money';
+import { formatMoney } from '@/utils/money';
 import { formatDate } from '@/utils/date';
 import { useAuthStore } from '@/store/auth-store';
+import { trpc } from '@/lib/trpc';
 
 interface CollectionItem {
   id: string;
   invoiceId: string;
   invoiceNumber: string;
+  customerId: string;
   customerName: string;
   customerPhone: string | null;
-  outstandingPaise: number;
+  outstandingPaise: string;
   dueDate: string;
-  ageDays: number;
-  priority: 'HIGH' | 'MEDIUM' | 'LOW';
-  lastFollowUp: string | null;
+  daysOverdue: number;
+  status: string;
 }
 
-interface CollectionSummary {
-  todayTargetPaise: number;
-  todayCollectedPaise: number;
-  pendingCount: number;
-  items: CollectionItem[];
-}
+type PaymentMethod = 'CASH' | 'UPI' | 'CHEQUE' | 'BANK_TRANSFER';
 
 export default function CollectionsScreen() {
   const { user } = useAuthStore();
+  const agentId = user?.id;
   const [refreshing, setRefreshing] = useState(false);
   const [selectedItem, setSelectedItem] = useState<CollectionItem | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [paymentRef, setPaymentRef] = useState('');
   const [amountStr, setAmountStr] = useState('');
 
-  const { data, isLoading, refetch } = useApiQuery<CollectionSummary>(
-    ['agent', 'collections', user?.id],
-    '/api/v1/financial/agent-collections',
-    { agentId: user?.id },
+  const utils = trpc.useUtils();
+
+  const { data, isLoading, refetch } = trpc.financial.outstandingBalances.list.useQuery(
+    { agentId: agentId ?? '' },
+    { enabled: !!agentId },
   );
 
-  const collectMutation = useApiMutation<{
-    invoiceId: string;
-    amountPaise: number;
-    method: string;
-    reference?: string;
-  }>('/api/v1/financial/payments', {
-    invalidateKeys: [['agent', 'collections'], ['agent', 'dashboard']],
+  const collectMutation = trpc.financial.payments.recordCollection.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.financial.outstandingBalances.list.invalidate(),
+        utils.wholesale.agentDashboard.invalidate(),
+      ]);
+      setSelectedItem(null);
+      setAmountStr('');
+      setPaymentRef('');
+      Alert.alert('Success', 'Payment collected successfully.');
+    },
+    onError: (err) => Alert.alert('Error', err.message),
   });
 
   const onRefresh = useCallback(async () => {
@@ -64,68 +65,44 @@ export default function CollectionsScreen() {
   }, [refetch]);
 
   const handleCollect = () => {
-    if (!selectedItem) return;
+    if (!selectedItem || !agentId) return;
     const amount = Math.round(parseFloat(amountStr) * 100);
     if (isNaN(amount) || amount <= 0) {
       Alert.alert('Validation', 'Please enter a valid amount.');
       return;
     }
 
-    collectMutation.mutate(
-      {
-        invoiceId: selectedItem.invoiceId,
-        amountPaise: amount,
-        method: paymentMethod,
-        reference: paymentRef || undefined,
-      },
-      {
-        onSuccess: () => {
-          setSelectedItem(null);
-          setAmountStr('');
-          setPaymentRef('');
-          Alert.alert('Success', 'Payment collected successfully.');
-          refetch();
-        },
-        onError: (err) => Alert.alert('Error', err.message),
-      },
-    );
+    collectMutation.mutate({
+      customerId: selectedItem.customerId,
+      amountPaise: amount,
+      method: paymentMethod,
+      agentId,
+      notes: paymentRef || undefined,
+      invoiceId: selectedItem.invoiceId,
+    });
   };
 
-  const summary = data ?? {
-    todayTargetPaise: 0,
-    todayCollectedPaise: 0,
-    pendingCount: 0,
-    items: [],
-  };
+  const items = (data?.items ?? []) as CollectionItem[];
 
-  const priorityVariant = (p: string) => {
-    if (p === 'HIGH') return 'danger' as const;
-    if (p === 'MEDIUM') return 'warning' as const;
+  const priorityVariant = (days: number) => {
+    if (days > 60) return 'danger' as const;
+    if (days > 30) return 'warning' as const;
     return 'default' as const;
   };
 
   return (
     <SafeAreaView className="flex-1 bg-surface-50">
       <View className="px-4 pt-4 pb-2">
-        <Text className="text-2xl font-bold text-surface-900 mb-3">
+        <Text className="text-2xl font-bold text-surface-900 mb-1">
           Collections
         </Text>
-
-        {/* Summary */}
-        <View className="flex-row gap-3 mb-3">
-          <StatCard
-            title="Target"
-            value={formatMoneyShort(summary.todayTargetPaise)}
-          />
-          <StatCard
-            title="Collected"
-            value={formatMoneyShort(summary.todayCollectedPaise)}
-          />
-        </View>
+        <Text className="text-sm text-surface-500 mb-2">
+          {items.length} outstanding invoice{items.length !== 1 ? 's' : ''}
+        </Text>
       </View>
 
       <DataList
-        data={summary.items}
+        data={items}
         keyExtractor={(item) => item.id}
         loading={isLoading}
         refreshing={refreshing}
@@ -146,8 +123,8 @@ export default function CollectionsScreen() {
                 </Text>
               </View>
               <Badge
-                label={item.priority}
-                variant={priorityVariant(item.priority)}
+                label={item.status}
+                variant={priorityVariant(item.daysOverdue)}
                 size="sm"
               />
             </View>
@@ -156,7 +133,7 @@ export default function CollectionsScreen() {
               <View>
                 <Text className="text-xs text-surface-500">Outstanding</Text>
                 <MoneyDisplay
-                  amountPaise={item.outstandingPaise}
+                  amountPaise={Number(item.outstandingPaise)}
                   className="text-lg font-bold text-surface-900"
                 />
               </View>
@@ -164,13 +141,15 @@ export default function CollectionsScreen() {
                 <Text className="text-xs text-surface-500">
                   Due: {formatDate(item.dueDate)}
                 </Text>
-                <Text
-                  className={`text-xs ${
-                    item.ageDays > 30 ? 'text-red-500' : 'text-surface-500'
-                  }`}
-                >
-                  {item.ageDays} days overdue
-                </Text>
+                {item.daysOverdue > 0 && (
+                  <Text
+                    className={`text-xs ${
+                      item.daysOverdue > 30 ? 'text-red-500' : 'text-surface-500'
+                    }`}
+                  >
+                    {item.daysOverdue} days overdue
+                  </Text>
+                )}
               </View>
             </View>
 
@@ -180,16 +159,13 @@ export default function CollectionsScreen() {
               size="sm"
               onPress={() => {
                 setSelectedItem(item);
-                setAmountStr(
-                  (item.outstandingPaise / 100).toFixed(2),
-                );
+                setAmountStr((Number(item.outstandingPaise) / 100).toFixed(2));
               }}
             />
           </Card>
         )}
       />
 
-      {/* Collection Bottom Sheet */}
       <BottomSheet
         visible={!!selectedItem}
         onClose={() => setSelectedItem(null)}
@@ -201,7 +177,7 @@ export default function CollectionsScreen() {
               Collecting from {selectedItem.customerName} ({selectedItem.invoiceNumber})
             </Text>
             <Text className="text-sm text-surface-600 mb-1">
-              Outstanding: {formatMoney(selectedItem.outstandingPaise)}
+              Outstanding: {formatMoney(Number(selectedItem.outstandingPaise))}
             </Text>
 
             <Input
@@ -216,7 +192,7 @@ export default function CollectionsScreen() {
               Payment Method
             </Text>
             <View className="flex-row gap-2 mb-4">
-              {['CASH', 'UPI', 'CHEQUE', 'BANK_TRANSFER'].map((m) => (
+              {(['CASH', 'UPI', 'CHEQUE', 'BANK_TRANSFER'] as const).map((m) => (
                 <Pressable
                   key={m}
                   onPress={() => setPaymentMethod(m)}

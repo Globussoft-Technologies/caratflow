@@ -131,6 +131,31 @@ export class CrmTrpcRouter {
           return this.prismaListInteractions(ctx.tenantId, input.customerId, input.page, input.limit);
         }),
 
+      // Nested router for filter-based listing (agent mobile app).
+      // type 'AGENT_VISIT' maps to interactionType=VISIT + userId=agentId.
+      interactions: this.trpc.router({
+        list: authed
+          .input(z.object({
+            type: z.enum(['AGENT_VISIT', 'CALL', 'EMAIL', 'SMS', 'WHATSAPP', 'VISIT', 'NOTE']).optional(),
+            agentId: z.string().uuid().optional(),
+            customerId: z.string().uuid().optional(),
+            page: z.number().int().min(1).default(1),
+            limit: z.number().int().min(1).max(100).default(20),
+          }))
+          .query(async ({ ctx, input }) => {
+            return this.prismaFilterInteractions(
+              ctx.tenantId,
+              {
+                type: input.type,
+                agentId: input.agentId,
+                customerId: input.customerId,
+              },
+              input.page,
+              input.limit,
+            );
+          }),
+      }),
+
       // ─── Loyalty ────────────────────────────────────────────
       loyaltyProgramCreate: authed
         .input(LoyaltyProgramInputSchema)
@@ -699,5 +724,80 @@ export class CrmTrpcRouter {
     ]);
     const totalPages = Math.ceil(total / limit);
     return { items, total, page, limit, totalPages, hasNext: page < totalPages, hasPrevious: page > 1 };
+  }
+
+  private async prismaFilterInteractions(
+    tenantId: string,
+    filters: { type?: string; agentId?: string; customerId?: string },
+    page: number,
+    limit: number,
+  ) {
+    const { PrismaService } = await import('../../common/prisma.service');
+    const prisma = (this.crmService as unknown as { prisma: InstanceType<typeof PrismaService> }).prisma;
+
+    // Map AGENT_VISIT to: interactionType=VISIT + userId=agentId (set when
+    // the visit was recorded via wholesale.recordAgentVisit).
+    const where: Record<string, unknown> = { tenantId };
+    if (filters.customerId) where.customerId = filters.customerId;
+
+    if (filters.type === 'AGENT_VISIT') {
+      where.interactionType = 'VISIT';
+      if (filters.agentId) where.userId = filters.agentId;
+    } else if (filters.type) {
+      where.interactionType = filters.type;
+      if (filters.agentId) where.userId = filters.agentId;
+    } else if (filters.agentId) {
+      where.userId = filters.agentId;
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.customerInteraction.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.customerInteraction.count({ where }),
+    ]);
+
+    const customerIds = Array.from(new Set(items.map((i) => i.customerId)));
+    const customers = customerIds.length
+      ? await prisma.customer.findMany({
+          where: { tenantId, id: { in: customerIds } },
+          select: { id: true, firstName: true, lastName: true, phone: true },
+        })
+      : [];
+    const cmap = new Map(customers.map((c) => [c.id, c]));
+
+    const enriched = items.map((i) => {
+      const c = cmap.get(i.customerId);
+      const att = (i.attachments as Record<string, unknown> | null) ?? null;
+      return {
+        id: i.id,
+        customerId: i.customerId,
+        customerName: c ? `${c.firstName} ${c.lastName}` : 'Unknown',
+        customerPhone: c?.phone ?? null,
+        interactionType: i.interactionType,
+        direction: i.direction,
+        subject: i.subject,
+        content: i.content,
+        userId: i.userId,
+        agentId: (att && typeof att.agentId === 'string' ? att.agentId : null) as string | null,
+        outcome: (att && typeof att.outcome === 'string' ? att.outcome : null) as string | null,
+        visitDate: (att && typeof att.visitDate === 'string' ? att.visitDate : null) as string | null,
+        createdAt: i.createdAt.toISOString(),
+      };
+    });
+
+    const totalPages = Math.ceil(total / limit);
+    return {
+      items: enriched,
+      total,
+      page,
+      limit,
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrevious: page > 1,
+    };
   }
 }

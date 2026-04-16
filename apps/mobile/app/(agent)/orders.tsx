@@ -1,7 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, Alert } from 'react-native';
+import { View, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useApiQuery } from '@/hooks/useApi';
 import { DataList } from '@/components/DataList';
 import { Card } from '@/components/Card';
 import { Badge, getStatusVariant } from '@/components/Badge';
@@ -9,30 +8,32 @@ import { MoneyDisplay } from '@/components/MoneyDisplay';
 import { SearchBar } from '@/components/SearchBar';
 import { formatDate } from '@/utils/date';
 import { useAuthStore } from '@/store/auth-store';
+import { trpc } from '@/lib/trpc';
 
 interface AgentOrder {
   id: string;
-  orderNumber: string;
-  customerName: string;
+  poNumber: string;
+  supplierName?: string;
   status: string;
-  totalPaise: number;
-  itemCount: number;
-  createdAt: string;
-  expectedDelivery: string | null;
+  totalPaise: string | number;
+  createdAt: string | Date;
+  expectedDate: string | Date | null;
+  items?: unknown[];
 }
 
 export default function AgentOrdersScreen() {
   const { user } = useAuthStore();
+  const agentId = user?.id;
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data, isLoading, refetch } = useApiQuery<{
-    items: AgentOrder[];
-    total: number;
-  }>(
-    ['agent', 'orders', user?.id, search],
-    '/api/v1/wholesale/agent-orders',
-    { agentId: user?.id, search: search || undefined, limit: 50 },
+  const { data, isLoading, refetch } = trpc.wholesale.purchaseOrders.list.useQuery(
+    {
+      createdByAgentId: agentId ?? '',
+      filters: search ? { search } : undefined,
+      pagination: { page: 1, limit: 50, sortOrder: 'desc' },
+    },
+    { enabled: !!agentId },
   );
 
   const onRefresh = useCallback(async () => {
@@ -41,7 +42,7 @@ export default function AgentOrdersScreen() {
     setRefreshing(false);
   }, [refetch]);
 
-  const orders = data?.items ?? [];
+  const orders = (data?.items ?? []) as AgentOrder[];
 
   return (
     <SafeAreaView className="flex-1 bg-surface-50">
@@ -50,7 +51,7 @@ export default function AgentOrdersScreen() {
           Orders
         </Text>
         <SearchBar
-          placeholder="Search orders..."
+          placeholder="Search by PO number..."
           onSearch={setSearch}
         />
       </View>
@@ -62,44 +63,47 @@ export default function AgentOrdersScreen() {
         refreshing={refreshing}
         onRefresh={onRefresh}
         emptyTitle="No orders found"
-        emptySubtitle="Orders placed through you will appear here"
+        emptySubtitle="Orders you book will appear here"
         contentContainerStyle={{ paddingHorizontal: 16 }}
-        renderItem={({ item }) => (
-          <Card className="mb-2">
-            <View className="flex-row items-start justify-between mb-2">
-              <View className="flex-1">
-                <Text className="text-sm font-semibold text-surface-900">
-                  {item.orderNumber}
-                </Text>
-                <Text className="text-xs text-surface-500">
-                  {item.customerName} | {item.itemCount} items
-                </Text>
-              </View>
-              <Badge
-                label={item.status.replace('_', ' ')}
-                variant={getStatusVariant(item.status)}
-                size="sm"
-              />
-            </View>
-
-            <View className="flex-row items-center justify-between">
-              <MoneyDisplay
-                amountPaise={item.totalPaise}
-                className="text-base font-bold text-surface-900"
-              />
-              <View className="items-end">
-                <Text className="text-xs text-surface-500">
-                  {formatDate(item.createdAt)}
-                </Text>
-                {item.expectedDelivery && (
-                  <Text className="text-xs text-surface-400">
-                    ETA: {formatDate(item.expectedDelivery)}
+        renderItem={({ item }) => {
+          const itemCount = Array.isArray(item.items) ? item.items.length : 0;
+          return (
+            <Card className="mb-2">
+              <View className="flex-row items-start justify-between mb-2">
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold text-surface-900">
+                    {item.poNumber}
                   </Text>
-                )}
+                  <Text className="text-xs text-surface-500">
+                    {item.supplierName ?? 'Supplier'} | {itemCount} item{itemCount !== 1 ? 's' : ''}
+                  </Text>
+                </View>
+                <Badge
+                  label={item.status.replace('_', ' ')}
+                  variant={getStatusVariant(item.status)}
+                  size="sm"
+                />
               </View>
-            </View>
-          </Card>
-        )}
+
+              <View className="flex-row items-center justify-between">
+                <MoneyDisplay
+                  amountPaise={Number(item.totalPaise)}
+                  className="text-base font-bold text-surface-900"
+                />
+                <View className="items-end">
+                  <Text className="text-xs text-surface-500">
+                    {formatDate(String(item.createdAt))}
+                  </Text>
+                  {item.expectedDate && (
+                    <Text className="text-xs text-surface-400">
+                      ETA: {formatDate(String(item.expectedDate))}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </Card>
+          );
+        }}
       />
     </SafeAreaView>
   );
