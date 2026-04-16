@@ -7,6 +7,8 @@ describe('DigitalGoldSipService', () => {
   let mockPrisma: ReturnType<typeof createMockPrismaService>;
   let mockRatesService: any;
   let mockDigitalGoldService: any;
+  let mockPaymentGateway: any;
+  let mockEventBus: any;
 
   const CUSTOMER_ID = 'cust-1';
   const VAULT_ID = 'vault-1';
@@ -67,10 +69,29 @@ describe('DigitalGoldSipService', () => {
       create: vi.fn().mockResolvedValue({ id: 'exec-1' }),
     };
 
+    mockPaymentGateway = {
+      chargeSavedMethod: vi.fn().mockResolvedValue({
+        chargeId: 'pg_mock_test_1',
+        provider: 'mock',
+        savedMethodId: 'ref-123',
+        amountPaise: 100000,
+        currency: 'INR',
+        status: 'SUCCEEDED',
+        reference: 'DG-SIP-test',
+        processedAt: Date.now(),
+      }),
+    };
+    mockEventBus = {
+      publish: vi.fn().mockResolvedValue(undefined),
+      subscribe: vi.fn(),
+    };
+
     service = new DigitalGoldSipService(
       mockPrisma as any,
       mockRatesService,
       mockDigitalGoldService,
+      mockPaymentGateway,
+      mockEventBus,
     );
     resetAllMocks(mockPrisma);
   });

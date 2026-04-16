@@ -3,6 +3,7 @@
 
 import { Module } from '@nestjs/common';
 import { IndiaModule } from '../india/india.module';
+import { BnplModule } from '../bnpl/bnpl.module';
 import { DigitalGoldService } from './digital-gold.service';
 import { DigitalGoldSipService } from './digital-gold.sip.service';
 import { DigitalGoldRedemptionService } from './digital-gold.redemption.service';
@@ -12,7 +13,7 @@ import { DigitalGoldEventHandler } from './digital-gold.event-handler';
 import { DigitalGoldTrpcRouter } from './digital-gold.trpc';
 
 @Module({
-  imports: [IndiaModule],
+  imports: [IndiaModule, BnplModule],
   controllers: [DigitalGoldController],
   providers: [
     DigitalGoldService,

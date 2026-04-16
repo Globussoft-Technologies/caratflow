@@ -349,6 +349,18 @@ export interface DigitalGoldSipExecutedEvent extends DomainEventBase {
   };
 }
 
+export interface DigitalGoldSipFailedEvent extends DomainEventBase {
+  type: 'digital-gold.sip.failed';
+  payload: {
+    sipId: string;
+    customerId: string;
+    amountPaise: number;
+    reason: string;
+    attemptCount: number;
+    autoPaused: boolean;
+  };
+}
+
 export interface DigitalGoldRedemptionRequestedEvent extends DomainEventBase {
   type: 'digital-gold.redemption.requested';
   payload: {

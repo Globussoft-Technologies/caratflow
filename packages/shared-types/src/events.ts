@@ -346,6 +346,7 @@ import type {
   DigitalGoldBoughtEvent,
   DigitalGoldSoldEvent,
   DigitalGoldSipExecutedEvent,
+  DigitalGoldSipFailedEvent,
   DigitalGoldRedemptionRequestedEvent,
   DigitalGoldPriceAlertTriggeredEvent,
 } from './digital-gold';
@@ -426,6 +427,7 @@ export type DomainEvent =
   | DigitalGoldBoughtEvent
   | DigitalGoldSoldEvent
   | DigitalGoldSipExecutedEvent
+  | DigitalGoldSipFailedEvent
   | DigitalGoldRedemptionRequestedEvent
   | DigitalGoldPriceAlertTriggeredEvent
   // Referral

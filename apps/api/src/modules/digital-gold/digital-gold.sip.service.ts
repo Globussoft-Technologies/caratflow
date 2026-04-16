@@ -13,6 +13,15 @@ import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
 import { IndiaRatesService } from '../india/india.rates.service';
 import { DigitalGoldService } from './digital-gold.service';
+import { EventBusService } from '../../event-bus/event-bus.service';
+import {
+  PaymentGatewayService,
+  PaymentMethodNotFoundError,
+  PaymentMethodExpiredError,
+  PaymentGatewayDeclinedError,
+  PaymentGatewayTransientError,
+} from '../bnpl/payment-gateway.service';
+import { v4 as uuidv4 } from 'uuid';
 import type {
   CreateSipInput,
   SipResponse,
@@ -38,6 +47,8 @@ export class DigitalGoldSipService extends TenantAwareService {
     prisma: PrismaService,
     private readonly ratesService: IndiaRatesService,
     private readonly digitalGoldService: DigitalGoldService,
+    private readonly paymentGateway: PaymentGatewayService,
+    private readonly eventBus: EventBusService,
   ) {
     super(prisma);
   }
@@ -191,14 +202,13 @@ export class DigitalGoldSipService extends TenantAwareService {
     }
 
     const tenantId = sip.tenantId;
+    let amountPaise = 0;
+    let goldWeightMg = 0;
 
     try {
       const liveRate = await this.ratesService.getCurrentRate('GOLD', DIGITAL_GOLD_PURITY);
       const buyPricePer10gPaise = liveRate.ratePer10gPaise + BUY_SPREAD_PER_10G_PAISE;
       const buyPricePerGramPaise = Math.round(buyPricePer10gPaise / 10);
-
-      let amountPaise: number;
-      let goldWeightMg: number;
 
       if (sip.sipType === 'FIXED_AMOUNT') {
         amountPaise = Number(sip.amountPaise!);
@@ -209,15 +219,29 @@ export class DigitalGoldSipService extends TenantAwareService {
         amountPaise = Math.ceil((goldWeightMg * buyPricePerGramPaise) / 1000);
       }
 
-      // Process payment (placeholder -- in production, debit via payment gateway)
-      const paymentSuccess = await this.processAutoDebit(
-        sip.paymentMethod,
-        sip.autoDebitReference,
-        amountPaise,
-      );
+      if (!sip.autoDebitReference) {
+        throw new PaymentMethodNotFoundError(
+          `SIP ${sipId} has no autoDebitReference (SavedPaymentMethod.id) configured`,
+        );
+      }
 
-      if (!paymentSuccess) {
-        throw new Error('Auto-debit payment failed');
+      // Process payment via gateway using the customer's saved method.
+      // `autoDebitReference` stores the SavedPaymentMethod.id that the
+      // customer authorized when the SIP was created.
+      const chargeReference = `DG-SIP-${sip.id.slice(0, 8)}-${Date.now()}`;
+      const charge = await this.paymentGateway.chargeSavedMethod({
+        tenantId,
+        customerId: sip.customerId,
+        savedMethodId: sip.autoDebitReference,
+        amountPaise,
+        reference: chargeReference,
+      });
+
+      if (charge.status === 'FAILED') {
+        throw new PaymentGatewayDeclinedError(
+          `Charge returned FAILED status for ${chargeReference}`,
+          'CHARGE_FAILED',
+        );
       }
 
       // Create transaction and update vault atomically
@@ -233,7 +257,7 @@ export class DigitalGoldSipService extends TenantAwareService {
             pricePer10gPaise: BigInt(buyPricePer10gPaise),
             status: 'COMPLETED',
             paymentMethod: sip.paymentMethod,
-            reference: `DG-SIP-${sip.id.slice(0, 8)}-${Date.now()}`,
+            reference: `${chargeReference}:${charge.chargeId}`,
             processedAt: new Date(),
           },
         });
@@ -296,11 +320,56 @@ export class DigitalGoldSipService extends TenantAwareService {
       });
 
       this.logger.log(
-        `SIP executed: sip=${sipId}, amount=${amountPaise}p, weight=${goldWeightMg}mg`,
+        `SIP executed: sip=${sipId}, amount=${amountPaise}p, weight=${goldWeightMg}mg, ` +
+          `charge=${charge.chargeId} (${charge.provider})`,
       );
+
+      // Emit success event
+      try {
+        await this.eventBus.publish({
+          id: uuidv4(),
+          tenantId,
+          userId: 'SYSTEM',
+          timestamp: new Date().toISOString(),
+          type: 'digital-gold.sip.executed',
+          payload: {
+            sipId: sip.id,
+            executionId: result.execution.id,
+            customerId: sip.customerId,
+            amountPaise,
+            goldWeightMg,
+          },
+        });
+      } catch (publishErr) {
+        this.logger.warn(
+          `Failed to publish digital-gold.sip.executed for ${sipId}: ${
+            publishErr instanceof Error ? publishErr.message : String(publishErr)
+          }`,
+        );
+      }
     } catch (error) {
-      // Record failed execution
+      // Transient errors (network, 5xx) bubble up so BullMQ can retry the
+      // whole job with exponential backoff before we ever touch the SIP
+      // failure counter. This prevents double-counting a single outage.
+      if (error instanceof PaymentGatewayTransientError) {
+        this.logger.warn(
+          `SIP ${sipId} transient failure, will be retried by queue: ${error.message}`,
+        );
+        throw error;
+      }
+
       const failureReason = error instanceof Error ? error.message : 'Unknown error';
+      const errorCode =
+        error instanceof PaymentGatewayDeclinedError
+          ? error.code
+          : error instanceof PaymentMethodExpiredError
+            ? 'METHOD_EXPIRED'
+            : error instanceof PaymentMethodNotFoundError
+              ? 'METHOD_NOT_FOUND'
+              : 'UNKNOWN';
+
+      const newFailedCount = sip.failedDeductions + 1;
+      let autoPaused = false;
 
       await this.prisma.$transaction(async (tx) => {
         await tx.sipExecution.create({
@@ -308,15 +377,13 @@ export class DigitalGoldSipService extends TenantAwareService {
             tenantId,
             sipId: sip.id,
             executionDate: new Date(),
-            amountPaise: sip.amountPaise ?? 0n,
-            goldWeightMg: sip.weightMg ?? 0n,
+            amountPaise: BigInt(amountPaise || Number(sip.amountPaise ?? 0n)),
+            goldWeightMg: BigInt(goldWeightMg || Number(sip.weightMg ?? 0n)),
             pricePerGramPaise: 0n,
             status: 'FAILED',
-            failureReason,
+            failureReason: `${errorCode}: ${failureReason}`.slice(0, 500),
           },
         });
-
-        const newFailedCount = sip.failedDeductions + 1;
 
         if (newFailedCount >= MAX_CONSECUTIVE_FAILURES) {
           // Auto-pause after max consecutive failures
@@ -327,8 +394,9 @@ export class DigitalGoldSipService extends TenantAwareService {
               failedDeductions: newFailedCount,
             },
           });
+          autoPaused = true;
           this.logger.warn(
-            `SIP ${sipId} auto-paused after ${MAX_CONSECUTIVE_FAILURES} consecutive failures`,
+            `SIP ${sipId} auto-paused after ${MAX_CONSECUTIVE_FAILURES} consecutive failures (${errorCode})`,
           );
         } else {
           // Retry next day
@@ -343,10 +411,35 @@ export class DigitalGoldSipService extends TenantAwareService {
             },
           });
           this.logger.warn(
-            `SIP ${sipId} execution failed (attempt ${newFailedCount}/${MAX_CONSECUTIVE_FAILURES}), retrying tomorrow`,
+            `SIP ${sipId} execution failed (attempt ${newFailedCount}/${MAX_CONSECUTIVE_FAILURES}): ${errorCode}`,
           );
         }
       });
+
+      // Emit failure event
+      try {
+        await this.eventBus.publish({
+          id: uuidv4(),
+          tenantId,
+          userId: 'SYSTEM',
+          timestamp: new Date().toISOString(),
+          type: 'digital-gold.sip.failed',
+          payload: {
+            sipId: sip.id,
+            customerId: sip.customerId,
+            amountPaise: amountPaise || Number(sip.amountPaise ?? 0n),
+            reason: `${errorCode}: ${failureReason}`.slice(0, 500),
+            attemptCount: newFailedCount,
+            autoPaused,
+          },
+        });
+      } catch (publishErr) {
+        this.logger.warn(
+          `Failed to publish digital-gold.sip.failed for ${sipId}: ${
+            publishErr instanceof Error ? publishErr.message : String(publishErr)
+          }`,
+        );
+      }
     }
   }
 
@@ -397,21 +490,6 @@ export class DigitalGoldSipService extends TenantAwareService {
     }
 
     return sip;
-  }
-
-  /**
-   * Placeholder for auto-debit payment processing.
-   * In production, this would call the payment gateway API.
-   */
-  private async processAutoDebit(
-    _paymentMethod: string,
-    _autoDebitReference: string | null,
-    _amountPaise: number,
-  ): Promise<boolean> {
-    // Placeholder: always returns true
-    // In production: call payment gateway, handle 3DS, etc.
-    this.logger.log('Auto-debit payment processing: placeholder');
-    return true;
   }
 
   /** Calculate the next deduction date based on frequency */
