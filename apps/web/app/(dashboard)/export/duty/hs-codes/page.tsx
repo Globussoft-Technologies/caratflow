@@ -8,7 +8,7 @@ import { trpc } from '@/lib/trpc';
 export default function HsCodesPage() {
   const [query, setQuery] = useState('');
   const { data, isLoading } = trpc.export.searchHsCodes.useQuery({
-    search: { search: query || undefined, isActive: true } as never,
+    search: { query: query || undefined, isActive: true },
     pagination: { page: 1, limit: 30, sortOrder: 'desc' },
   });
   const d = data as { items?: Array<Record<string, unknown>> } | undefined;

@@ -34,8 +34,8 @@ export default function RepairDetailPage() {
         actions={
           <div className="flex gap-2">
             {status === 'RECEIVED' && <button onClick={() => advance('IN_PROGRESS')} className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">Start</button>}
-            {status === 'IN_PROGRESS' && <button onClick={() => advance('READY')} className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">Mark Ready</button>}
-            {status === 'READY' && <button onClick={() => advance('DELIVERED')} className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">Deliver</button>}
+            {status === 'IN_PROGRESS' && <button onClick={() => advance('COMPLETED')} className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">Mark Ready</button>}
+            {status === 'COMPLETED' && <button onClick={() => advance('DELIVERED')} className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">Deliver</button>}
             <StatusBadge label={status} variant={getStatusVariant(status)} />
           </div>
         }
