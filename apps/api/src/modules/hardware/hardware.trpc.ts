@@ -90,6 +90,12 @@ export class HardwareTrpcRouter {
 
       // ─── RFID ───────────────────────────────────────────────
       rfid: this.trpc.router({
+        read: this.trpc.authedProcedure
+          .input(z.object({ readerId: z.string().min(1).optional() }).optional())
+          .mutation(({ ctx, input }) =>
+            this.rfidService.readTags(ctx.tenantId, input?.readerId),
+          ),
+
         processScans: this.trpc.authedProcedure
           .input(RfidScanResultSchema)
           .mutation(({ ctx, input }) =>

@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
-import { HardwareRfidService } from '../hardware.rfid.service';
+import { HardwareRfidService, SimulatedRfidReader } from '../hardware.rfid.service';
 import { createMockPrismaService, TEST_TENANT_ID, TEST_USER_ID } from '../../../__tests__/setup';
 
 function extendPrisma(base: ReturnType<typeof createMockPrismaService>) {
@@ -162,6 +162,151 @@ describe('HardwareRfidService (Unit)', () => {
       await expect(
         service.writeTag(TEST_TENANT_ID, TEST_USER_ID, 'sn-1', { data: 'EPC-DUP' } as any),
       ).rejects.toThrow();
+    });
+  });
+
+  // ─── Driver / readTags ─────────────────────────────────────
+  describe('readTags (simulated driver)', () => {
+    beforeEach(() => {
+      process.env.RFID_DRIVER = 'simulated';
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function buildTaggedRow(n: number) {
+      return {
+        id: `sn-${n}`,
+        rfidTag: `EPC-${n}`,
+        serialNumber: `SN-${n}`,
+        status: 'AVAILABLE',
+        product: { id: `p-${n}`, sku: `SK-${n}`, name: `Product ${n}` },
+      };
+    }
+
+    it('returns 3-6 enriched tags from Prisma with readTimestamp', async () => {
+      // Rebuild service so it picks up RFID_DRIVER=simulated from env.
+      service = new HardwareRfidService(mockPrisma as any, mockEventBus as any);
+
+      const pool = [1, 2, 3, 4, 5, 6, 7, 8].map(buildTaggedRow);
+      mockPrisma.serialNumber.findMany.mockResolvedValue(pool);
+
+      const promise = service.readTags(TEST_TENANT_ID, 'reader-1');
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result.length).toBeGreaterThanOrEqual(3);
+      expect(result.length).toBeLessThanOrEqual(6);
+      for (const r of result) {
+        expect(r.tagId).toMatch(/^EPC-/);
+        expect(r.productId).toMatch(/^p-/);
+        expect(r.sku).toMatch(/^SK-/);
+        expect(r.name).toMatch(/^Product /);
+        expect(typeof r.readTimestamp).toBe('string');
+      }
+
+      // Query filters by tenant + non-null rfidTag
+      expect(mockPrisma.serialNumber.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            tenantId: TEST_TENANT_ID,
+            rfidTag: { not: null },
+          }),
+        }),
+      );
+    });
+
+    it('emits hardware.rfid.scanned per tag', async () => {
+      service = new HardwareRfidService(mockPrisma as any, mockEventBus as any);
+
+      const pool = [1, 2, 3, 4].map(buildTaggedRow);
+      mockPrisma.serialNumber.findMany.mockResolvedValue(pool);
+
+      const promise = service.readTags(TEST_TENANT_ID, 'reader-1');
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
+      expect(mockEventBus.publish).toHaveBeenCalledTimes(result.length);
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'hardware.rfid.scanned',
+          tenantId: TEST_TENANT_ID,
+          payload: expect.objectContaining({
+            deviceId: expect.stringContaining('reader-1'),
+          }),
+        }),
+      );
+    });
+
+    it('returns [] when no tagged serials exist', async () => {
+      service = new HardwareRfidService(mockPrisma as any, mockEventBus as any);
+      mockPrisma.serialNumber.findMany.mockResolvedValue([]);
+
+      const promise = service.readTags(TEST_TENANT_ID, 'reader-1');
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result).toEqual([]);
+      expect(mockEventBus.publish).not.toHaveBeenCalled();
+    });
+
+    it('reports simulated as the active driver name by default', () => {
+      service = new HardwareRfidService(mockPrisma as any, mockEventBus as any);
+      expect(service.getDriverName()).toBe('simulated');
+    });
+  });
+
+  describe('SimulatedRfidReader', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('implements IDevice and tracks connection state', async () => {
+      const onTagsRead = vi.fn();
+      const driver = new SimulatedRfidReader(
+        'reader-x',
+        { prisma: mockPrisma as any, eventBus: mockEventBus as any, onTagsRead },
+        TEST_TENANT_ID,
+      );
+
+      expect(driver.deviceId).toBe('reader-x');
+      expect(driver.deviceType).toBe('RFID_READER');
+
+      const disconnected = await driver.status();
+      expect(disconnected.status).toBe('DISCONNECTED');
+
+      await driver.connect();
+      const connected = await driver.status();
+      expect(connected.status).toBe('CONNECTED');
+
+      await driver.disconnect();
+      const again = await driver.status();
+      expect(again.status).toBe('DISCONNECTED');
+    });
+
+    it('returns empty list when no tenant context is set', async () => {
+      const driver = new SimulatedRfidReader(
+        'reader-x',
+        {
+          prisma: mockPrisma as any,
+          eventBus: mockEventBus as any,
+          onTagsRead: vi.fn(),
+        },
+        null,
+      );
+
+      const promise = driver.read();
+      await vi.runAllTimersAsync();
+      const tags = await promise;
+
+      expect(tags).toEqual([]);
+      expect(mockPrisma.serialNumber.findMany).not.toHaveBeenCalled();
     });
   });
 });

@@ -24,6 +24,8 @@ import { HardwareScaleService } from './hardware.scale.service';
 import { HardwareBarcodeService } from './hardware.barcode.service';
 import { HardwarePrinterService } from './hardware.printer.service';
 import { HardwareBiometricService } from './hardware.biometric.service';
+import { HardwareRfidService } from './hardware.rfid.service';
+import type { RfidReadResultItem } from './hardware.rfid.service';
 import { HardwareGateway } from './hardware.gateway';
 import {
   ScaleReadRequestSchema,
@@ -71,6 +73,10 @@ const BarcodeLookupBodySchema = z.object({
   barcode: z.string().min(1),
 });
 
+const RfidReadBodySchema = z.object({
+  readerId: z.string().min(1).optional(),
+});
+
 @Controller('api/v1/hardware')
 export class HardwareController {
   constructor(
@@ -78,6 +84,7 @@ export class HardwareController {
     private readonly barcodeService: HardwareBarcodeService,
     private readonly printerService: HardwarePrinterService,
     private readonly biometricService: HardwareBiometricService,
+    private readonly rfidService: HardwareRfidService,
     private readonly gateway: HardwareGateway,
   ) {}
 
@@ -98,6 +105,27 @@ export class HardwareController {
     const input: ScaleReadRequest = ScaleReadRequestSchema.parse(body);
     const reading = await this.scaleService.readNow(tenantId, input);
     return ok(reading);
+  }
+
+  // ─── RFID ─────────────────────────────────────────────────
+
+  /**
+   * POST /api/v1/hardware/rfid/read
+   * Trigger an on-demand RFID read from the configured driver
+   * (defaults to the simulated driver that pulls live
+   * SerialNumber rows from Prisma). Returns the enriched tag
+   * list so the POS UI can render them immediately.
+   */
+  @Post('rfid/read')
+  @HttpCode(HttpStatus.OK)
+  async rfidRead(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<ApiResponse<RfidReadResultItem[]>> {
+    const tenantId = getTenantId(req);
+    const { readerId } = RfidReadBodySchema.parse(body ?? {});
+    const tags = await this.rfidService.readTags(tenantId, readerId);
+    return ok(tags);
   }
 
   // ─── Barcode ──────────────────────────────────────────────

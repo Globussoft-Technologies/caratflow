@@ -1,7 +1,19 @@
 // ─── Hardware RFID Service ─────────────────────────────────────
 // RFID tag processing, stock take, anti-theft, and tag encoding.
+//
+// Drivers:
+//   - SimulatedRfidReader:     returns real tagged SerialNumber rows from
+//                              Prisma for local dev / demo / CI.
+//   - ImpinjRfidReader:        placeholder class that documents the
+//                              LLRP / Impinj IoT REST protocol. Marked as
+//                              requiring a real reader on the network.
+//   - ZebraRfidReader:         placeholder class that documents the
+//                              Zebra FX / ATR-7000 HTTP-based integration.
+//
+// The driver selection is controlled by `RFID_DRIVER=simulated|impinj|zebra`
+// (defaults to `simulated`).
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EventBusService } from '../../event-bus/event-bus.service';
@@ -21,14 +33,276 @@ import type {
 } from '@caratflow/shared-types';
 import { v4 as uuid } from 'uuid';
 
+// ─── Driver-Level Read Result ──────────────────────────────────
+// The task contract: a read() returns enriched rows with the
+// serial's product metadata so the caller can display them
+// without another round-trip.
+
+export interface RfidReadResultItem {
+  tagId: string;
+  productId: string;
+  sku: string;
+  name: string;
+  readTimestamp: string;
+}
+
+export type RfidDriverName = 'simulated' | 'impinj' | 'zebra';
+
+// ─── Shared hooks / callbacks ──────────────────────────────────
+
+export interface RfidDriverDeps {
+  prisma: PrismaService;
+  eventBus: EventBusService;
+  onTagsRead: (
+    tenantId: string,
+    deviceId: string,
+    tags: RfidReadResultItem[],
+  ) => Promise<void> | void;
+}
+
+// ─── Simulated Driver ──────────────────────────────────────────
+
 /**
- * Stub driver for UHF RFID readers (Impinj Speedway, Zebra FX9600,
- * etc.). Real implementations would speak LLRP / Impinj IoT REST
- * over TCP — this skeleton implements the IDevice contract so the
- * service can register it, fan tag-read events through the same
- * pipeline as other device types, and be swapped for a real
- * driver later.
+ * SimulatedRfidReader -- functional MVP driver backed by Prisma.
+ *
+ * On each `read()` it:
+ *   1. Picks a tenant (provided via ctor or setTenant()).
+ *   2. Queries up to a configurable window of SerialNumber rows
+ *      that have a non-null `rfidTag` for that tenant.
+ *   3. Randomly samples 3-6 of those rows.
+ *   4. Sleeps 100-400ms to mimic reader latency.
+ *   5. Emits `hardware.rfid.scanned` per tag via EventBus.
+ *   6. Returns the enriched rows.
  */
+export class SimulatedRfidReader implements IDevice<RfidReadResultItem[], string> {
+  readonly deviceType: DeviceType = 'RFID_READER' as DeviceType;
+  private connected = false;
+  private tenantId: string | null;
+  private readonly logger = new Logger(SimulatedRfidReader.name);
+
+  constructor(
+    public readonly deviceId: string,
+    private readonly deps: RfidDriverDeps,
+    tenantId: string | null = null,
+  ) {
+    this.tenantId = tenantId;
+  }
+
+  setTenant(tenantId: string): void {
+    this.tenantId = tenantId;
+  }
+
+  async connect(): Promise<void> {
+    this.connected = true;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+  }
+
+  async read(): Promise<RfidReadResultItem[] | null> {
+    if (!this.tenantId) {
+      this.logger.warn(
+        `SimulatedRfidReader ${this.deviceId} read() called without tenant context`,
+      );
+      return [];
+    }
+
+    // Simulate reader latency
+    const delayMs = 100 + Math.floor(Math.random() * 300); // 100-400ms
+    await new Promise((r) => setTimeout(r, delayMs));
+
+    // Pull a pool of tagged serials for the tenant
+    const pool = await this.deps.prisma.serialNumber.findMany({
+      where: {
+        tenantId: this.tenantId,
+        rfidTag: { not: null },
+      },
+      include: {
+        product: {
+          select: { id: true, sku: true, name: true },
+        },
+      },
+      take: 50,
+    });
+
+    if (pool.length === 0) {
+      await this.deps.onTagsRead(this.tenantId, this.deviceId, []);
+      return [];
+    }
+
+    // Sample 3-6 random rows (clamped to the pool size)
+    const desired = 3 + Math.floor(Math.random() * 4); // 3-6
+    const sampleSize = Math.min(desired, pool.length);
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    const picked = shuffled.slice(0, sampleSize);
+
+    const now = new Date().toISOString();
+    const tags: RfidReadResultItem[] = picked.map((row) => ({
+      tagId: row.rfidTag as string,
+      productId: row.product.id,
+      sku: row.product.sku,
+      name: row.product.name,
+      readTimestamp: now,
+    }));
+
+    // Emit one event per tag
+    for (const tag of tags) {
+      await this.deps.eventBus.publish({
+        id: uuid(),
+        type: 'hardware.rfid.scanned',
+        tenantId: this.tenantId,
+        userId: 'system',
+        timestamp: now,
+        payload: {
+          deviceId: this.deviceId,
+          epc: tag.tagId,
+          serialNumberId:
+            picked.find((p) => p.rfidTag === tag.tagId)?.id ?? null,
+        },
+      });
+    }
+
+    await this.deps.onTagsRead(this.tenantId, this.deviceId, tags);
+
+    return tags;
+  }
+
+  async write(_payload: string): Promise<void> {
+    // The simulator does not physically write EPC codes; tag
+    // encoding happens through HardwareRfidService.writeTag().
+  }
+
+  async status(): Promise<DeviceStatusInfo> {
+    return {
+      deviceId: this.deviceId,
+      status: (this.connected ? 'CONNECTED' : 'DISCONNECTED') as DeviceStatus,
+      message: 'simulated-rfid',
+    };
+  }
+}
+
+// ─── Real-Hardware Driver Placeholders ─────────────────────────
+//
+// These classes implement IDevice so the service can register
+// them uniformly, but their read() immediately fails in this
+// codebase because we have no physical reader on the network.
+// The intent is to document the expected wire protocol and
+// provide a single place to slot in a real implementation later.
+
+/**
+ * ImpinjRfidReader -- production driver stub for Impinj Speedway
+ * and R700 readers.
+ *
+ * Real implementation would open an LLRP session to the reader
+ * on TCP/5084 or use the Impinj IoT REST Interface (HTTPS)
+ * exposed by the R700 platform. On tag events it would enrich
+ * the EPC with a Prisma `serialNumber.findFirst({ where: { rfidTag }})`
+ * lookup before calling `onTagsRead`.
+ *
+ * NEEDS HARDWARE: physical Impinj reader reachable via IP.
+ */
+export class ImpinjRfidReader implements IDevice<RfidReadResultItem[], string> {
+  readonly deviceType: DeviceType = 'RFID_READER' as DeviceType;
+  private connected = false;
+  private readonly logger = new Logger(ImpinjRfidReader.name);
+
+  constructor(
+    public readonly deviceId: string,
+    private readonly host: string,
+    private readonly port: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    private readonly deps: RfidDriverDeps,
+  ) {}
+
+  async connect(): Promise<void> {
+    this.logger.warn(
+      `ImpinjRfidReader ${this.deviceId} connect() is a placeholder -- needs real hardware at ${this.host}:${this.port}`,
+    );
+    this.connected = true;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+  }
+
+  async read(): Promise<RfidReadResultItem[] | null> {
+    this.logger.warn(
+      `ImpinjRfidReader ${this.deviceId} read() stub -- integrate LLRP / IoT REST to enable`,
+    );
+    return [];
+  }
+
+  async write(_payload: string): Promise<void> {
+    // LLRP `ACCESS_SPEC` write operation goes here.
+  }
+
+  async status(): Promise<DeviceStatusInfo> {
+    return {
+      deviceId: this.deviceId,
+      status: (this.connected ? 'CONNECTED' : 'DISCONNECTED') as DeviceStatus,
+      message: `impinj ${this.host}:${this.port}`,
+    };
+  }
+}
+
+/**
+ * ZebraRfidReader -- production driver stub for Zebra FX series
+ * and ATR-7000 overhead readers.
+ *
+ * Real implementation would call Zebra's IoT Connector webhook or
+ * the `/cloud/localRestLogin` API to stream tag events over HTTP
+ * long-polling / websocket.
+ *
+ * NEEDS HARDWARE: physical Zebra reader reachable via IP.
+ */
+export class ZebraRfidReader implements IDevice<RfidReadResultItem[], string> {
+  readonly deviceType: DeviceType = 'RFID_READER' as DeviceType;
+  private connected = false;
+  private readonly logger = new Logger(ZebraRfidReader.name);
+
+  constructor(
+    public readonly deviceId: string,
+    private readonly host: string,
+    private readonly port: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    private readonly deps: RfidDriverDeps,
+  ) {}
+
+  async connect(): Promise<void> {
+    this.logger.warn(
+      `ZebraRfidReader ${this.deviceId} connect() is a placeholder -- needs real hardware at ${this.host}:${this.port}`,
+    );
+    this.connected = true;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+  }
+
+  async read(): Promise<RfidReadResultItem[] | null> {
+    this.logger.warn(
+      `ZebraRfidReader ${this.deviceId} read() stub -- integrate IoT Connector to enable`,
+    );
+    return [];
+  }
+
+  async write(_payload: string): Promise<void> {
+    // Zebra IoT Connector write command goes here.
+  }
+
+  async status(): Promise<DeviceStatusInfo> {
+    return {
+      deviceId: this.deviceId,
+      status: (this.connected ? 'CONNECTED' : 'DISCONNECTED') as DeviceStatus,
+      message: `zebra ${this.host}:${this.port}`,
+    };
+  }
+}
+
+// ─── Legacy alias ──────────────────────────────────────────────
+// Kept so any external references continue to compile. New code
+// should reach for `SimulatedRfidReader` instead.
 export class RfidReaderStubDevice implements IDevice<RfidTagData[], string> {
   readonly deviceType: DeviceType = 'RFID_READER' as DeviceType;
   private connected = false;
@@ -48,12 +322,10 @@ export class RfidReaderStubDevice implements IDevice<RfidTagData[], string> {
     this.connected = false;
   }
 
-  /** Real implementation: pull tag inventory once. Stub returns []. */
   async read(): Promise<RfidTagData[] | null> {
     return [];
   }
 
-  /** Real implementation: push a control command (start/stop/tune). */
   async write(_payload: string): Promise<void> {
     // no-op
   }
@@ -66,19 +338,122 @@ export class RfidReaderStubDevice implements IDevice<RfidTagData[], string> {
     };
   }
 
-  /** Inject a tag read (used by tests / WebSocket relay) */
   pushTags(tags: RfidTagData[]): void {
     this.onTags(tags);
   }
 }
 
+// ─── Service ───────────────────────────────────────────────────
+
 @Injectable()
 export class HardwareRfidService extends TenantAwareService {
+  private readonly logger = new Logger(HardwareRfidService.name);
+  private readonly drivers = new Map<string, IDevice<RfidReadResultItem[], string>>();
+  private readonly driverName: RfidDriverName;
+
   constructor(
     prisma: PrismaService,
     private readonly eventBus: EventBusService,
   ) {
     super(prisma);
+    this.driverName = this.resolveDriverName();
+  }
+
+  private resolveDriverName(): RfidDriverName {
+    const envRaw = (process.env.RFID_DRIVER ?? 'simulated').toLowerCase();
+    if (envRaw === 'impinj' || envRaw === 'zebra' || envRaw === 'simulated') {
+      return envRaw;
+    }
+    return 'simulated';
+  }
+
+  /** For tests / admins wanting to inspect which driver is wired up. */
+  getDriverName(): RfidDriverName {
+    return this.driverName;
+  }
+
+  private buildDriverDeps(): RfidDriverDeps {
+    return {
+      prisma: this.prisma,
+      eventBus: this.eventBus,
+      onTagsRead: async (_tenantId, _deviceId, _tags) => {
+        // Central hook -- currently the driver itself publishes per-tag
+        // events; this callback exists so the WebSocket/SSE gateway can
+        // relay tag streams to the POS UI later without touching driver code.
+      },
+    };
+  }
+
+  private createDriver(
+    deviceId: string,
+    tenantId: string,
+  ): IDevice<RfidReadResultItem[], string> {
+    const deps = this.buildDriverDeps();
+    switch (this.driverName) {
+      case 'impinj':
+        return new ImpinjRfidReader(
+          deviceId,
+          process.env.RFID_IMPINJ_HOST ?? '127.0.0.1',
+          Number(process.env.RFID_IMPINJ_PORT ?? 5084),
+          deps,
+        );
+      case 'zebra':
+        return new ZebraRfidReader(
+          deviceId,
+          process.env.RFID_ZEBRA_HOST ?? '127.0.0.1',
+          Number(process.env.RFID_ZEBRA_PORT ?? 443),
+          deps,
+        );
+      case 'simulated':
+      default:
+        return new SimulatedRfidReader(deviceId, deps, tenantId);
+    }
+  }
+
+  /** Get or lazily create a driver for the given tenant + reader. */
+  private getDriver(
+    tenantId: string,
+    deviceId?: string,
+  ): IDevice<RfidReadResultItem[], string> {
+    const id = deviceId ?? `rfid-${tenantId}-default`;
+    const key = `${tenantId}:${id}`;
+
+    const existing = this.drivers.get(key);
+    if (existing) {
+      if (existing instanceof SimulatedRfidReader) {
+        existing.setTenant(tenantId);
+      }
+      return existing;
+    }
+
+    const driver = this.createDriver(id, tenantId);
+    this.drivers.set(key, driver);
+    return driver;
+  }
+
+  /**
+   * Trigger an RFID read from the configured driver for this tenant.
+   * Returns the enriched tag list (tagId/productId/sku/name/readTimestamp).
+   */
+  async readTags(
+    tenantId: string,
+    readerId?: string,
+  ): Promise<RfidReadResultItem[]> {
+    const driver = this.getDriver(tenantId, readerId);
+
+    // Connect lazily -- idempotent on all drivers.
+    await driver.connect();
+
+    try {
+      const tags = await driver.read();
+      return tags ?? [];
+    } catch (err) {
+      this.logger.error(
+        `RFID read failed on driver ${this.driverName} for tenant ${tenantId}`,
+        err as Error,
+      );
+      throw err;
+    }
   }
 
   /**
