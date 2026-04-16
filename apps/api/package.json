@@ -16,6 +16,8 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.670.0",
+    "@aws-sdk/s3-request-presigner": "^3.670.0",
     "@caratflow/db": "workspace:*",
     "@caratflow/shared-types": "workspace:*",
     "@caratflow/utils": "workspace:*",
@@ -40,6 +42,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.0",
+    "stripe": "^17.5.0",
     "uuid": "^11.0.0",
     "zod": "^3.23.0"
   },
