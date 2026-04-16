@@ -4,7 +4,15 @@
 
 import { create } from 'zustand';
 
-export type ScanIntent = 'pos' | 'stock' | null;
+// Extended intents allow callers to disambiguate which screen requested
+// the scan. Older `'pos'` and `'stock'` aliases are retained for back-compat
+// with existing call sites.
+export type ScanIntent =
+  | 'pos'
+  | 'stock'
+  | 'pos-product'
+  | 'stock-sku'
+  | null;
 
 interface ScanState {
   intent: ScanIntent;

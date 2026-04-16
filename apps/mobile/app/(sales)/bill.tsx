@@ -1,17 +1,16 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, Alert, Pressable } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { Screen } from '@/components/Screen';
+import { router, useFocusEffect } from 'expo-router';
 import { SearchBar } from '@/components/SearchBar';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { MoneyDisplay } from '@/components/MoneyDisplay';
 import { WeightDisplay } from '@/components/WeightDisplay';
-import { useApiQuery, useApiMutation } from '@/hooks/useApi';
+import { trpc } from '@/lib/trpc';
 import { useAuthStore } from '@/store/auth-store';
+import { useScanStore } from '@/store/scan-store';
 import { BottomSheet } from '@/components/BottomSheet';
-import { Input } from '@/components/Input';
 import { DataList } from '@/components/DataList';
 import { formatMoney } from '@/utils/money';
 
@@ -24,8 +23,28 @@ interface CartItem {
   metalWeightMg: number;
   metalRatePaise: number;
   makingChargesPaise: number;
+  hsnCode: string;
   gstRate: number; // percent * 100
   lineTotalPaise: number;
+}
+
+// Shape of items returned by trpc.inventory.stockItems.list (mapStockItemResponse).
+// The list shape includes a flattened product nested object; we project the
+// fields we need into a search-result type for the bill UI.
+interface StockItemListRow {
+  id: string;
+  productId: string;
+  quantityOnHand: number;
+  quantityAvailable: number;
+  product?: {
+    id: string;
+    sku: string;
+    name: string;
+    productType: string;
+    sellingPricePaise: number | null;
+    costPricePaise: number | null;
+  };
+  location?: { id: string; name: string };
 }
 
 interface ProductSearchResult {
@@ -40,8 +59,30 @@ interface ProductSearchResult {
   locationName: string;
 }
 
+interface CustomerListRow {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  email?: string | null;
+}
+
+// India default HSN for jewellery; matches inventoryService.getProductWithStock
+// and the financial.tax.computeGst defaults.
+const DEFAULT_HSN_CODE = '7113';
+const DEFAULT_GST_RATE = 300; // 3% * 100
+// Mobile auth store does not yet expose location/customer state. Use the same
+// MH/MH intra-state default as the API server when state info is missing —
+// the server-side createSale recomputes GST authoritatively from the line
+// items, so this client-side preview is for display only.
+const DEFAULT_STATE = 'MH';
+
 export default function QuickBillScreen() {
-  const { user, activeLocationId } = useAuthStore();
+  const { activeLocationId } = useAuthStore();
+  const consumeScan = useScanStore((s) => s.consume);
+  const requestScan = useScanStore((s) => s.request);
+  const scanIntent = useScanStore((s) => s.intent);
+
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showProductSearch, setShowProductSearch] = useState(false);
@@ -50,56 +91,161 @@ export default function QuickBillScreen() {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
 
-  const { data: productResults, isLoading: productLoading } = useApiQuery<{
-    items: ProductSearchResult[];
-  }>(
-    ['sales', 'product-search', searchQuery],
-    '/api/v1/inventory/stock-items',
-    { search: searchQuery, locationId: activeLocationId ?? undefined, limit: 20 },
-    { enabled: searchQuery.length >= 2 },
-  );
+  // ─── tRPC: product (stock-item) search ─────────────────────────
+  // inventory.stockItems.list returns items keyed by stock-item id, with the
+  // product nested. Map to a flat ProductSearchResult for the existing UI.
+  const { data: stockItemsData, isLoading: productLoading } =
+    trpc.inventory.stockItems.list.useQuery(
+      {
+        search: searchQuery || undefined,
+        locationId: activeLocationId ?? undefined,
+        limit: 20,
+      },
+      { enabled: searchQuery.length >= 2 },
+    );
 
-  const { data: customerResults } = useApiQuery<{
-    items: Array<{ id: string; firstName: string; lastName: string; phone: string }>;
-  }>(
-    ['sales', 'customer-search', customerSearchQuery],
-    '/api/v1/crm/customers',
-    { search: customerSearchQuery, limit: 10 },
+  const productResults: ProductSearchResult[] = (
+    ((stockItemsData as { items?: StockItemListRow[] } | undefined)?.items ??
+      []) as StockItemListRow[]
+  )
+    .filter((it) => !!it.product)
+    .map((it) => ({
+      id: it.product!.id,
+      sku: it.product!.sku,
+      name: it.product!.name,
+      productType: it.product!.productType,
+      sellingPricePaise: Number(it.product!.sellingPricePaise ?? 0),
+      // The list response does not include weightMg/purityFineness on the
+      // projected product; default to 0 and let the user see metalRatePaise
+      // pulled from the dedicated product detail when adding to cart.
+      weightMg: 0,
+      purityFineness: 0,
+      quantityAvailable: it.quantityAvailable ?? it.quantityOnHand ?? 0,
+      locationName: it.location?.name ?? '',
+    }));
+
+  // ─── tRPC: customer search ─────────────────────────────────────
+  const { data: customersData } = trpc.crm.customerList.useQuery(
+    { search: customerSearchQuery || undefined, limit: 10 },
     { enabled: customerSearchQuery.length >= 2 },
   );
 
-  const addToCart = (product: ProductSearchResult) => {
-    const existing = cart.find((c) => c.productId === product.id);
-    if (existing) {
-      setCart(
-        cart.map((c) =>
-          c.productId === product.id
-            ? { ...c, quantity: c.quantity + 1, lineTotalPaise: c.unitPricePaise * (c.quantity + 1) }
-            : c,
-        ),
-      );
-    } else {
+  const customerResults: CustomerListRow[] =
+    ((customersData as { items?: CustomerListRow[] } | undefined)?.items ??
+      []) as CustomerListRow[];
+
+  // ─── tRPC utils — used to imperatively fetch product detail (for
+  // metalRatePaise + makingCharges) and the GST bracket per line item.
+  const utils = trpc.useUtils();
+
+  const addToCart = useCallback(
+    async (product: ProductSearchResult) => {
+      const existing = cart.find((c) => c.productId === product.id);
+      if (existing) {
+        setCart((prev) =>
+          prev.map((c) =>
+            c.productId === product.id
+              ? {
+                  ...c,
+                  quantity: c.quantity + 1,
+                  lineTotalPaise: c.unitPricePaise * (c.quantity + 1),
+                }
+              : c,
+          ),
+        );
+        setShowProductSearch(false);
+        setSearchQuery('');
+        return;
+      }
+
+      // Pull authoritative pricing components from the product detail. The
+      // list response only carries sellingPricePaise; the detail endpoint
+      // gives us weight, hsnCode and metal-rate inputs needed for tax.
+      let metalRatePaise = 0;
+      let makingChargesPaise = 0;
+      let metalWeightMg = product.weightMg;
+      let hsnCode = DEFAULT_HSN_CODE;
+      try {
+        const detail = (await utils.inventory.products.getWithStock.fetch({
+          productId: product.id,
+        })) as {
+          product?: {
+            weightMg?: number;
+            costPricePaise?: number;
+            sellingPricePaise?: number;
+            hsnCode?: string;
+          };
+        };
+        metalWeightMg = detail.product?.weightMg ?? metalWeightMg;
+        // Approximate metalRatePaise as the cost component and makingCharges
+        // as the markup. The server-side createSale recomputes from current
+        // metal rates if these are zero — this is a best-effort preview.
+        const cost = Number(detail.product?.costPricePaise ?? 0);
+        const sell = Number(
+          detail.product?.sellingPricePaise ?? product.sellingPricePaise,
+        );
+        metalRatePaise = cost;
+        makingChargesPaise = Math.max(0, sell - cost);
+        hsnCode = detail.product?.hsnCode ?? DEFAULT_HSN_CODE;
+      } catch {
+        // Detail fetch failure is non-fatal for the preview; fall back to
+        // sellingPrice with no breakdown and the default HSN.
+      }
+
+      // Resolve the GST bracket for this HSN via the tax service.
+      let gstRate = DEFAULT_GST_RATE;
+      try {
+        const gst = (await utils.financial.tax.computeGst.fetch({
+          taxableAmountPaise: product.sellingPricePaise,
+          hsnCode,
+          gstRate: DEFAULT_GST_RATE,
+          sourceState: DEFAULT_STATE,
+          destState: DEFAULT_STATE,
+        })) as { cgstRate: number; sgstRate: number; igstRate: number };
+        gstRate = gst.cgstRate + gst.sgstRate + gst.igstRate;
+        if (!gstRate) gstRate = DEFAULT_GST_RATE;
+      } catch {
+        // computeGst failure → keep the jewellery default of 3%.
+      }
+
       const item: CartItem = {
         productId: product.id,
         sku: product.sku,
         name: product.name,
         quantity: 1,
         unitPricePaise: product.sellingPricePaise,
-        metalWeightMg: product.weightMg,
-        metalRatePaise: 0,
-        makingChargesPaise: 0,
-        gstRate: 300,
+        metalWeightMg,
+        metalRatePaise,
+        makingChargesPaise,
+        hsnCode,
+        gstRate,
         lineTotalPaise: product.sellingPricePaise,
       };
-      setCart([...cart, item]);
-    }
-    setShowProductSearch(false);
-    setSearchQuery('');
-  };
+      setCart((prev) => [...prev, item]);
+      setShowProductSearch(false);
+      setSearchQuery('');
+    },
+    [cart, utils],
+  );
 
   const removeFromCart = (productId: string) => {
     setCart(cart.filter((c) => c.productId !== productId));
   };
+
+  // ─── Scanner integration ────────────────────────────────────────
+  // When the user taps Scan Barcode we record an intent in the scan-store
+  // and push the modal scanner. On focus return, consume any pending result
+  // and surface it through the product search query so it auto-filters.
+  useFocusEffect(
+    useCallback(() => {
+      if (scanIntent !== 'pos-product') return;
+      const scanned = consumeScan();
+      if (scanned?.data) {
+        setSearchQuery(scanned.data);
+        setShowProductSearch(true);
+      }
+    }, [scanIntent, consumeScan]),
+  );
 
   const cartTotal = cart.reduce((sum, c) => sum + c.lineTotalPaise, 0);
   const taxTotal = cart.reduce(
@@ -120,7 +266,13 @@ export default function QuickBillScreen() {
           onPress={() => setShowCustomerSearch(true)}
           className="flex-row items-center justify-between bg-white border border-surface-200 rounded-xl px-4 py-3"
         >
-          <Text className={`text-sm ${customerName ? 'text-surface-900 font-medium' : 'text-surface-400'}`}>
+          <Text
+            className={`text-sm ${
+              customerName
+                ? 'text-surface-900 font-medium'
+                : 'text-surface-400'
+            }`}
+          >
             {customerName ?? 'Select customer (optional)'}
           </Text>
           {customerName && (
@@ -144,8 +296,8 @@ export default function QuickBillScreen() {
             variant="secondary"
             size="sm"
             onPress={() => {
-              // Barcode scanner would open camera
-              Alert.alert('Scanner', 'Barcode scanner will open the camera for scanning.');
+              requestScan('pos-product');
+              router.push('/(sales)/scanner');
             }}
           />
         </View>
@@ -170,7 +322,10 @@ export default function QuickBillScreen() {
           <Card className="mb-2">
             <View className="flex-row items-start justify-between">
               <View className="flex-1 mr-3">
-                <Text className="text-sm font-semibold text-surface-900" numberOfLines={1}>
+                <Text
+                  className="text-sm font-semibold text-surface-900"
+                  numberOfLines={1}
+                >
                   {item.name}
                 </Text>
                 <Text className="text-xs text-surface-500">
@@ -253,18 +408,21 @@ export default function QuickBillScreen() {
           onSearch={setSearchQuery}
           autoFocus
         />
-        {(productResults?.items ?? []).map((product) => (
+        {productResults.map((product) => (
           <Pressable
             key={product.id}
             className="py-3 border-b border-surface-100"
-            onPress={() => addToCart(product)}
+            onPress={() => {
+              void addToCart(product);
+            }}
           >
             <Text className="text-sm font-medium text-surface-900">
               {product.name}
             </Text>
             <View className="flex-row items-center justify-between mt-1">
               <Text className="text-xs text-surface-500">
-                {product.sku} | {product.productType} | Avail: {product.quantityAvailable}
+                {product.sku} | {product.productType} | Avail:{' '}
+                {product.quantityAvailable}
               </Text>
               <MoneyDisplay
                 amountPaise={product.sellingPricePaise}
@@ -289,7 +447,7 @@ export default function QuickBillScreen() {
           onSearch={setCustomerSearchQuery}
           autoFocus
         />
-        {(customerResults?.items ?? []).map((cust) => (
+        {customerResults.map((cust) => (
           <Pressable
             key={cust.id}
             className="py-3 border-b border-surface-100"
@@ -303,7 +461,9 @@ export default function QuickBillScreen() {
             <Text className="text-sm font-medium text-surface-900">
               {cust.firstName} {cust.lastName}
             </Text>
-            <Text className="text-xs text-surface-500">{cust.phone}</Text>
+            <Text className="text-xs text-surface-500">
+              {cust.phone ?? ''}
+            </Text>
           </Pressable>
         ))}
       </BottomSheet>

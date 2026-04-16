@@ -21,6 +21,14 @@ export default function SalesLayout() {
         options={{ title: 'Quick Bill', tabBarLabel: 'Bill' }}
       />
       <Tabs.Screen
+        name="today"
+        options={{ title: 'Today', tabBarLabel: 'Today' }}
+      />
+      <Tabs.Screen
+        name="my-sales"
+        options={{ title: 'My Sales', tabBarLabel: 'My Sales' }}
+      />
+      <Tabs.Screen
         name="customers"
         options={{ title: 'Customers', tabBarLabel: 'Customers' }}
       />
@@ -28,14 +36,9 @@ export default function SalesLayout() {
         name="stock"
         options={{ title: 'Stock', tabBarLabel: 'Stock' }}
       />
-      <Tabs.Screen
-        name="today"
-        options={{ title: 'Today', tabBarLabel: 'Today' }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{ href: null }}
-      />
+      {/* Hidden routes — reachable via in-app navigation but not in the tab bar */}
+      <Tabs.Screen name="scanner" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }

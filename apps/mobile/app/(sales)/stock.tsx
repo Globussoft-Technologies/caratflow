@@ -1,16 +1,17 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, Alert, Pressable } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { SearchBar } from '@/components/SearchBar';
 import { DataList } from '@/components/DataList';
 import { Card } from '@/components/Card';
-import { Badge, getStatusVariant } from '@/components/Badge';
+import { Badge } from '@/components/Badge';
 import { MoneyDisplay } from '@/components/MoneyDisplay';
 import { WeightDisplay } from '@/components/WeightDisplay';
 import { Button } from '@/components/Button';
 import { trpc } from '@/lib/trpc';
 import { useAuthStore } from '@/store/auth-store';
+import { useScanStore } from '@/store/scan-store';
 import { finenessToKaratLabel } from '@/utils/purity';
 
 interface StockItem {
@@ -32,6 +33,9 @@ export default function StockScreen() {
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const { activeLocationId } = useAuthStore();
+  const consumeScan = useScanStore((s) => s.consume);
+  const requestScan = useScanStore((s) => s.request);
+  const scanIntent = useScanStore((s) => s.intent);
 
   const { data, isLoading, refetch } = trpc.inventory.stockItems.list.useQuery(
     {
@@ -46,6 +50,17 @@ export default function StockScreen() {
     await refetch();
     setRefreshing(false);
   }, [refetch]);
+
+  // Pop the scanner result back into the search box on focus return.
+  useFocusEffect(
+    useCallback(() => {
+      if (scanIntent !== 'stock-sku') return;
+      const scanned = consumeScan();
+      if (scanned?.data) {
+        setSearch(scanned.data);
+      }
+    }, [scanIntent, consumeScan]),
+  );
 
   // Data shape comes from tRPC inventoryService.findAllStockItems — cast for display.
   const items = ((data as { items?: StockItem[] } | undefined)?.items ?? []) as StockItem[];
@@ -68,10 +83,8 @@ export default function StockScreen() {
             variant="secondary"
             size="sm"
             onPress={() => {
-              Alert.alert(
-                'Barcode Scanner',
-                'Camera barcode scanner will open for scanning.',
-              );
+              requestScan('stock-sku');
+              router.push('/(sales)/scanner');
             }}
           />
         </View>

@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { StatCard } from '@/components/StatCard';
 import { Card } from '@/components/Card';
 import { MoneyDisplay } from '@/components/MoneyDisplay';
@@ -69,9 +70,23 @@ export default function TodayScreen() {
           />
         }
       >
-        <Text className="text-2xl font-bold text-surface-900 mb-4">
-          Today
-        </Text>
+        <View className="flex-row items-center justify-between mb-4">
+          <Text className="text-2xl font-bold text-surface-900">Today</Text>
+          {/* Settings entry — biometric is the only screen here today, but
+              this is the discoverable surface for any future per-staff
+              preferences. The route is hidden from the tab bar. */}
+          <Pressable
+            onPress={() => router.push('/(sales)/settings/biometric')}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            className="px-3 py-2 rounded-lg bg-surface-200"
+            testID="today-settings-button"
+          >
+            <Text className="text-sm font-semibold text-surface-700">
+              Settings
+            </Text>
+          </Pressable>
+        </View>
 
         {/* My Performance */}
         <View className="flex-row gap-3 mb-4">
