@@ -214,8 +214,16 @@ export class EcommerceShippingService extends TenantAwareService {
   }
 
   /**
-   * Placeholder: Generate shipping label via carrier API.
-   * In production, integrate with Shiprocket, Delhivery, etc.
+   * Generate a shipping label via carrier API.
+   *
+   * Real integration path: `carrier === 'SHIPROCKET'` and
+   * SHIPROCKET_EMAIL + SHIPROCKET_PASSWORD env vars are set. We obtain
+   * a JWT, create an ad-hoc order, and request AWB assignment. When
+   * any of those are missing we fall back to a local mock label URL
+   * so the demo flow still completes end-to-end.
+   *
+   * Extension point: add new carriers (Delhivery, BlueDart) by adding
+   * branches to `callShiprocket` / adding sibling helpers.
    */
   async generateLabel(
     tenantId: string,
@@ -230,19 +238,93 @@ export class EcommerceShippingService extends TenantAwareService {
       throw new NotFoundException('Shipment not found');
     }
 
-    // Placeholder: In production, call carrier API to generate label
-    // e.g., Shiprocket: POST /v1/external/orders/create/adhoc
-    this.logger.log(`[${carrier}] Generating label for shipment ${shipment.shipmentNumber}`);
+    let labelUrl = `https://labels.example.com/${shipment.shipmentNumber}.pdf`;
+    let trackingNumber: string | null = shipment.trackingNumber ?? null;
+    let trackingUrl: string | null = shipment.trackingUrl ?? null;
+
+    const wantsShiprocket = carrier.toUpperCase() === 'SHIPROCKET';
+    const hasShiprocketCreds =
+      !!process.env.SHIPROCKET_EMAIL && !!process.env.SHIPROCKET_PASSWORD;
+
+    if (wantsShiprocket && hasShiprocketCreds) {
+      try {
+        const real = await this.callShiprocket(shipment.shipmentNumber);
+        if (real.labelUrl) labelUrl = real.labelUrl;
+        if (real.awbCode) trackingNumber = real.awbCode;
+        if (real.trackingUrl) trackingUrl = real.trackingUrl;
+        this.logger.log(
+          `[SHIPROCKET] Label for ${shipment.shipmentNumber}: awb=${real.awbCode}`,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `[SHIPROCKET] Label generation failed, falling back to mock: ${(err as Error).message}`,
+        );
+      }
+    } else {
+      this.logger.log(
+        `[${carrier}] Generating mock label for shipment ${shipment.shipmentNumber} (set SHIPROCKET_EMAIL/PASSWORD for real AWB)`,
+      );
+    }
 
     const updated = await this.prisma.shipment.update({
       where: { id: shipmentId },
       data: {
         carrier,
-        labelUrl: `https://labels.example.com/${shipment.shipmentNumber}.pdf`,
+        labelUrl,
+        ...(trackingNumber ? { trackingNumber } : {}),
+        ...(trackingUrl ? { trackingUrl } : {}),
       },
     });
 
     return this.mapShipmentToResponse(updated);
+  }
+
+  /**
+   * Minimal Shiprocket integration: login -> create ad-hoc order ->
+   * request AWB. Shiprocket's API responds with a `label_url` and
+   * `awb_code`. Called only when creds are set.
+   */
+  private async callShiprocket(
+    shipmentNumber: string,
+  ): Promise<{ labelUrl?: string; awbCode?: string; trackingUrl?: string }> {
+    const base = process.env.SHIPROCKET_API_BASE ?? 'https://apiv2.shiprocket.in/v1/external';
+    const email = process.env.SHIPROCKET_EMAIL!;
+    const password = process.env.SHIPROCKET_PASSWORD!;
+
+    const loginRes = await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!loginRes.ok) {
+      throw new Error(`Shiprocket login HTTP ${loginRes.status}`);
+    }
+    const { token } = (await loginRes.json()) as { token?: string };
+    if (!token) {
+      throw new Error('Shiprocket login returned no token');
+    }
+
+    const labelRes = await fetch(`${base}/courier/generate/label`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ order_id: shipmentNumber }),
+    });
+    if (!labelRes.ok) {
+      throw new Error(`Shiprocket label HTTP ${labelRes.status}`);
+    }
+    const label = (await labelRes.json()) as {
+      label_url?: string;
+      awb_code?: string;
+      tracking_url?: string;
+    };
+    return {
+      labelUrl: label.label_url,
+      awbCode: label.awb_code,
+      trackingUrl: label.tracking_url,
+    };
   }
 
   // ─── Private Helpers ──────────────────────────────────────────

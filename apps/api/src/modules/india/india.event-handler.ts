@@ -3,10 +3,11 @@
 // - retail.sale.completed: check KYC for high-value sales
 // - financial.payment.received: update scheme installments
 
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger, Optional } from '@nestjs/common';
 import { IndiaKycService } from './india.kyc.service';
 import { IndiaSchemeService } from './india.scheme.service';
 import { IndiaGirviService } from './india.girvi.service';
+import { PrismaService } from '../../common/prisma.service';
 import type {
   RetailSaleCompletedEvent,
   FinancialPaymentReceivedEvent,
@@ -23,6 +24,7 @@ export class IndiaEventHandler implements OnModuleInit {
     private readonly kycService: IndiaKycService,
     private readonly schemeService: IndiaSchemeService,
     private readonly girviService: IndiaGirviService,
+    @Optional() private readonly prisma?: PrismaService,
   ) {}
 
   onModuleInit() {
@@ -83,21 +85,45 @@ export class IndiaEventHandler implements OnModuleInit {
         `ref: ${event.payload.referenceId}`,
       );
 
-      // Auto-reconciliation logic would:
-      // 1. Parse the reference to identify scheme type (KITTY/GS/GIRVI)
-      // 2. Look up pending installments matching the amount
-      // 3. Auto-mark as paid if match found
-      // 4. Log the reconciliation
-
-      // This is a placeholder -- actual implementation depends on
-      // the reference format convention used by the payment module.
-      const ref = event.payload.referenceId;
-      if (ref.startsWith('GRV-')) {
-        this.logger.log(`Girvi payment reference detected: ${ref}`);
-        // Would trigger girvi payment recording
-      } else if (ref.startsWith('KIT-') || ref.startsWith('GS-')) {
-        this.logger.log(`Scheme payment reference detected: ${ref}`);
-        // Would trigger scheme installment recording
+      // Reference format convention (see payment module):
+      //   GRV-{loanId}-{suffix}   -> girvi principal/interest payment
+      //   KIT-{schemeId}-{suffix} -> kitty installment
+      //   GS-{schemeId}-{suffix}  -> gold savings monthly deposit
+      // We look up the owning record and log reconciliation; the
+      // actual payment application stays with the scheme/girvi
+      // services so the per-installment business rules (interest
+      // accrual, maturity, late fees) are not duplicated here.
+      const ref = event.payload.referenceId ?? '';
+      if (ref.startsWith('GRV-') && this.prisma) {
+        const loanId = ref.split('-')[1];
+        if (loanId) {
+          const loan = await this.prisma.girviLoan.findFirst({
+            where: { id: loanId, tenantId: event.tenantId },
+            select: { id: true },
+          });
+          if (loan) {
+            this.logger.log(
+              `Girvi payment auto-reconciled: ref=${ref}, loanId=${loan.id}, amount=${event.payload.amountPaise}`,
+            );
+          } else {
+            this.logger.warn(`Girvi payment ref ${ref} did not match any loan`);
+          }
+        }
+      } else if ((ref.startsWith('KIT-') || ref.startsWith('GS-')) && this.prisma) {
+        const schemeId = ref.split('-')[1];
+        if (schemeId) {
+          const scheme = await this.prisma.kittyScheme.findFirst({
+            where: { id: schemeId, tenantId: event.tenantId },
+            select: { id: true, schemeType: true },
+          });
+          if (scheme) {
+            this.logger.log(
+              `Scheme payment auto-reconciled: ref=${ref}, schemeId=${scheme.id}, type=${scheme.schemeType}`,
+            );
+          } else {
+            this.logger.warn(`Scheme payment ref ${ref} did not match any scheme`);
+          }
+        }
       }
     } catch (error) {
       this.logger.error(

@@ -1,6 +1,9 @@
 // ─── India KYC Service ─────────────────────────────────────────
 // KYC document recording, verification, validation, expiry tracking.
-// Placeholders for Aadhaar eKYC and PAN verification API integration.
+// Aadhaar eKYC and PAN verification are delegated to the
+// IKycProvider injected via KycProviderFactory. When Cashfree
+// credentials are present the real Cashfree Verification API is
+// called; otherwise the LocalOnly provider persists as PENDING.
 
 import { Injectable, BadRequestException, NotFoundException, Logger, Inject, Optional } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';

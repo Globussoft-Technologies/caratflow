@@ -651,4 +651,51 @@ describe('UsSalesTaxCalculator', () => {
     expect(result.taxes).toHaveLength(1);
     expect(result.taxes[0]!.type).toBe('SALES_TAX');
   });
+
+  it('covers all 50 states plus DC in the rate table', () => {
+    const fifty = [
+      'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
+      'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
+      'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+      'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
+      'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY',
+    ];
+    for (const code of fifty) {
+      expect(UsSalesTaxCalculator.STATE_RATES).toHaveProperty(code);
+    }
+    expect(UsSalesTaxCalculator.STATE_RATES).toHaveProperty('DC');
+  });
+
+  it('returns 0 tax for states without statewide sales tax', () => {
+    const amount = MoneyUtil.of(10000, 'USD');
+    for (const noTax of ['AK', 'DE', 'MT', 'NH', 'OR']) {
+      const result = calc.calculate(amount, { stateCode: noTax });
+      expect(result.totalTax.amount, `${noTax} should have no state tax`).toBe(0);
+    }
+  });
+
+  it('honours preciousMetalExempt by zeroing state rate only', () => {
+    const amount = MoneyUtil.of(10000, 'USD');
+    const result = calc.calculate(amount, {
+      stateCode: 'TX',
+      countyRate: 1,
+      preciousMetalExempt: true,
+    });
+    // State 6.25% zeroed, county 1% remains => 100 paise
+    expect(result.totalTax.amount).toBe(100);
+  });
+
+  it('uses stateRateOverride when provided (Avalara escape hatch)', () => {
+    const amount = MoneyUtil.of(10000, 'USD');
+    const result = calc.calculate(amount, {
+      stateCode: 'CA',
+      stateRateOverride: 8.125,
+    });
+    expect(result.totalTax.amount).toBe(813); // rounded 812.5
+  });
+
+  it('lowercases state codes via getStateRate', () => {
+    expect(UsSalesTaxCalculator.getStateRate('ca')).toBe(7.25);
+    expect(UsSalesTaxCalculator.getStateRate('tx')).toBe(6.25);
+  });
 });

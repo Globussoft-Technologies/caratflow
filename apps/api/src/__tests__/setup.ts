@@ -222,6 +222,7 @@ export function createMockPrismaService() {
     account: {
       findFirst: vi.fn(),
       findMany: vi.fn(),
+      create: vi.fn(),
     },
     product: {
       findFirst: vi.fn(),

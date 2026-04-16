@@ -170,6 +170,48 @@ describe('ComplianceCertificateService (Unit)', () => {
         service.verifyCertificate(TEST_TENANT_ID, TEST_USER_ID, 'nonexistent'),
       ).rejects.toThrow('not found');
     });
+
+    it('returns source=MOCK when no lab credentials configured', async () => {
+      delete process.env.GIA_API_URL;
+      delete process.env.GIA_API_KEY;
+      (mockPrisma as any).gemstoneCertificate.findFirst.mockResolvedValue({
+        id: 'cert-1',
+        certificateNumber: 'GIA-99999999',
+        issuingLab: 'GIA',
+      });
+      (mockPrisma as any).gemstoneCertificate.update.mockResolvedValue({
+        id: 'cert-1',
+        certificateNumber: 'GIA-99999999',
+        issuingLab: 'GIA',
+        isVerified: true,
+        verifiedAt: new Date(),
+        product: { id: 'prod-1', sku: 'S1', name: 'Stone' },
+      });
+
+      const result = await service.verifyCertificate(TEST_TENANT_ID, TEST_USER_ID, 'cert-1');
+      expect(result.isValid).toBe(true);
+      expect(result.source).toBe('MOCK');
+    });
+
+    it('accepts certificates from labs without uppercase conversion ambiguity', async () => {
+      (mockPrisma as any).gemstoneCertificate.findFirst.mockResolvedValue({
+        id: 'cert-2',
+        certificateNumber: 'IGI-12345',
+        issuingLab: 'IGI',
+      });
+      (mockPrisma as any).gemstoneCertificate.update.mockResolvedValue({
+        id: 'cert-2',
+        certificateNumber: 'IGI-12345',
+        issuingLab: 'IGI',
+        isVerified: true,
+        verifiedAt: new Date(),
+        product: { id: 'prod-2', sku: 'S2', name: 'Stone' },
+      });
+
+      const result = await service.verifyCertificate(TEST_TENANT_ID, TEST_USER_ID, 'cert-2');
+      expect(result.lab).toBe('IGI');
+      expect(result.source).toBeDefined();
+    });
   });
 
   // ─── getCertifiedStonesPercent ──────────────────────────────────

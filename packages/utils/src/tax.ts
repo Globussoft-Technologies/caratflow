@@ -181,32 +181,100 @@ export class TcsCalculator {
   }
 }
 
-// ─── US Sales Tax (Placeholder) ────────────────────────────────
+// ─── US Sales Tax ───────────────────────────────────────────────
+// Full 50-state + DC base rate table sourced from the Tax Foundation
+// "State and Local Sales Tax Rates" brief (2025 edition). Rates are
+// state base rates only; county/city add-ons are passed via params.
+// Callers that need destination-based precision should still integrate
+// a tax API (Avalara, TaxJar) and pass the resolved rate via the
+// `stateRateOverride` escape hatch.
 
 export interface UsSalesTaxParams {
   stateCode: string;
   countyRate?: number;
   cityRate?: number;
+  /** Bypass the built-in STATE_RATES table (e.g. for Avalara-resolved rate). */
+  stateRateOverride?: number;
+  /** When true, zero the state rate (keeps county/city). Used for bullion exemption. */
+  preciousMetalExempt?: boolean;
 }
 
 export class UsSalesTaxCalculator implements TaxCalculator {
-  /** State-level sales tax rates (simplified -- real implementation needs tax API) */
-  private static readonly STATE_RATES: Record<string, number> = {
+  /**
+   * 2025 state-level base sales tax rates (% of sale).
+   * Five states have no statewide sales tax: AK, DE, MT, NH, OR.
+   * DC included for completeness.
+   */
+  static readonly STATE_RATES: Record<string, number> = {
+    AL: 4.0,
+    AK: 0,
+    AZ: 5.6,
+    AR: 6.5,
     CA: 7.25,
-    NY: 4.0,
-    TX: 6.25,
+    CO: 2.9,
+    CT: 6.35,
+    DE: 0,
+    DC: 6.0,
     FL: 6.0,
+    GA: 4.0,
+    HI: 4.0,
+    ID: 6.0,
+    IL: 6.25,
+    IN: 7.0,
+    IA: 6.0,
+    KS: 6.5,
+    KY: 6.0,
+    LA: 4.45,
+    ME: 5.5,
+    MD: 6.0,
+    MA: 6.25,
+    MI: 6.0,
+    MN: 6.875,
+    MS: 7.0,
+    MO: 4.225,
+    MT: 0,
+    NE: 5.5,
+    NV: 6.85,
+    NH: 0,
     NJ: 6.625,
-    // Many states exempt precious metals from sales tax above certain amounts
+    NM: 4.875,
+    NY: 4.0,
+    NC: 4.75,
+    ND: 5.0,
+    OH: 5.75,
+    OK: 4.5,
+    OR: 0,
+    PA: 6.0,
+    RI: 7.0,
+    SC: 6.0,
+    SD: 4.2,
+    TN: 7.0,
+    TX: 6.25,
+    UT: 6.1,
+    VT: 6.0,
+    VA: 5.3,
+    WA: 6.5,
+    WV: 6.0,
+    WI: 5.0,
+    WY: 4.0,
   };
+
+  /** Lookup helper for callers that need the raw state rate. */
+  static getStateRate(stateCode: string): number {
+    return UsSalesTaxCalculator.STATE_RATES[stateCode.toUpperCase()] ?? 0;
+  }
 
   calculate(amount: Money, params: Record<string, unknown>): TaxBreakdown {
     const taxParams = params as unknown as UsSalesTaxParams;
-    const stateRate = UsSalesTaxCalculator.STATE_RATES[taxParams.stateCode] ?? 0;
+    const code = (taxParams.stateCode ?? '').toUpperCase();
+    const baseStateRate =
+      taxParams.stateRateOverride ?? UsSalesTaxCalculator.STATE_RATES[code] ?? 0;
+    const stateRate = taxParams.preciousMetalExempt ? 0 : baseStateRate;
     const totalRate = stateRate + (taxParams.countyRate ?? 0) + (taxParams.cityRate ?? 0);
 
     const taxAmount = MoneyUtil.percentage(amount, totalRate);
 
+    // Single SALES_TAX component preserved for API compatibility.
     return {
       taxableAmount: amount,
       taxes: [{ type: 'SALES_TAX', rate: totalRate, amount: taxAmount }],

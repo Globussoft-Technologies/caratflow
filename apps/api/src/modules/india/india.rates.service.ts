@@ -11,6 +11,7 @@ import type {
   MetalRateResponse,
   LiveRateResponse,
 } from '@caratflow/shared-types';
+import { MetalRateSource } from '@caratflow/shared-types';
 
 /** Simple in-memory rate cache. In production, use Redis via CacheModule. */
 interface CachedRate {
@@ -157,21 +158,87 @@ export class IndiaRatesService {
     return results;
   }
 
-  // ─── MCX API Polling (placeholder) ───────────────────────────
+  // ─── MCX / IBJA API Polling ──────────────────────────────────
 
   /**
-   * Placeholder for MCX/IBJA API integration.
-   * In production, this would be called by a BullMQ cron job
-   * polling the MCX API every few minutes during market hours.
+   * Poll MCX/IBJA feed for live gold + silver rates.
+   *
+   * Real polling path activates when MCX credentials are present
+   * (MCX_API_URL + MCX_API_KEY). When unset, falls back to a log-only
+   * no-op so dev/demo environments don't hammer a non-existent
+   * endpoint. The BullMQ-driven `RatePollerService` is the primary
+   * hourly poller (uses metals.dev provider by default); this method
+   * is retained for manual admin refresh and for tenants on their own
+   * MCX subscription.
    */
-  async pollMcxRates(): Promise<void> {
-    this.logger.log('MCX rate polling: placeholder - integrate with MCX API');
-    // Implementation would:
-    // 1. Fetch rates from MCX API endpoint
-    // 2. Parse response for gold/silver/platinum rates
-    // 3. Convert from MCX format (per 10g) to all formats
-    // 4. Call recordRate() for each metal
-    // 5. Emit 'india.rates.updated' event
+  async pollMcxRates(): Promise<{ gold: boolean; silver: boolean }> {
+    const apiUrl = process.env.MCX_API_URL;
+    const apiKey = process.env.MCX_API_KEY;
+
+    if (!apiUrl || !apiKey) {
+      this.logger.debug(
+        'MCX rate polling skipped: set MCX_API_URL and MCX_API_KEY to enable',
+      );
+      return { gold: false, silver: false };
+    }
+
+    try {
+      const res = await fetch(apiUrl, {
+        method: 'GET',
+        headers: { 'x-api-key': apiKey, Accept: 'application/json' },
+      });
+      if (!res.ok) {
+        this.logger.warn(`MCX poll HTTP ${res.status}`);
+        return { gold: false, silver: false };
+      }
+      const body = (await res.json()) as {
+        gold999_per10g?: number;
+        silver999_per1kg?: number;
+        timestamp?: string;
+      };
+
+      const recordedAt = body.timestamp ? new Date(body.timestamp) : new Date();
+      const results = { gold: false, silver: false };
+
+      if (typeof body.gold999_per10g === 'number' && body.gold999_per10g > 0) {
+        const perGramPaise = Math.round((body.gold999_per10g / 10) * 100);
+        await this.recordRate({
+          metalType: 'GOLD',
+          purity: 999,
+          ratePerGramPaise: perGramPaise,
+          ratePer10gPaise: perGramPaise * 10,
+          ratePerTolaPaise: Math.round(perGramPaise * 11.664),
+          ratePerTroyOzPaise: Math.round(perGramPaise * 31.1035),
+          source: MetalRateSource.MCX,
+          recordedAt,
+          currencyCode: 'INR',
+        });
+        results.gold = true;
+      }
+      if (typeof body.silver999_per1kg === 'number' && body.silver999_per1kg > 0) {
+        const perGramPaise = Math.round((body.silver999_per1kg / 1000) * 100);
+        await this.recordRate({
+          metalType: 'SILVER',
+          purity: 999,
+          ratePerGramPaise: perGramPaise,
+          ratePer10gPaise: perGramPaise * 10,
+          ratePerTolaPaise: Math.round(perGramPaise * 11.664),
+          ratePerTroyOzPaise: Math.round(perGramPaise * 31.1035),
+          source: MetalRateSource.MCX,
+          recordedAt,
+          currencyCode: 'INR',
+        });
+        results.silver = true;
+      }
+
+      this.logger.log(
+        `MCX poll complete: gold=${results.gold} silver=${results.silver}`,
+      );
+      return results;
+    } catch (err) {
+      this.logger.error(`MCX poll failed: ${(err as Error).message}`);
+      return { gold: false, silver: false };
+    }
   }
 
   /**

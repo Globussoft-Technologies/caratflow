@@ -280,10 +280,13 @@ export class CustomerPortalOrdersService extends TenantAwareService {
       });
     }
 
-    // For jewelry, metal rate differences may apply. In a real implementation,
-    // the current rate would be fetched and compared with the purchase rate.
-    // Here we store 0 as a placeholder; the admin-side can adjust.
-    const metalRateDifferencePaise = BigInt(0);
+    // For jewelry, metal rate differences may apply. We compute the
+    // difference using the order's recorded per-gram rate (if present
+    // on the OnlineOrder) vs the latest MetalRateHistory row of the
+    // same metal/purity. When either side is missing we fall back to
+    // 0, leaving the admin to adjust manually.
+    const metalRateDifferencePaise =
+      await this.computeMetalRateDifferencePaise(tenantId, order.id, subtotalPaise);
     const refundAmountPaise = subtotalPaise - metalRateDifferencePaise;
 
     // Generate return number
@@ -446,5 +449,85 @@ export class CustomerPortalOrdersService extends TenantAwareService {
       success: true,
       message: `Order ${order.orderNumber} has been cancelled successfully.`,
     };
+  }
+
+  /**
+   * Compute the paise difference between the metal rate at the time
+   * the order was placed and the current live rate, proportional to
+   * the returned-item subtotal.
+   *
+   * The schema doesn't store a per-item purchase-time rate, so we
+   * derive the likely metal from the order's first line item's
+   * product (productType GOLD/SILVER/PLATINUM + purity). We then
+   * look up the MetalRateHistory row at-or-before the order's
+   * placedAt and compare against the latest rate.
+   *
+   * Policy: if today's rate < purchase rate, we reduce the refund by
+   * the proportional delta so the customer receives only today's
+   * (lower) rate; if today's rate >= purchase rate we return 0 (no
+   * surcharge on a return).
+   *
+   * Any missing data (no rate history, not a metal product) falls
+   * back to 0, leaving the admin to adjust manually.
+   */
+  private async computeMetalRateDifferencePaise(
+    tenantId: string,
+    orderId: string,
+    subtotalPaise: bigint,
+  ): Promise<bigint> {
+    try {
+      const order = await this.prisma.onlineOrder.findFirst({
+        where: { id: orderId, tenantId },
+        select: {
+          placedAt: true,
+          items: {
+            take: 1,
+            select: {
+              product: { select: { productType: true, metalPurity: true } },
+            },
+          },
+        },
+      });
+      if (!order || !order.placedAt) return BigInt(0);
+
+      const firstItem = order.items[0];
+      const productType = firstItem?.product?.productType ?? '';
+      const purity = firstItem?.product?.metalPurity ?? 999;
+
+      let metalType: string | null = null;
+      if (productType === 'GOLD') {
+        metalType = 'GOLD';
+      } else if (productType === 'SILVER') {
+        metalType = 'SILVER';
+      } else if (productType === 'PLATINUM') {
+        metalType = 'PLATINUM';
+      }
+      if (!metalType) return BigInt(0);
+
+      const [atOrder, latest] = await Promise.all([
+        this.prisma.metalRateHistory.findFirst({
+          where: { metalType, purity, recordedAt: { lte: order.placedAt } },
+          orderBy: { recordedAt: 'desc' },
+        }),
+        this.prisma.metalRateHistory.findFirst({
+          where: { metalType, purity },
+          orderBy: { recordedAt: 'desc' },
+        }),
+      ]);
+      if (!atOrder || !latest) return BigInt(0);
+
+      const purchaseRate = atOrder.ratePerGramPaise;
+      const currentRate = latest.ratePerGramPaise;
+      if (currentRate >= purchaseRate) return BigInt(0);
+      if (purchaseRate === BigInt(0)) return BigInt(0);
+
+      const delta = purchaseRate - currentRate;
+      return (subtotalPaise * delta) / purchaseRate;
+    } catch (err) {
+      this.logger.warn(
+        `Could not compute metal rate difference for order ${orderId}: ${(err as Error).message}`,
+      );
+      return BigInt(0);
+    }
   }
 }
