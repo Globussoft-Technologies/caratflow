@@ -6,6 +6,12 @@ export const STORE_TAGLINE = "Crafting Elegance, Delivering Trust";
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 export const STORE_API = `${API_BASE_URL}/api/v1/store`;
 export const AUTH_API = `${API_BASE_URL}/api/v1/b2c/auth`;
+export const CRM_API = `${API_BASE_URL}/api/v1/crm`;
+
+// Default tenant for the public storefront. Real B2C signups create
+// customers under this tenant. Staff tenants use a different path.
+export const TENANT_SLUG = process.env.NEXT_PUBLIC_TENANT_SLUG ?? "sharma-jewellers";
+export const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? "731c8b36-6045-401b-857a-f03b2cfc1a99";
 
 export const CURRENCY_CODE = "INR";
 export const CURRENCY_SYMBOL = "\u20B9";
