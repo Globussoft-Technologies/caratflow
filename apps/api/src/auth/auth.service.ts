@@ -14,6 +14,7 @@ import { Prisma } from '@caratflow/db';
 import { PrismaService } from '../common/prisma.service';
 import type { JwtPayload } from '../common/tenant.middleware';
 import { EmailService } from '../modules/crm/email.service';
+import { AccessTokenDenylistService } from './access-token-denylist.service';
 
 interface TokenPair {
   accessToken: string;
@@ -39,6 +40,7 @@ export class AuthService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Optional() private readonly denylist?: AccessTokenDenylistService,
     @Optional() private readonly emailService?: EmailService,
   ) {
     this.jwtSecret = process.env.JWT_SECRET ?? 'dev-secret-change-me-in-production';
@@ -121,7 +123,11 @@ export class AuthService {
     return this.generateTokenPair(user.id, tenant.id, user.email, user.role?.name ?? 'user', permissions);
   }
 
-  async refreshTokens(refreshTokenValue: string): Promise<TokenPair> {
+  async refreshTokens(
+    refreshTokenValue: string,
+    currentAccessJti?: string,
+    currentAccessExp?: number,
+  ): Promise<TokenPair> {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { token: refreshTokenValue },
       include: { user: { include: { role: true } } },
@@ -137,6 +143,9 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
 
+    // Revoke the access token that was just used to refresh (D-037).
+    this.denylist?.revoke(currentAccessJti, currentAccessExp);
+
     const { user } = stored;
     const permissions = this.extractPermissions(user.role?.permissions);
 
@@ -149,11 +158,17 @@ export class AuthService {
     );
   }
 
-  async logout(refreshTokenValue: string): Promise<void> {
+  async logout(
+    refreshTokenValue: string,
+    currentAccessJti?: string,
+    currentAccessExp?: number,
+  ): Promise<void> {
     await this.prisma.refreshToken.updateMany({
       where: { token: refreshTokenValue, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    // Also kill the access token presented with the logout call (D-037).
+    this.denylist?.revoke(currentAccessJti, currentAccessExp);
   }
 
   async forgotPassword(email: string, tenantSlug: string): Promise<{ message: string }> {
@@ -296,6 +311,7 @@ export class AuthService {
 
     const accessToken = jwt.sign(payload as object, this.jwtSecret, {
       expiresIn: this.accessExpiry as unknown as number,
+      jwtid: uuid(),
     });
 
     const refreshTokenValue = uuid() + '-' + uuid();

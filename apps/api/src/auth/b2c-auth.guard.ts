@@ -2,11 +2,13 @@ import {
   Injectable,
   CanActivate,
   ExecutionContext,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Request } from 'express';
 import * as jwt from 'jsonwebtoken';
 import type { B2CJwtPayload } from '@caratflow/shared-types';
+import { AccessTokenDenylistService } from './access-token-denylist.service';
 
 /**
  * Extend Express Request to include B2C customer fields.
@@ -18,6 +20,8 @@ declare global {
       customerAuthId?: string;
       customerId?: string;
       b2cTenantId?: string;
+      accessTokenJti?: string;
+      accessTokenExp?: number;
     }
   }
 }
@@ -33,7 +37,7 @@ declare global {
 export class B2CAuthGuard implements CanActivate {
   private readonly jwtSecret: string;
 
-  constructor() {
+  constructor(@Optional() private readonly denylist?: AccessTokenDenylistService) {
     this.jwtSecret = process.env.JWT_SECRET ?? 'dev-secret-change-me-in-production';
   }
 
@@ -47,7 +51,10 @@ export class B2CAuthGuard implements CanActivate {
 
     try {
       const token = authHeader.slice(7);
-      const payload = jwt.verify(token, this.jwtSecret) as B2CJwtPayload;
+      const payload = jwt.verify(token, this.jwtSecret) as B2CJwtPayload & {
+        jti?: string;
+        exp?: number;
+      };
 
       // Ensure this is a B2C token, not an admin token
       if (payload.type !== 'b2c') {
@@ -58,10 +65,17 @@ export class B2CAuthGuard implements CanActivate {
         throw new UnauthorizedException('Malformed authentication token');
       }
 
+      // Reject tokens revoked by logout / refresh-rotation (D-037).
+      if (this.denylist?.isRevoked(payload.jti)) {
+        throw new UnauthorizedException('Token has been revoked');
+      }
+
       // Attach B2C-specific fields to the request
       request.customerAuthId = payload.sub;
       request.customerId = payload.customerId;
       request.b2cTenantId = payload.tenantId;
+      request.accessTokenJti = payload.jti;
+      request.accessTokenExp = payload.exp;
 
       return true;
     } catch (error) {

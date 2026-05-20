@@ -234,7 +234,7 @@ export class B2cFeaturesController {
     @Req() req: StoreRequest,
     @Param('alertId') alertId: string,
   ) {
-    await this.backInStockService.unsubscribe(req.tenantId, alertId);
+    await this.backInStockService.unsubscribe(req.tenantId, alertId, req.customerId);
     return { success: true };
   }
 

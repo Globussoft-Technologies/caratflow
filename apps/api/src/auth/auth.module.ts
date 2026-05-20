@@ -8,6 +8,7 @@ import { B2CAuthGuard } from './b2c-auth.guard';
 import { OtpService } from './auth.otp.service';
 import { SocialAuthService } from './auth.social.service';
 import { TwoFactorAuthService } from './auth.2fa.service';
+import { AccessTokenDenylistService } from './access-token-denylist.service';
 import { CrmModule } from '../modules/crm/crm.module';
 
 @Module({
@@ -26,6 +27,7 @@ import { CrmModule } from '../modules/crm/crm.module';
     OtpService,
     SocialAuthService,
     TwoFactorAuthService,
+    AccessTokenDenylistService,
   ],
   exports: [
     AuthService,
@@ -35,6 +37,7 @@ import { CrmModule } from '../modules/crm/crm.module';
     OtpService,
     SocialAuthService,
     TwoFactorAuthService,
+    AccessTokenDenylistService,
   ],
 })
 export class AuthModule {}

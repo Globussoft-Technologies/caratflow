@@ -48,6 +48,30 @@ export class SearchService extends TenantAwareService {
     // Build FULLTEXT match clause
     const matchTerms = this.buildMatchTerms(expandedQuery);
 
+    // Query devolved to nothing after sanitization (e.g. all punctuation, or
+    // only stop-len tokens). Return an empty result instead of running an
+    // invalid AGAINST('' IN BOOLEAN MODE) query (D-032).
+    if (!matchTerms) {
+      const didYouMean = await this.getSuggestion(tenantId, query);
+      const suggestions = await this.getCuratedSuggestions(tenantId, query);
+      this.analyticsService
+        .logSearch(tenantId, query, customerId ?? null, 0)
+        .catch((err) => this.logger.warn(`Failed to log search: ${err.message}`));
+      return {
+        products: [],
+        totalCount: 0,
+        facets: {
+          metalTypes: [],
+          purities: [],
+          priceRanges: [],
+          categories: [],
+          weightRanges: [],
+        },
+        suggestions,
+        didYouMean,
+      };
+    }
+
     // Build WHERE conditions
     const whereConditions: string[] = [`si.tenant_id = ?`];
     const params: unknown[] = [tenantId];
@@ -310,13 +334,26 @@ export class SearchService extends TenantAwareService {
   // ─── Private Helpers ──────────────────────────────────────────
 
   private buildMatchTerms(query: string): string {
-    // Split query into words and build boolean mode terms
-    const words = query
-      .trim()
+    // Sanitize for MySQL FULLTEXT BOOLEAN MODE (D-032). The following are
+    // operators and would either change the query semantics or cause a syntax
+    // error if passed unescaped from user input:
+    //   + - > < ( ) ~ * " @ \  and surrounding whitespace inside terms.
+    // Strip them, then word-split, drop terms shorter than the default
+    // ft_min_word_len=4 so we don't generate noise wildcards on stop-len tokens.
+    const sanitized = query
+      .normalize('NFKC')
+      .replace(/[+\-><()~*"@\\]/g, ' ')
+      .trim();
+
+    if (!sanitized) return '';
+
+    const words = sanitized
       .split(/\s+/)
-      .filter((w) => w.length > 1)
+      .filter((w) => w.length >= 2)
+      .slice(0, 16) // cap to keep the query small
       .map((w) => `+${w}*`);
-    return words.length > 0 ? words.join(' ') : `+${query.trim()}*`;
+
+    return words.length > 0 ? words.join(' ') : '';
   }
 
   private async autocompleteProducts(

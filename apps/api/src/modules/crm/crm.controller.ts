@@ -16,6 +16,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { B2CAuthGuard } from '../../auth/b2c-auth.guard';
 import { VideoConsultationService } from './video-consultation.service';
@@ -30,6 +31,10 @@ class VideoConsultationRequestDto {
   customerPhone?: string;
   notes?: string;
 }
+
+// Anchored RFC-5322-lite check — rejects "@", "foo", "foo@", "@bar", and obvious junk
+// while staying simple enough to be readable. The DB layer dedupes on canonical email.
+const EMAIL_RE = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
 
 class NewsletterSubscribeDto {
   email!: string;
@@ -106,12 +111,13 @@ export class CrmController {
 
   @Post('newsletter/subscribe')
   @HttpCode(HttpStatus.CREATED)
+  @Throttle({ short: { limit: 1, ttl: 30_000 }, medium: { limit: 3, ttl: 60_000 } })
   @ApiOperation({ summary: 'Subscribe an email to the newsletter (creates a lead)' })
   async subscribeNewsletter(
     @Req() req: Request,
     @Body() body: NewsletterSubscribeDto,
   ) {
-    if (!body.email || !body.email.includes('@')) {
+    if (!body.email || !EMAIL_RE.test(body.email.trim())) {
       return { success: false, error: { code: 'INVALID_EMAIL', message: 'Valid email is required' } } as ApiResponse<null>;
     }
     // Resolve tenantId either from the authenticated B2C session or fall back to header.

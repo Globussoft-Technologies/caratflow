@@ -1,4 +1,6 @@
 import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { TrpcModule } from './trpc/trpc.module';
@@ -36,6 +38,17 @@ import { PayrollModule } from './modules/payroll/payroll.module';
 
 @Module({
   imports: [
+    // Three named rate-limit buckets. Per-endpoint @Throttle() picks one:
+    //   short  — 1 req/sec  (newsletter, OTP send)
+    //   medium — 10 req/min (login, password reset)
+    //   long   — 100 req/hr (registration)
+    // Default policy applied via ThrottlerGuard is the most permissive bucket;
+    // hot endpoints opt into a stricter named bucket.
+    ThrottlerModule.forRoot([
+      { name: 'short', ttl: 1000, limit: 3 },
+      { name: 'medium', ttl: 60_000, limit: 10 },
+      { name: 'long', ttl: 60 * 60_000, limit: 100 },
+    ]),
     CommonModule,
     AuthModule,
     HealthModule,
@@ -69,6 +82,10 @@ import { PayrollModule } from './modules/payroll/payroll.module';
     IndiaModule,
     RecommendationsModule,
     PayrollModule,
+  ],
+  providers: [
+    // Apply ThrottlerGuard globally; per-endpoint @Throttle() refines limits.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule implements NestModule {

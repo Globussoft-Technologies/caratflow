@@ -15,6 +15,7 @@ import { OtpService } from './auth.otp.service';
 import { SocialAuthService } from './auth.social.service';
 import { TwoFactorAuthService } from './auth.2fa.service';
 import { EmailService } from '../modules/crm/email.service';
+import { AccessTokenDenylistService } from './access-token-denylist.service';
 import type { SocialProvider, LoginProvider } from '@caratflow/db';
 import type { B2CJwtPayload, B2CCustomerProfile, B2CAuthResponse, B2CTokenPair } from '@caratflow/shared-types';
 
@@ -36,6 +37,7 @@ export class B2CAuthService {
     private readonly otpService: OtpService,
     private readonly socialAuthService: SocialAuthService,
     private readonly twoFactorService: TwoFactorAuthService,
+    @Optional() private readonly denylist?: AccessTokenDenylistService,
     @Optional() private readonly emailService?: EmailService,
   ) {
     this.jwtSecret = process.env.JWT_SECRET ?? 'dev-secret-change-me-in-production';
@@ -415,7 +417,11 @@ export class B2CAuthService {
   /**
    * Refresh B2C access token using a refresh token (with rotation).
    */
-  async refreshTokens(refreshTokenValue: string): Promise<B2CTokenPair> {
+  async refreshTokens(
+    refreshTokenValue: string,
+    currentAccessJti?: string,
+    currentAccessExp?: number,
+  ): Promise<B2CTokenPair> {
     const stored = await this.prisma.customerRefreshToken.findUnique({
       where: { token: refreshTokenValue },
       include: {
@@ -435,8 +441,28 @@ export class B2CAuthService {
       data: { revokedAt: new Date() },
     });
 
+    // Revoke the access token that was paired with this refresh (D-037).
+    this.denylist?.revoke(currentAccessJti, currentAccessExp);
+
     const tenantId = stored.customerAuth.customer.tenantId;
     return this.generateB2CTokenPair(stored.customerAuth, tenantId);
+  }
+
+  /**
+   * Logout: revoke the refresh token and the access token currently in use (D-037).
+   */
+  async logout(
+    refreshTokenValue: string,
+    currentAccessJti?: string,
+    currentAccessExp?: number,
+  ): Promise<void> {
+    if (refreshTokenValue) {
+      await this.prisma.customerRefreshToken.updateMany({
+        where: { token: refreshTokenValue, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    }
+    this.denylist?.revoke(currentAccessJti, currentAccessExp);
   }
 
   // ─── Profile ───────────────────────────────────────────────
@@ -486,6 +512,7 @@ export class B2CAuthService {
 
     const accessToken = jwt.sign(payload as object, this.jwtSecret, {
       expiresIn: this.accessExpiry as unknown as number,
+      jwtid: uuid(),
     });
 
     const refreshTokenValue = uuid() + '-' + uuid();

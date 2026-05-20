@@ -2,7 +2,7 @@
 // Orchestrates the chat flow: session management, intent detection,
 // preference accumulation, and response generation.
 
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
 import { ChatbotIntentService } from './chatbot.intent.service';
@@ -100,6 +100,7 @@ export class ChatbotService extends TenantAwareService {
     sessionId: string,
     content: string,
     messageType: string = 'TEXT',
+    requesterCustomerId?: string | null,
   ): Promise<ProcessedResponse> {
     // Find active session
     const session = await this.prisma.chatSession.findFirst({
@@ -109,6 +110,11 @@ export class ChatbotService extends TenantAwareService {
     if (!session) {
       throw new NotFoundException('Chat session not found or already closed');
     }
+
+    // Ownership check (D-040, D-044): if the session is tied to a customer,
+    // the caller must be that customer. Anonymous sessions (customerId=null)
+    // are accessible to any anon caller — sessionId entropy is the only secret.
+    this.assertSessionOwnership(session, requesterCustomerId);
 
     // Save user message
     const userMessage = await this.prisma.chatMessage.create({
@@ -154,7 +160,11 @@ export class ChatbotService extends TenantAwareService {
   /**
    * Get full session history.
    */
-  async getSession(tenantId: string, sessionId: string): Promise<ChatSessionResponse> {
+  async getSession(
+    tenantId: string,
+    sessionId: string,
+    requesterCustomerId?: string | null,
+  ): Promise<ChatSessionResponse> {
     const session = await this.prisma.chatSession.findFirst({
       where: this.tenantWhere(tenantId, { sessionId }),
       include: { messages: { orderBy: { createdAt: 'asc' } } },
@@ -163,6 +173,7 @@ export class ChatbotService extends TenantAwareService {
     if (!session) {
       throw new NotFoundException('Chat session not found');
     }
+    this.assertSessionOwnership(session, requesterCustomerId);
 
     return this.mapSessionResponse(session);
   }
@@ -170,7 +181,11 @@ export class ChatbotService extends TenantAwareService {
   /**
    * Close a chat session.
    */
-  async closeSession(tenantId: string, sessionId: string): Promise<void> {
+  async closeSession(
+    tenantId: string,
+    sessionId: string,
+    requesterCustomerId?: string | null,
+  ): Promise<void> {
     const session = await this.prisma.chatSession.findFirst({
       where: this.tenantWhere(tenantId, { sessionId }),
     });
@@ -178,6 +193,7 @@ export class ChatbotService extends TenantAwareService {
     if (!session) {
       throw new NotFoundException('Chat session not found');
     }
+    this.assertSessionOwnership(session, requesterCustomerId);
 
     await this.prisma.chatSession.update({
       where: { id: session.id },
@@ -202,6 +218,7 @@ export class ChatbotService extends TenantAwareService {
     tenantId: string,
     sessionId: string,
     staffUserId?: string,
+    requesterCustomerId?: string | null,
   ): Promise<void> {
     const session = await this.prisma.chatSession.findFirst({
       where: this.tenantWhere(tenantId, { sessionId, status: 'ACTIVE' }),
@@ -210,6 +227,7 @@ export class ChatbotService extends TenantAwareService {
     if (!session) {
       throw new NotFoundException('Active chat session not found');
     }
+    this.assertSessionOwnership(session, requesterCustomerId);
 
     await this.prisma.chatSession.update({
       where: { id: session.id },
@@ -298,6 +316,21 @@ export class ChatbotService extends TenantAwareService {
     limit: number = 20,
   ) {
     return this.listSessionsByStatus(tenantId, 'ESCALATED', page, limit);
+  }
+
+  /**
+   * Enforce chat-session ownership (D-040 / D-044). If the session is bound
+   * to a customer, the caller's customerId must match. Anonymous sessions
+   * (customerId=null) are accessible to any caller — sessionId secrecy is the
+   * only shield, which is why we issue them server-side with crypto entropy.
+   */
+  private assertSessionOwnership(
+    session: { customerId: string | null },
+    requesterCustomerId: string | null | undefined,
+  ): void {
+    if (session.customerId && session.customerId !== requesterCustomerId) {
+      throw new ForbiddenException('You do not have access to this chat session');
+    }
   }
 
   // ─── Private: Response Generation ────────────────────────────

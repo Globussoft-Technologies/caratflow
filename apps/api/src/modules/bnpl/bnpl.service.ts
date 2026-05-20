@@ -395,9 +395,17 @@ export class BnplService extends TenantAwareService {
 
   // ─── Transaction Queries ──────────────────────────────────────
 
-  async getTransaction(tenantId: string, transactionId: string): Promise<BnplTransactionResponse & { schedule: unknown[] }> {
+  async getTransaction(
+    tenantId: string,
+    transactionId: string,
+    requesterCustomerId?: string,
+  ): Promise<BnplTransactionResponse & { schedule: unknown[] }> {
+    // Scope by customerId when supplied — closes IDOR on /payments/bnpl/:id (D-044).
+    const where: Record<string, unknown> = { id: transactionId, tenantId };
+    if (requesterCustomerId) where.customerId = requesterCustomerId;
+
     const transaction = await this.prisma.bnplTransaction.findFirst({
-      where: { id: transactionId, tenantId },
+      where,
       include: {
         emiSchedule: {
           orderBy: { installmentNumber: 'asc' },

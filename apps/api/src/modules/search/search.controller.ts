@@ -25,12 +25,22 @@ interface SearchContext {
   customerId: string | null;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function extractContext(headers: Record<string, string | undefined>): SearchContext {
   const tenantId = headers['x-tenant-id'];
   if (!tenantId) throw new BadRequestException('Missing x-tenant-id header');
+  if (!UUID_RE.test(tenantId)) {
+    throw new BadRequestException('x-tenant-id must be a valid UUID');
+  }
+  const customerId = headers['x-customer-id'] ?? null;
+  if (customerId && !UUID_RE.test(customerId)) {
+    throw new BadRequestException('x-customer-id must be a valid UUID');
+  }
   return {
     tenantId,
-    customerId: headers['x-customer-id'] ?? null,
+    customerId,
   };
 }
 

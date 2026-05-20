@@ -13,6 +13,7 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import type { ApiResponse } from '@caratflow/shared-types';
 import type { ChatSessionResponse, ChatMessageResponse } from '@caratflow/shared-types';
 import { ChatbotService } from './chatbot.service';
@@ -20,17 +21,25 @@ import { ChatbotService } from './chatbot.service';
 interface StorefrontChatContext {
   tenantId: string;
   customerId: string | null;
-  sessionId: string;
 }
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function extractContext(headers: Record<string, string | undefined>): StorefrontChatContext {
   const tenantId = headers['x-tenant-id'];
   if (!tenantId) throw new BadRequestException('Missing x-tenant-id header');
+  if (!UUID_RE.test(tenantId)) {
+    throw new BadRequestException('x-tenant-id must be a valid UUID');
+  }
+  const customerId = headers['x-customer-id'] ?? null;
+  if (customerId && !UUID_RE.test(customerId)) {
+    throw new BadRequestException('x-customer-id must be a valid UUID');
+  }
 
   return {
     tenantId,
-    customerId: headers['x-customer-id'] ?? null,
-    sessionId: headers['x-session-id'] ?? `chat-${Date.now()}`,
+    customerId,
   };
 }
 
@@ -43,23 +52,26 @@ export class ChatbotController {
   constructor(private readonly chatbotService: ChatbotService) {}
 
   /**
-   * Start a new chat session or resume an existing one.
-   * Returns a greeting message with quick reply options.
+   * Start a new chat session. The sessionId is always generated server-side
+   * to prevent client-controlled session takeover (D-040).
+   *
+   * Note: We deliberately ignore any client-supplied `sessionId` in the body.
+   * If the client wants to resume, it must use the sessionId we returned from
+   * a prior /start and authenticate (via x-customer-id) as the same customer.
    */
   @Post('start')
   @HttpCode(HttpStatus.OK)
   async startChat(
     @Headers() headers: Record<string, string | undefined>,
-    @Body() body: { sessionId?: string; customerId?: string },
+    @Body() _body: { sessionId?: string; customerId?: string },
   ): Promise<ApiResponse<ChatSessionResponse>> {
     const ctx = extractContext(headers);
-    const sessionId = body.sessionId ?? ctx.sessionId;
-    const customerId = body.customerId ?? ctx.customerId ?? undefined;
+    const sessionId = `chat_${randomUUID()}`;
 
     const data = await this.chatbotService.startSession(
       ctx.tenantId,
       sessionId,
-      customerId,
+      ctx.customerId ?? undefined,
     );
     return success(data);
   }
@@ -85,6 +97,7 @@ export class ChatbotController {
       body.sessionId,
       body.content.trim(),
       body.messageType,
+      ctx.customerId,
     );
     return success(data);
   }
@@ -98,7 +111,7 @@ export class ChatbotController {
     @Param('sessionId') sessionId: string,
   ): Promise<ApiResponse<ChatSessionResponse>> {
     const ctx = extractContext(headers);
-    const data = await this.chatbotService.getSession(ctx.tenantId, sessionId);
+    const data = await this.chatbotService.getSession(ctx.tenantId, sessionId, ctx.customerId);
     return success(data);
   }
 
@@ -112,7 +125,7 @@ export class ChatbotController {
     @Param('sessionId') sessionId: string,
   ): Promise<ApiResponse<null>> {
     const ctx = extractContext(headers);
-    await this.chatbotService.escalateToHuman(ctx.tenantId, sessionId);
+    await this.chatbotService.escalateToHuman(ctx.tenantId, sessionId, undefined, ctx.customerId);
     return success(null);
   }
 
@@ -126,7 +139,7 @@ export class ChatbotController {
     @Param('sessionId') sessionId: string,
   ): Promise<ApiResponse<null>> {
     const ctx = extractContext(headers);
-    await this.chatbotService.closeSession(ctx.tenantId, sessionId);
+    await this.chatbotService.closeSession(ctx.tenantId, sessionId, ctx.customerId);
     return success(null);
   }
 }

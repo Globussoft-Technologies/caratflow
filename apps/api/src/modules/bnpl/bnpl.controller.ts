@@ -171,7 +171,14 @@ export class BnplController {
     @Req() req: AuthenticatedRequest,
     @Param('transactionId') transactionId: string,
   ) {
-    const transaction = await this.bnplService.getTransaction(req.tenantId, transactionId);
+    if (!req.customerId) {
+      throw new BadRequestException('Customer authentication required');
+    }
+    const transaction = await this.bnplService.getTransaction(
+      req.tenantId,
+      transactionId,
+      req.customerId,
+    );
 
     return {
       success: true,

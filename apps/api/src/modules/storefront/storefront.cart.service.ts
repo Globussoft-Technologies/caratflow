@@ -13,6 +13,27 @@ import { v4 as uuidv4 } from 'uuid';
 /** Cart expiry: 30 days from creation/update */
 const CART_EXPIRY_DAYS = 30;
 
+/** Maximum quantity a customer can put on a single cart line. */
+const MAX_LINE_QUANTITY = 99;
+
+/**
+ * Validate that `value` is a positive integer between 1 and MAX_LINE_QUANTITY.
+ * Rejects negatives, zero, fractions, NaN, strings, booleans, and out-of-range
+ * values. Used by `addItem` / `updateItemQuantity` to fix D-028/29/30/31.
+ */
+function ensureValidQuantity(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) {
+    throw new BadRequestException('quantity must be an integer');
+  }
+  if (value < 1) {
+    throw new BadRequestException('quantity must be at least 1');
+  }
+  if (value > MAX_LINE_QUANTITY) {
+    throw new BadRequestException(`quantity must be ${MAX_LINE_QUANTITY} or less per line`);
+  }
+  return value;
+}
+
 @Injectable()
 export class StorefrontCartService extends TenantAwareService {
   private readonly logger = new Logger(StorefrontCartService.name);
@@ -67,6 +88,7 @@ export class StorefrontCartService extends TenantAwareService {
     productId: string,
     quantity: number,
   ): Promise<CartResponse> {
+    quantity = ensureValidQuantity(quantity);
     const cart = await this.getCartOrThrow(tenantId, cartId);
 
     // Validate product exists and is active
@@ -128,6 +150,7 @@ export class StorefrontCartService extends TenantAwareService {
     itemId: string,
     quantity: number,
   ): Promise<CartResponse> {
+    quantity = ensureValidQuantity(quantity);
     const item = await this.prisma.cartItem.findFirst({
       where: { id: itemId, cartId, tenantId },
     });

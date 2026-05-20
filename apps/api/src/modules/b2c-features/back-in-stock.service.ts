@@ -1,7 +1,7 @@
 // ─── Back In Stock Alert Service ────────────────────────────────
 // Subscribe to restock notifications, notify when product is available, unsubscribe.
 
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { TenantAwareService } from '../../common/base.service';
 import { PrismaService } from '../../common/prisma.service';
 import { EventBusService } from '../../event-bus/event-bus.service';
@@ -141,13 +141,20 @@ export class BackInStockService extends TenantAwareService {
     return notifiedCount;
   }
 
-  async unsubscribe(tenantId: string, alertId: string) {
+  async unsubscribe(tenantId: string, alertId: string, requesterCustomerId?: string) {
     const alert = await this.prisma.backInStockAlert.findFirst({
       where: { id: alertId, tenantId, status: 'ACTIVE' },
     });
 
     if (!alert) {
       throw new NotFoundException('Alert subscription not found or already processed');
+    }
+
+    // Ownership check (D-044). The alert was either created by a logged-in
+    // customer (alert.customerId set) or by an anonymous email subscriber
+    // (customerId null). For the former, the requester must match.
+    if (alert.customerId && alert.customerId !== requesterCustomerId) {
+      throw new ForbiddenException('You do not have access to this alert');
     }
 
     return this.prisma.backInStockAlert.update({

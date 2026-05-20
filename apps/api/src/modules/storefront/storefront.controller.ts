@@ -18,6 +18,32 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
+import { IsInt, IsString, IsOptional, Min, Max, IsNotEmpty } from 'class-validator';
+import { Type } from 'class-transformer';
+
+/** Max quantity per cart line — mirrors storefront.cart.service. */
+const MAX_LINE_QUANTITY = 99;
+
+class AddCartItemDto {
+  @IsString()
+  @IsNotEmpty()
+  productId!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'quantity must be an integer' })
+  @Min(1, { message: 'quantity must be at least 1' })
+  @Max(MAX_LINE_QUANTITY, { message: `quantity must be ${MAX_LINE_QUANTITY} or less` })
+  quantity?: number;
+}
+
+class UpdateCartItemDto {
+  @Type(() => Number)
+  @IsInt({ message: 'quantity must be an integer' })
+  @Min(1, { message: 'quantity must be at least 1' })
+  @Max(MAX_LINE_QUANTITY, { message: `quantity must be ${MAX_LINE_QUANTITY} or less` })
+  quantity!: number;
+}
 import type { ApiResponse, Pagination } from '@caratflow/shared-types';
 import type {
   CatalogProductResponse,
@@ -52,15 +78,50 @@ interface StorefrontContext {
   sessionId: string;
 }
 
+// RFC 4122 UUID — accepts both lowercase and uppercase hex (D-041).
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function extractContext(headers: Record<string, string | undefined>): StorefrontContext {
   const tenantId = headers['x-tenant-id'];
   if (!tenantId) throw new BadRequestException('Missing x-tenant-id header');
+  if (!UUID_RE.test(tenantId)) {
+    throw new BadRequestException('x-tenant-id must be a valid UUID');
+  }
+  const customerId = headers['x-customer-id'] ?? null;
+  if (customerId && !UUID_RE.test(customerId)) {
+    throw new BadRequestException('x-customer-id must be a valid UUID');
+  }
 
   return {
     tenantId,
-    customerId: headers['x-customer-id'] ?? null,
+    customerId,
     sessionId: headers['x-session-id'] ?? `sess-${Date.now()}`,
   };
+}
+
+/**
+ * Parse a 1-based page number; defaults to 1, rejects non-integers / <1.
+ */
+function parsePage(raw: string | undefined): number {
+  if (raw === undefined || raw === '') return 1;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new BadRequestException('page must be a positive integer');
+  }
+  return n;
+}
+
+/**
+ * Parse a page-size value; clamps to [1, max], rejects non-integers / <1 (D-034).
+ */
+function parseLimit(raw: string | undefined, defaultLimit: number, max: number): number {
+  if (raw === undefined || raw === '') return defaultLimit;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new BadRequestException(`limit must be a positive integer (max ${max})`);
+  }
+  return Math.min(n, max);
 }
 
 function success<T>(data: T): ApiResponse<T> {
@@ -112,8 +173,8 @@ export class StorefrontController {
   ): Promise<ApiResponse<PaginatedResult<CatalogProductResponse>>> {
     const ctx = extractContext(headers);
     const data = await this.catalogService.getProducts(ctx.tenantId, {
-      page: page ? parseInt(page, 10) : 1,
-      limit: limit ? parseInt(limit, 10) : 20,
+      page: parsePage(page),
+      limit: parseLimit(limit, 20, 100),
       sortBy: sortBy ?? 'createdAt',
       sortOrder: (sortOrder as 'asc' | 'desc') ?? 'desc',
       categoryId,
@@ -150,7 +211,7 @@ export class StorefrontController {
       ctx.tenantId,
       query,
       ctx.customerId,
-      limit ? parseInt(limit, 10) : 20,
+      parseLimit(limit, 20, 100),
     );
     return success(data);
   }
@@ -197,7 +258,7 @@ export class StorefrontController {
   @Post('cart/items')
   async addCartItem(
     @Headers() headers: Record<string, string | undefined>,
-    @Body() body: { productId: string; quantity?: number },
+    @Body() body: AddCartItemDto,
   ): Promise<ApiResponse<CartResponse>> {
     const ctx = extractContext(headers);
     const cart = await this.cartService.getOrCreateCart(
@@ -218,7 +279,7 @@ export class StorefrontController {
   async updateCartItem(
     @Headers() headers: Record<string, string | undefined>,
     @Param('itemId') itemId: string,
-    @Body() body: { quantity: number },
+    @Body() body: UpdateCartItemDto,
   ): Promise<ApiResponse<CartResponse>> {
     const ctx = extractContext(headers);
     const cart = await this.cartService.getOrCreateCart(
@@ -396,8 +457,8 @@ export class StorefrontController {
     const ctx = extractContext(headers);
     if (!ctx.customerId) throw new BadRequestException('Customer login required');
     const pagination: Pagination = {
-      page: page ? parseInt(page, 10) : 1,
-      limit: limit ? parseInt(limit, 10) : 20,
+      page: parsePage(page),
+      limit: parseLimit(limit, 20, 100),
       sortOrder: 'desc',
     };
     const data = await this.orderService.getMyOrders(ctx.tenantId, ctx.customerId, pagination);
@@ -496,8 +557,8 @@ export class StorefrontController {
     const ctx = extractContext(headers);
     const data = await this.reviewService.getReviews(ctx.tenantId, {
       productId,
-      page: page ? parseInt(page, 10) : 1,
-      limit: limit ? parseInt(limit, 10) : 20,
+      page: parsePage(page),
+      limit: parseLimit(limit, 20, 100),
       sortBy: (sortBy as 'createdAt' | 'rating' | 'helpfulCount') ?? 'createdAt',
       sortOrder: (sortOrder as 'asc' | 'desc') ?? 'desc',
     });

@@ -8,6 +8,8 @@ export interface JwtPayload {
   email: string;
   role: string;
   permissions: string[];
+  jti?: string;
+  exp?: number;
 }
 
 declare global {
@@ -35,6 +37,8 @@ export class TenantMiddleware implements NestMiddleware {
         req.userId = payload.sub;
         req.userRole = payload.role;
         req.userPermissions = payload.permissions;
+        req.accessTokenJti = payload.jti;
+        req.accessTokenExp = payload.exp;
       } catch {
         // Token invalid -- let guards handle the 401
       }
